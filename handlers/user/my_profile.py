@@ -1,10 +1,7 @@
-from typing import Union
-
 from aiogram import types, Router, F
 from aiogram.filters.callback_data import CallbackData
 from aiogram.types import CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-
 from crypto_api.CryptoApiManager import CryptoApiManager
 from handlers.common.common import add_pagination_buttons
 from handlers.user.cart import create_message_with_bought_items
@@ -23,7 +20,7 @@ my_profile_router = Router()
 class MyProfileCallback(CallbackData, prefix="my_profile"):
     level: int
     action: str
-    args_for_action: Union[int, str]
+    args_for_action: int | str
     page: int
 
 
@@ -44,19 +41,20 @@ class MyProfileConstants:
 
 async def get_my_profile_message(telegram_id: int):
     user = await UserService.get_by_tgid(telegram_id)
-    usd_balance = round(user.top_up_amount - user.consume_records, 2)
+    fiat_balance = round(user.top_up_amount - user.consume_records, 2)
     return Localizator.get_text(BotEntity.USER, "my_profile_msg").format(telegram_id=telegram_id,
                                                                          btc_balance=user.btc_balance,
                                                                          ltc_balance=user.ltc_balance,
                                                                          sol_balance=user.sol_balance,
                                                                          usdt_trc20_balance=user.usdt_trc20_balance,
-                                                                         usdd_trc20_balance=user.usdd_trc20_balance,
                                                                          usdt_erc20_balance=user.usdt_erc20_balance,
                                                                          usdc_erc20_balance=user.usdc_erc20_balance,
-                                                                         usd_balance=usd_balance)
+                                                                         fiat_balance=fiat_balance,
+                                                                         currency_text=Localizator.get_currency_text(),
+                                                                         currency_sym=Localizator.get_currency_symbol())
 
 
-async def my_profile(message: Union[Message, CallbackQuery]):
+async def my_profile(message: Message | CallbackQuery):
     current_level = 0
     top_up_button = types.InlineKeyboardButton(
         text=Localizator.get_text(BotEntity.USER, "top_up_balance_button"),
@@ -103,13 +101,10 @@ async def top_up_balance(callback: CallbackQuery):
     top_up_methods_builder.button(text=Localizator.get_text(BotEntity.USER, "usdt_trc20_top_up"),
                                   callback_data=create_callback_profile(current_level + 1,
                                                                         args_for_action="TRX_USDT"))
-    top_up_methods_builder.button(text=Localizator.get_text(BotEntity.USER, "usdd_trc20_top_up"),
-                                  callback_data=create_callback_profile(current_level + 1,
-                                                                        args_for_action="TRX_USDD"))
     top_up_methods_builder.button(text=Localizator.get_text(BotEntity.USER, "usdt_erc20_top_up"),
                                   callback_data=create_callback_profile(current_level + 1,
                                                                         args_for_action="ETH_USDT"))
-    top_up_methods_builder.button(text=Localizator.get_text(BotEntity.USER, "usdc_trc20_top_up"),
+    top_up_methods_builder.button(text=Localizator.get_text(BotEntity.USER, "usdc_erc20_top_up"),
                                   callback_data=create_callback_profile(current_level + 1,
                                                                         args_for_action="ETH_USDC"))
     top_up_methods_builder.row(back_to_profile_button)
@@ -135,7 +130,8 @@ async def create_purchase_history_keyboard_builder(page: int, user_id: int):
             text=Localizator.get_text(BotEntity.USER, "purchase_history_item").format(
                 subcategory_name=item.subcategory.name,
                 total_price=total_price,
-                quantity=quantity),
+                quantity=quantity,
+                currency_sym=Localizator.get_currency_symbol()),
             callback_data=item_from_history_callback)
     orders_markup_builder.adjust(1)
     return orders_markup_builder, len(orders)
@@ -162,8 +158,7 @@ async def refresh_balance(callback: CallbackQuery):
     telegram_id = callback.from_user.id
     unpacked_cb = MyProfileCallback.unpack(callback.data)
     crypto_info = unpacked_cb.args_for_action
-    # if await UserService.can_refresh_balance(telegram_id):
-    if True:
+    if await UserService.can_refresh_balance(telegram_id):
         await UserService.create_last_balance_refresh_data(telegram_id)
         user = await UserService.get_by_tgid(telegram_id)
         addresses = await UserService.get_addresses(telegram_id)
@@ -220,8 +215,7 @@ async def top_up_by_method(callback: CallbackQuery):
     elif "TRX" in payment_method:
         addr = user.trx_address
     msg = Localizator.get_text(BotEntity.USER, "top_up_balance_msg").format(bot_name=bot.first_name,
-                                                                            crypto_name=
-                                                                                     payment_method.split("_")[0],
+                                                                            crypto_name=payment_method.split("_")[0],
                                                                             addr=addr)
     refresh_balance_builder = InlineKeyboardBuilder()
     refresh_balance_builder.button(text=Localizator.get_text(BotEntity.USER, "refresh_balance_button"),

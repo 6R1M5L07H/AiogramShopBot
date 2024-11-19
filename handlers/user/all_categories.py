@@ -1,5 +1,3 @@
-from typing import Union
-
 from aiogram import types, Router, F
 from aiogram.filters.callback_data import CallbackData
 from aiogram.types import Message, CallbackQuery
@@ -74,13 +72,14 @@ async def create_subcategory_buttons(category_id: int, page: int = 0):
             text=Localizator.get_text(BotEntity.USER, "subcategory_button").format(
                 subcategory_name=item.subcategory.name,
                 subcategory_price=subcategory_price,
-                available_quantity=available_quantity),
+                available_quantity=available_quantity,
+                currency_sym=Localizator.get_currency_symbol()),
             callback_data=subcategory_inline_button)
     subcategories_builder.adjust(1)
     return subcategories_builder
 
 
-async def all_categories(message: Union[Message, CallbackQuery]):
+async def all_categories(message: Message | CallbackQuery):
     if isinstance(message, Message):
         category_inline_buttons = await create_category_buttons(0)
         zero_level_callback = create_callback_all_categories(0)
@@ -145,11 +144,13 @@ async def select_quantity(callback: CallbackQuery):
     category = await CategoryService.get_by_primary_key(category_id)
     available_qty = await ItemService.get_available_quantity(subcategory_id, category_id)
     await callback.message.edit_text(
-        text=Localizator.get_text(BotEntity.USER, "select_quantity").format(category_name=category.name,
-                                                                            subcategory_name=subcategory.name,
-                                                                            price=price,
-                                                                            description=description,
-                                                                            quantity=available_qty),
+        text=Localizator.get_text(BotEntity.USER, "select_quantity").format(
+            category_name=category.name,
+            subcategory_name=subcategory.name,
+            price=price,
+            description=description,
+            quantity=available_qty,
+            currency_sym=Localizator.get_currency_symbol()),
         reply_markup=count_builder.as_markup())
 
 
@@ -191,12 +192,14 @@ async def add_to_cart_confirmation(callback: CallbackQuery):
     subcategory = await SubcategoryService.get_by_primary_key(subcategory_id)
     category = await CategoryService.get_by_primary_key(category_id)
     await callback.message.edit_text(
-        text=Localizator.get_text(BotEntity.USER, "buy_confirmation").format(category_name=category.name,
-                                                                             subcategory_name=subcategory.name,
-                                                                             price=price,
-                                                                             description=description,
-                                                                             quantity=quantity,
-                                                                             total_price=total_price),
+        text=Localizator.get_text(BotEntity.USER, "buy_confirmation").format(
+            category_name=category.name,
+            subcategory_name=subcategory.name,
+            price=price,
+            description=description,
+            quantity=quantity,
+            total_price=total_price,
+            currency_sym=Localizator.get_currency_symbol()),
         reply_markup=confirmation_builder.as_markup())
 
 
@@ -204,7 +207,7 @@ async def add_to_cart(callback: CallbackQuery):
     unpacked_callback = AllCategoriesCallback.unpack(callback.data)
     user = await UserService.get_by_tgid(callback.from_user.id)
     cart = await CartService.get_or_create_cart(user.id)
-    cart_item = CartItem(category_id=unpacked_callback.category_id,subcategory_id=unpacked_callback.subcategory_id,
+    cart_item = CartItem(category_id=unpacked_callback.category_id, subcategory_id=unpacked_callback.subcategory_id,
                          quantity=unpacked_callback.quantity)
     await CartService.add_to_cart(cart_item, cart)
     await callback.message.edit_text(text=Localizator.get_text(BotEntity.USER, "item_added_to_cart"))

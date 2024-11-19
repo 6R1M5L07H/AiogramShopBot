@@ -1,12 +1,9 @@
-from typing import Union, List
-
+from typing import List
 from aiogram import types, F, Router
 from aiogram.enums import ParseMode
 from aiogram.filters.callback_data import CallbackData
 from aiogram.types import CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-
-import config
 from handlers.common.common import add_pagination_buttons
 from handlers.user.all_categories import create_callback_all_categories
 from models.cartItem import CartItem
@@ -61,7 +58,7 @@ async def create_cart_item_buttons(telegram_id: int, page: int = 0):
                 subcategory_name=subcategory.name,
                 qty=cart_item.quantity,
                 total_price=cart_item.quantity * item_price,
-                currency_text=config.CURRENCY)
+                currency_sym=Localizator.get_currency_symbol())
             cart_builder.button(text=cart_button_text, callback_data=cart_button_callback)
         cart_button_checkout_callback = create_cart_callback(level=2, page=page, cart_id=cart.id)
         cart_builder.button(text=Localizator.get_text(BotEntity.USER, "checkout"),
@@ -70,7 +67,7 @@ async def create_cart_item_buttons(telegram_id: int, page: int = 0):
         return cart_builder
 
 
-async def show_cart(message: Union[Message, CallbackQuery]):
+async def show_cart(message: Message | CallbackQuery):
     telegram_id = message.from_user.id
     user = await UserService.get_by_tgid(message.from_user.id)
     cart_items = len(await CartItemService.get_all_items_by_user_id(user.id))
@@ -135,12 +132,12 @@ async def create_cart_content_string(cart_items: List[CartItem]) -> str:
         line_item_total = price * cart_item.quantity
         cart_line_item = Localizator.get_text(BotEntity.USER, "cart_item_button").format(
             subcategory_name=subcategory.name, qty=cart_item.quantity,
-            total_price=line_item_total, currency_text=config.CURRENCY
+            total_price=line_item_total, currency_sym=Localizator.get_currency_symbol()
         )
         cart_grand_total += line_item_total
         cart_line_items_total += cart_line_item
     cart_line_items_total += Localizator.get_text(BotEntity.USER, "cart_grand_total_string").format(
-        cart_grand_total=cart_grand_total, currency_text=config.CURRENCY)
+        cart_grand_total=cart_grand_total, currency_sym=Localizator.get_currency_symbol())
     cart_line_items_total += "</b>"
     return cart_line_items_total
 

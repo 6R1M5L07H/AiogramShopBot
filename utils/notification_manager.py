@@ -1,9 +1,7 @@
 import logging
 from typing import List
-from typing import Union
 from aiogram import types
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-import config
 from models.cartItem import CartItem
 from services.item import ItemService
 from services.subcategory import SubcategoryService
@@ -21,7 +19,8 @@ class NotificationManager:
         message = Localizator.get_text(BotEntity.USER, "refund_notification").format(
             total_price=refund_data.total_price,
             quantity=refund_data.quantity,
-            subcategory=refund_data.subcategory)
+            subcategory=refund_data.subcategory,
+            currency_sym=Localizator.get_currency_symbol())
         try:
             await bot.send_message(refund_data.telegram_id, f"<b>{message}</b>")
         except Exception as e:
@@ -36,16 +35,16 @@ class NotificationManager:
                 logging.error(e)
 
     @staticmethod
-    async def make_user_button(username: Union[str, None]):
+    async def make_user_button(username: str | None):
         user_button_builder = InlineKeyboardBuilder()
-        if isinstance(username, str):
+        if username:
             user_button_inline = types.InlineKeyboardButton(text=username, url=f"https://t.me/{username}")
             user_button_builder.add(user_button_inline)
         return user_button_builder.as_markup()
 
     @staticmethod
-    async def new_deposit(new_crypto_balances: dict, deposit_amount_usd, telegram_id: int, bot):
-        deposit_amount_usd = round(deposit_amount_usd, 2)
+    async def new_deposit(new_crypto_balances: dict, deposit_amount_fiat, telegram_id: int, bot):
+        deposit_amount_fiat = round(deposit_amount_fiat, 2)
         merged_crypto_balances = {
             key.replace('_deposit', "").replace('_', ' ').upper(): value
             for key, value in new_crypto_balances.items()
@@ -64,12 +63,14 @@ class NotificationManager:
         if user.telegram_username:
             message = Localizator.get_text(BotEntity.ADMIN, "notification_new_deposit_username").format(
                 username=user.telegram_username,
-                deposit_amount_usd=deposit_amount_usd
+                deposit_amount_fiat=deposit_amount_fiat,
+                currency_sym=Localizator.get_currency_symbol()
             )
         else:
             message = Localizator.get_text(BotEntity.ADMIN, "notification_new_deposit_id").format(
                 telegram_id=telegram_id,
-                deposit_amount_usd=deposit_amount_usd
+                deposit_amount_fiat=deposit_amount_fiat,
+                currency_sym=Localizator.get_currency_symbol()
             )
         for crypto_name, value in merged_crypto_balances.items():
             if value > 0:
@@ -104,14 +105,16 @@ class NotificationManager:
                     total_price=cart_item_total,
                     quantity=cart_item.quantity,
                     category_name=category.name,
-                    subcategory_name=subcategory.name) + "\n"
+                    subcategory_name=subcategory.name,
+                    currency_sym=Localizator.get_currency_symbol()) + "\n"
             else:
                 message += Localizator.get_text(BotEntity.ADMIN, "notification_purchase_with_username").format(
                     telegram_id=telegram_id,
                     total_price=cart_item_total,
                     quantity=cart_item.quantity,
                     category_name=category.name,
-                    subcategory_name=subcategory.name) + "\n"
+                    subcategory_name=subcategory.name,
+                    currency_sym=Localizator.get_currency_symbol()) + "\n"
         message += Localizator.get_text(BotEntity.USER, "cart_grand_total_string").format(
-            cart_grand_total=cart_grand_total, currency_text=config.CURRENCY)
+            cart_grand_total=cart_grand_total, currency_sym=Localizator.get_currency_symbol())
         await NotificationManager.send_to_admins(message, user_button, bot)
