@@ -63,3 +63,70 @@ class CryptoAddressGenerator:
                 'trx': self.__generate_trx_pair()[0],
                 'eth': self.__generate_eth_pair()[0],
                 'sol': self.__generate_sol_pair()[0]}
+    
+    def generate_one_time_address(self, currency: str, order_id: int) -> dict:
+        """
+        Generate unique one-time address for an order
+        """
+        # Create unique seed using order_id for uniqueness
+        order_mnemonic = Bip39MnemonicGenerator().FromWordsNumber(Bip39WordsNum.WORDS_NUM_12)
+        order_seed = f"{order_mnemonic.ToStr()}_{order_id}"
+        order_seed_bytes = Bip39SeedGenerator(order_seed).Generate()
+        
+        currency = currency.upper()
+        
+        if currency == 'BTC':
+            bip84_mst_ctx = Bip84.FromSeed(order_seed_bytes, Bip84Coins.BITCOIN)
+            bip84_acc_ctx = bip84_mst_ctx.Purpose().Coin().Account(0)
+            bip84_chg_ctx = bip84_acc_ctx.Change(Bip44Changes.CHAIN_EXT)
+            address = bip84_chg_ctx.AddressIndex(0).PublicKey().ToAddress()
+            private_key = bip84_chg_ctx.AddressIndex(0).PrivateKey().ToWif()
+        elif currency == 'LTC':
+            bip84_mst_ctx = Bip84.FromSeed(order_seed_bytes, Bip84Coins.LITECOIN)
+            bip84_acc_ctx = bip84_mst_ctx.Purpose().Coin().Account(0)
+            bip84_chg_ctx = bip84_acc_ctx.Change(Bip44Changes.CHAIN_EXT)
+            address = bip84_chg_ctx.AddressIndex(0).PublicKey().ToAddress()
+            private_key = bip84_chg_ctx.AddressIndex(0).PrivateKey().ToWif()
+        elif currency == 'ETH':
+            bip44_mst_ctx = Bip44.FromSeed(order_seed_bytes, Bip44Coins.ETHEREUM)
+            bip44_acc_ctx = bip44_mst_ctx.Purpose().Coin().Account(0)
+            bip44_chg_ctx = bip44_acc_ctx.Change(Bip44Changes.CHAIN_EXT)
+            address = bip44_chg_ctx.AddressIndex(0).PublicKey().ToAddress()
+            private_key = bip44_chg_ctx.AddressIndex(0).PrivateKey().ToWif()
+        elif currency == 'SOL':
+            bip44_def_ctx = Bip44.FromSeed(order_seed_bytes, Bip44Coins.SOLANA)
+            bip44_acc_ctx = bip44_def_ctx.Purpose().Coin().Account(0)
+            bip44_chg_ctx = bip44_acc_ctx.Change(Bip44Changes.CHAIN_EXT)
+            address = bip44_chg_ctx.PublicKey().ToAddress()
+            pub_key = bip44_chg_ctx.PublicKey().RawCompressed().ToBytes()[1:]
+            priv_key = bip44_chg_ctx.PrivateKey().Raw().ToBytes()
+            private_key = Base58Encoder.Encode(priv_key + pub_key)
+        else:
+            raise ValueError(f"Unsupported currency: {currency}")
+        
+        return {
+            'address': str(address),
+            'private_key': str(private_key),
+            'currency': currency
+        }
+    
+    def validate_address_uniqueness(self, address: str, currency: str) -> bool:
+        """
+        Validate that address is unique (basic validation)
+        In production, this should check against existing orders in database
+        """
+        # Basic validation - check if address is not empty and has proper format
+        if not address or len(address) < 10:
+            return False
+        
+        # Currency-specific basic validation
+        currency = currency.upper()
+        if currency == 'BTC' and not (address.startswith('bc1') or address.startswith('1') or address.startswith('3')):
+            return False
+        elif currency == 'LTC' and not (address.startswith('ltc1') or address.startswith('L') or address.startswith('M')):
+            return False
+        elif currency == 'ETH' and not address.startswith('0x'):
+            return False
+        # SOL addresses are base58 encoded, harder to validate format
+        
+        return True

@@ -1,5 +1,6 @@
 from aiogram.types import CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+import config
 from callbacks import AllCategoriesCallback, CartCallback
 from enums.bot_entity import BotEntity
 from handlers.common.common import add_pagination_buttons
@@ -17,6 +18,7 @@ from repositories.subcategory import SubcategoryRepository
 from repositories.user import UserRepository
 from services.message import MessageService
 from services.notification import NotificationService
+from services.order import OrderService
 from utils.localizator import Localizator
 
 
@@ -166,3 +168,82 @@ class CartService:
                 subcategory = await SubcategoryRepository.get_by_id(item.subcategory_id)
                 msg += subcategory.name + "\n"
             return msg, kb_builder
+
+    @staticmethod
+    async def get_cart_items(user_id: int) -> list[CartItemDTO]:
+        """Get all cart items for a user"""
+        return await CartItemRepository.get_all_by_user_id(user_id)
+
+    @staticmethod
+    async def clear_cart(user_id: int) -> None:
+        """Clear all items from user's cart"""
+        cart_items = await CartItemRepository.get_all_by_user_id(user_id)
+        for cart_item in cart_items:
+            await CartItemRepository.remove_from_cart(cart_item.id)
+
+    @staticmethod
+    async def currency_selection_processing(callback: CallbackQuery) -> tuple[str, InlineKeyboardBuilder]:
+        """Show currency selection for order creation"""
+        user = await UserRepository.get_by_tgid(UserDTO(telegram_id=callback.from_user.id))
+        
+        # Check if user already has an active order
+        order_details = await OrderService.get_order_details_for_user(user.id)
+        if order_details['has_order']:
+            kb_builder = InlineKeyboardBuilder()
+            kb_builder.button(text=Localizator.get_text(BotEntity.COMMON, "back"),
+                              callback_data=CartCallback.create(0))
+            return Localizator.get_text(BotEntity.USER, "user_has_active_order"), kb_builder
+
+        cart_items = await CartItemRepository.get_all_by_user_id(user.id)
+        if not cart_items:
+            kb_builder = InlineKeyboardBuilder()
+            return Localizator.get_text(BotEntity.USER, "no_cart_items"), kb_builder
+
+        # Show currency selection
+        kb_builder = InlineKeyboardBuilder()
+        currencies = ['BTC', 'ETH', 'LTC', 'SOL']
+        for currency in currencies:
+            kb_builder.button(text=currency, 
+                              callback_data=CartCallback.create(4, currency_code=currency))
+        
+        kb_builder.button(text=Localizator.get_text(BotEntity.COMMON, "cancel"),
+                          callback_data=CartCallback.create(0))
+        kb_builder.adjust(2, 1)
+
+        message_text = await CartService.__create_checkout_msg(cart_items)
+        message_text += "\n\n" + Localizator.get_text(BotEntity.USER, "currency_selection_prompt")
+        
+        return message_text, kb_builder
+
+    @staticmethod
+    async def create_order_processing(callback: CallbackQuery) -> tuple[str, InlineKeyboardBuilder]:
+        """Create order with selected currency"""
+        unpacked_cb = CartCallback.unpack(callback.data)
+        user = await UserRepository.get_by_tgid(UserDTO(telegram_id=callback.from_user.id))
+        
+        kb_builder = InlineKeyboardBuilder()
+        kb_builder.button(text=Localizator.get_text(BotEntity.COMMON, "back"),
+                          callback_data=CartCallback.create(0))
+
+        try:
+            currency = unpacked_cb.currency_code
+            order = await OrderService.create_order_from_cart(user.id, currency)
+            
+            message_text = Localizator.get_text(BotEntity.USER, "order_created_success").format(
+                order_id=order.id,
+                amount=order.total_amount,
+                currency=order.currency,
+                address=order.payment_address,
+                timeout_minutes=getattr(config, 'ORDER_TIMEOUT_MINUTES', 30)
+            )
+            
+            return message_text, kb_builder
+            
+        except ValueError as e:
+            error_message = Localizator.get_text(BotEntity.USER, "order_creation_failed").format(
+                error=str(e)
+            )
+            return error_message, kb_builder
+        except Exception as e:
+            error_message = Localizator.get_text(BotEntity.USER, "order_creation_error")
+            return error_message, kb_builder
