@@ -1,0 +1,15 @@
+okay, now lets start over with the new feature. The feature is called invoice-stock-management. Instead of the existing wallet-approach, I want to have an invoice approach     │
+│   where items from the cart are being reserved for a configurable amount of time (like 30 minutes). during this time, the buyer must transfer cryptos to one-time-crypto          │
+│   adresses he can chose from. We will use the already configured cryptos. The workflow would be: select items->put them into your cart -> press "purchase" -> select currency ->  │
+│   items are now reserved as soon as the buyer gets the public adress shown in a single message right after the payment instructions. Lets define these isntructions later. as     │
+│   soon as the items are reserved within the order, the already existing payment observer waits for the validated payment. The admin gets a notification as soon as a purchase     │
+│   process is started. The admin can always have access to the private key, nobody else can. when the payment arrives, the order is marked as "payed" and the admin is being       │
+│   notified again. the admin can now either refund when the order is not being processed or he can process the order and mark it as "shipped" as soon as he sent out the item.     │
+│   when the timeout fires and no payment was received, the items from the cart are being removed from the cart and put back into the stock. We will increase a counter within the  │
+│   users account so that we now when we have somebody blocking items continuously. We must make sure that only one purchase at a time can take place. Only as soon as an order     │
+│   is marked as shipped, a new order can be created by the user. In case a user decides to abort the payment process, he can press "cancel" after receiving  the payment           │
+│   information. the order is cancelled right away, the admin gets notified that the purchase was aborted and nothing happens. The items in the cart themselves are not reserved    │
+│   which means that the items in the cart must be checked against availability in the stock. In case the stock is sufficient, all is good. In case only a part of the order is     │
+│   available in stock, the amount in the cart being moved over to the order must be reduced accordingly, informing the user of course. in case no items are left, the user will    │
+│   get informed. Since the order can consist of multiple items, every item class needs to be checked and handled as described. Follow the SDLC but before starting the             │
+│   development, I want to check the breakdown of the requirements. Can you handle this?

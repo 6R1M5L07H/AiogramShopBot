@@ -4,6 +4,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.types import InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+import config
 from config import ADMIN_ID_LIST, TOKEN
 from enums.bot_entity import BotEntity
 from enums.cryptocurrency import Cryptocurrency
@@ -11,6 +12,7 @@ from models.buy import RefundDTO
 from models.cartItem import CartItemDTO
 from models.item import ItemDTO
 from models.user import UserDTO
+from models.order import OrderDTO
 from repositories.category import CategoryRepository
 from repositories.item import ItemRepository
 from repositories.subcategory import SubcategoryRepository
@@ -105,3 +107,117 @@ class NotificationService:
             await bot.send_message(refund_data.telegram_id, text=user_notification)
         except Exception as _:
             pass
+
+    @staticmethod
+    async def order_created(order: OrderDTO, user: UserDTO) -> None:
+        """Send notification when order is created"""
+        bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+        
+        # User notification with payment instructions
+        timeout_minutes = getattr(config, 'ORDER_TIMEOUT_MINUTES', 30)
+        user_message = Localizator.get_text(BotEntity.USER, "order_created_instructions").format(
+            order_id=order.id,
+            amount=order.total_amount,
+            currency=order.currency,
+            address=order.payment_address,
+            timeout_minutes=timeout_minutes
+        )
+        
+        try:
+            await bot.send_message(user.telegram_id, user_message)
+        except Exception as e:
+            logging.error(f"Failed to send order created notification to user {user.telegram_id}: {e}")
+        
+        # Admin notification
+        user_button = await NotificationService.make_user_button(user.telegram_username)
+        if user.telegram_username:
+            admin_message = f"New Order #{order.id}\nUser: @{user.telegram_username}\nAmount: {order.total_amount} {order.currency}\nPayment Address: {order.payment_address}"
+        else:
+            admin_message = f"New Order #{order.id}\nUser ID: {user.telegram_id}\nAmount: {order.total_amount} {order.currency}\nPayment Address: {order.payment_address}"
+        
+        await NotificationService.send_to_admins(admin_message, user_button)
+
+    @staticmethod
+    async def payment_received(order: OrderDTO, user: UserDTO, private_key: str) -> None:
+        """Send notification when payment is received"""
+        bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+        
+        # User notification
+        user_message = Localizator.get_text(BotEntity.USER, "payment_received_notification").format(
+            order_id=order.id,
+            amount=order.total_amount,
+            currency=order.currency
+        )
+        
+        try:
+            await bot.send_message(user.telegram_id, user_message)
+        except Exception as e:
+            logging.error(f"Failed to send payment received notification to user {user.telegram_id}: {e}")
+        
+        # Admin notification with private key
+        user_button = await NotificationService.make_user_button(user.telegram_username)
+        if user.telegram_username:
+            admin_message = f"Payment Received for Order #{order.id}\nUser: @{user.telegram_username}\nAmount: {order.total_amount} {order.currency}\nPrivate Key: {private_key}\n\nOrder ready for shipment!"
+        else:
+            admin_message = f"Payment Received for Order #{order.id}\nUser ID: {user.telegram_id}\nAmount: {order.total_amount} {order.currency}\nPrivate Key: {private_key}\n\nOrder ready for shipment!"
+        
+        await NotificationService.send_to_admins(admin_message, user_button)
+
+    @staticmethod
+    async def order_expired(order: OrderDTO, user: UserDTO) -> None:
+        """Send notification when order expires"""
+        bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+        
+        # User notification
+        user_message = Localizator.get_text(BotEntity.USER, "order_expired_notification").format(
+            order_id=order.id
+        )
+        
+        try:
+            await bot.send_message(user.telegram_id, user_message)
+        except Exception as e:
+            logging.error(f"Failed to send order expired notification to user {user.telegram_id}: {e}")
+
+    @staticmethod
+    async def order_cancelled(order: OrderDTO, user: UserDTO, admin_initiated: bool = False) -> None:
+        """Send notification when order is cancelled"""
+        bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+        
+        # User notification
+        if admin_initiated:
+            user_message = Localizator.get_text(BotEntity.USER, "order_cancelled_admin").format(
+                order_id=order.id
+            )
+        else:
+            user_message = Localizator.get_text(BotEntity.USER, "order_cancelled_user").format(
+                order_id=order.id
+            )
+        
+        try:
+            await bot.send_message(user.telegram_id, user_message)
+        except Exception as e:
+            logging.error(f"Failed to send order cancelled notification to user {user.telegram_id}: {e}")
+
+    @staticmethod
+    async def order_shipped(order: OrderDTO, user: UserDTO) -> None:
+        """Send notification when order is shipped"""
+        bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+        
+        # User notification
+        user_message = Localizator.get_text(BotEntity.USER, "order_shipped_notification").format(
+            order_id=order.id
+        )
+        
+        try:
+            await bot.send_message(user.telegram_id, user_message)
+        except Exception as e:
+            logging.error(f"Failed to send order shipped notification to user {user.telegram_id}: {e}")
+        
+        # Admin confirmation
+        user_button = await NotificationService.make_user_button(user.telegram_username)
+        if user.telegram_username:
+            admin_message = f"Order #{order.id} marked as shipped\nUser: @{user.telegram_username}"
+        else:
+            admin_message = f"Order #{order.id} marked as shipped\nUser ID: {user.telegram_id}"
+        
+        await NotificationService.send_to_admins(admin_message, user_button)
