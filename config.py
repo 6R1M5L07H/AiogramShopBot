@@ -22,3 +22,9 @@ BOT_LANGUAGE = os.environ.get("BOT_LANGUAGE")
 MULTIBOT = os.environ.get("MULTIBOT", False) == 'true'
 ETHPLORER_API_KEY = os.environ.get("ETHPLORER_API_KEY")
 CURRENCY = Currency(os.environ.get("CURRENCY"))
+
+# Order and Background Task Configuration
+ORDER_TIMEOUT_MINUTES = int(os.environ.get("ORDER_TIMEOUT_MINUTES", "30"))
+BACKGROUND_TASK_INTERVAL_SECONDS = int(os.environ.get("BACKGROUND_TASK_INTERVAL_SECONDS", "60"))
+MAX_USER_TIMEOUTS = int(os.environ.get("MAX_USER_TIMEOUTS", "3"))
+WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET", None)

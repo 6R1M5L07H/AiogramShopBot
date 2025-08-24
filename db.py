@@ -114,7 +114,13 @@ async def check_all_tables_exist(session: AsyncSession | Session):
 async def create_db_and_tables():
     async with get_db_session() as session:
         if await check_all_tables_exist(session):
-            pass
+            # Run migration if needed for existing databases
+            try:
+                from migrations.wallet_to_order_migration import run_migration_if_needed
+                await run_migration_if_needed()
+            except Exception as e:
+                import logging
+                logging.warning(f"Migration check failed: {str(e)}")
         else:
             if isinstance(session, AsyncSession):
                 async with engine.begin() as conn:
