@@ -142,6 +142,16 @@
     "delete_cart_item_confirmation": "Remove item from cart?",
     "delete_cart_item_confirmation_text": "Item removed from cart!",
     "item_added_to_cart": "Item added to cart",
-    "updated_cart": "Cart updated"
+    "updated_cart": "Cart updated",
+    "currency_selection_prompt": "💰 Select payment currency:",
+    "order_created_success": "✅ <b>Order #{order_id} Created Successfully!</b>\n\n💰 Amount: {amount} {currency}\n🔗 Payment Address: <code>{address}</code>\n⏰ Time remaining: {timeout_minutes} minutes\n\n<i>Please send the exact amount to the address above within the time limit.</i>",
+    "order_creation_failed": "❌ Order creation failed: {error}",
+    "order_creation_error": "❌ An error occurred while creating your order. Please try again.",
+    "payment_received_notification": "✅ <b>Payment Received!</b>\n\nOrder #{order_id} for {amount} {currency} has been confirmed.\nYour order is now ready for shipment. You will be notified once it's shipped.",
+    "order_expired_message": "⏰ <b>Order Expired</b>\n\nYour order has expired due to timeout. The reserved items have been released back to inventory.",
+    "order_cancelled_message": "❌ <b>Order Cancelled</b>\n\nYour order has been cancelled and reserved items have been released.",
+    "order_shipped_notification": "📦 <b>Order Shipped!</b>\n\nYour order has been shipped successfully. Thank you for your purchase!",
+    "order_status_checking": "🔍 Checking order status...",
+    "active_order_exists": "⚠️ You already have an active order. Please complete or wait for it to expire before creating a new one."
   }
 }

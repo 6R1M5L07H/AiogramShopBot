@@ -1,4 +1,5 @@
 import logging
+import asyncio
 from aiogram.client.default import DefaultBotProperties
 import config
 from aiogram import Bot, Dispatcher
@@ -9,6 +10,8 @@ from aiohttp import web
 
 from config import TOKEN, WEBHOOK_URL, ADMIN_ID_LIST
 from db import create_db_and_tables
+from processing.order_payment import order_payment_webhook, order_status_endpoint
+from services.background_tasks import BackgroundTaskService
 
 bot = Bot(TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher(storage=MemoryStorage())
@@ -17,6 +20,11 @@ dp = Dispatcher(storage=MemoryStorage())
 async def on_startup(bot: Bot):
     await create_db_and_tables()
     await bot.set_webhook(WEBHOOK_URL)
+    
+    # Start background task scheduler
+    asyncio.create_task(BackgroundTaskService.schedule_cleanup_tasks())
+    logging.info("Background task scheduler started")
+    
     for admin in ADMIN_ID_LIST:
         try:
             await bot.send_message(admin, 'Bot is working')
@@ -42,5 +50,10 @@ def main() -> None:
         bot=bot
     )
     webhook_requests_handler.register(app, path=config.WEBHOOK_PATH)
+    
+    # Add payment processing routes
+    app.router.add_post('/cryptoprocessing/order_payment', order_payment_webhook)
+    app.router.add_get('/cryptoprocessing/order_status', order_status_endpoint)
+    
     setup_application(app, dp, bot=bot)
     web.run_app(app, host=config.WEBAPP_HOST, port=config.WEBAPP_PORT)
