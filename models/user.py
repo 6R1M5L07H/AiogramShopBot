@@ -29,6 +29,8 @@ class User(Base):
     registered_at = Column(DateTime, default=func.now())
     seed = Column(String, nullable=False, unique=True)
     can_receive_messages = Column(Boolean, default=True)
+    timeout_count = Column(Integer, default=0)
+    last_timeout_at = Column(DateTime, nullable=True)
 
 
 class UserDTO(BaseModel):
@@ -52,3 +54,5 @@ class UserDTO(BaseModel):
     registered_at: datetime | None = None
     seed: str | None = None
     can_receive_messages: bool | None = None
+    timeout_count: int | None = None
+    last_timeout_at: datetime | None = None
