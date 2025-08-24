@@ -1,8 +1,11 @@
+from datetime import datetime
 from sqlalchemy import select, func, update, delete
 
 from db import get_db_session, session_execute, session_commit
 from models.buyItem import BuyItem
 from models.item import Item, ItemDTO
+from models.reservedStock import ReservedStock
+from models.orderItem import OrderItem
 
 
 class ItemRepository:
@@ -114,5 +117,56 @@ class ItemRepository:
         async with get_db_session() as session:
             items = await session_execute(stmt, session)
             return [ItemDTO.model_validate(item, from_attributes=True) for item in items.scalars().all()]
+
+    @staticmethod
+    async def get_available_qty_with_reservations(item_dto: ItemDTO) -> int:
+        # Get total available items
+        available_stmt = select(func.count(Item.id)).where(
+            Item.category_id == item_dto.category_id,
+            Item.subcategory_id == item_dto.subcategory_id,
+            Item.is_sold == False
+        )
+        
+        # Get total reserved items
+        reserved_stmt = select(func.coalesce(func.sum(ReservedStock.quantity), 0)).where(
+            ReservedStock.category_id == item_dto.category_id,
+            ReservedStock.subcategory_id == item_dto.subcategory_id,
+            ReservedStock.expires_at > datetime.now()
+        )
+        
+        async with get_db_session() as session:
+            available_result = await session_execute(available_stmt, session)
+            available_count = available_result.scalar_one()
+            
+            reserved_result = await session_execute(reserved_stmt, session)
+            reserved_count = reserved_result.scalar_one()
+            
+            return available_count - reserved_count
+
+    @staticmethod
+    async def reserve_items_for_order(category_id: int, subcategory_id: int, quantity: int, order_id: int) -> list[ItemDTO]:
+        stmt = (select(Item)
+                .where(Item.category_id == category_id,
+                       Item.subcategory_id == subcategory_id,
+                       Item.is_sold == False)
+                .limit(quantity))
+        async with get_db_session() as session:
+            items = await session_execute(stmt, session)
+            return [ItemDTO.model_validate(item, from_attributes=True) for item in items.scalars().all()]
+
+    @staticmethod
+    async def mark_items_as_sold_from_order(order_id: int) -> None:
+        # Get all items from order
+        item_ids_stmt = select(OrderItem.item_id).where(OrderItem.order_id == order_id)
+        
+        async with get_db_session() as session:
+            item_ids_result = await session_execute(item_ids_stmt, session)
+            item_ids = [row[0] for row in item_ids_result.fetchall()]
+            
+            if item_ids:
+                # Mark items as sold
+                stmt = update(Item).where(Item.id.in_(item_ids)).values(is_sold=True)
+                await session_execute(stmt, session)
+                await session_commit(session)
 
 

@@ -107,3 +107,20 @@ class UserRepository:
                 return users / config.PAGE_ENTRIES - 1
             else:
                 return math.trunc(users / config.PAGE_ENTRIES)
+
+    @staticmethod
+    async def increment_timeout_count(user_id: int) -> None:
+        stmt = update(User).where(User.id == user_id).values(
+            timeout_count=User.timeout_count + 1,
+            last_timeout_at=datetime.datetime.now()
+        )
+        async with get_db_session() as session:
+            await session_execute(stmt, session)
+            await session_commit(session)
+
+    @staticmethod
+    async def get_users_by_timeout_count(min_count: int) -> list[UserDTO]:
+        stmt = select(User).where(User.timeout_count >= min_count).order_by(User.timeout_count.desc())
+        async with get_db_session() as session:
+            users = await session_execute(stmt, session)
+            return [UserDTO.model_validate(user, from_attributes=True) for user in users.scalars().all()]
