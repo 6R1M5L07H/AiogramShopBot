@@ -6,6 +6,9 @@ invoice-stock-management feature with security fixes.
 """
 
 # Import test configuration first to set up environment variables
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import test_config
 
 import pytest
@@ -90,9 +93,14 @@ async def test_user(db_session) -> UserDTO:
     user = User(
         telegram_id=12345,
         telegram_username="test_user",
-        language="en",
+        btc_address="test_btc_address_12345",
+        ltc_address="test_ltc_address_12345", 
+        trx_address="test_trx_address_12345",
+        eth_address="test_eth_address_12345",
+        sol_address="test_sol_address_12345",
+        seed="test_seed_12345",
         timeout_count=0,
-        created_at=datetime.now()
+        registered_at=datetime.now()
     )
     db_session.add(user)
     await db_session.flush()
@@ -101,7 +109,12 @@ async def test_user(db_session) -> UserDTO:
         id=user.id,
         telegram_id=user.telegram_id,
         telegram_username=user.telegram_username,
-        language=user.language,
+        btc_address=user.btc_address,
+        ltc_address=user.ltc_address,
+        trx_address=user.trx_address,
+        eth_address=user.eth_address,
+        sol_address=user.sol_address,
+        seed=user.seed,
         timeout_count=user.timeout_count
     )
 
@@ -113,10 +126,14 @@ async def test_admin_user(db_session) -> UserDTO:
     admin = User(
         telegram_id=67890,
         telegram_username="test_admin",
-        language="en",
+        btc_address="test_btc_address_67890",
+        ltc_address="test_ltc_address_67890", 
+        trx_address="test_trx_address_67890",
+        eth_address="test_eth_address_67890",
+        sol_address="test_sol_address_67890",
+        seed="test_seed_67890",
         timeout_count=0,
-        is_admin=True,
-        created_at=datetime.now()
+        registered_at=datetime.now()
     )
     db_session.add(admin)
     await db_session.flush()
@@ -125,7 +142,12 @@ async def test_admin_user(db_session) -> UserDTO:
         id=admin.id,
         telegram_id=admin.telegram_id,
         telegram_username=admin.telegram_username,
-        language=admin.language,
+        btc_address=admin.btc_address,
+        ltc_address=admin.ltc_address,
+        trx_address=admin.trx_address,
+        eth_address=admin.eth_address,
+        sol_address=admin.sol_address,
+        seed=admin.seed,
         timeout_count=admin.timeout_count
     )
 
@@ -407,9 +429,14 @@ async def concurrent_test_users(db_session) -> list[UserDTO]:
         user = User(
             telegram_id=20000 + i,
             telegram_username=f"concurrent_user_{i}",
-            language="en",
+            btc_address=f"test_btc_address_{20000 + i}",
+            ltc_address=f"test_ltc_address_{20000 + i}", 
+            trx_address=f"test_trx_address_{20000 + i}",
+            eth_address=f"test_eth_address_{20000 + i}",
+            sol_address=f"test_sol_address_{20000 + i}",
+            seed=f"test_seed_{20000 + i}",
             timeout_count=0,
-            created_at=datetime.now()
+            registered_at=datetime.now()
         )
         db_session.add(user)
         users.append(user)
@@ -421,7 +448,12 @@ async def concurrent_test_users(db_session) -> list[UserDTO]:
             id=user.id,
             telegram_id=user.telegram_id,
             telegram_username=user.telegram_username,
-            language=user.language,
+            btc_address=user.btc_address,
+            ltc_address=user.ltc_address,
+            trx_address=user.trx_address,
+            eth_address=user.eth_address,
+            sol_address=user.sol_address,
+            seed=user.seed,
             timeout_count=user.timeout_count
         )
         for user in users
