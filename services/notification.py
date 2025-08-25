@@ -138,8 +138,8 @@ class NotificationService:
         await NotificationService.send_to_admins(admin_message, user_button)
 
     @staticmethod
-    async def payment_received(order: OrderDTO, user: UserDTO, private_key: str) -> None:
-        """Send notification when payment is received"""
+    async def payment_received(order: OrderDTO, user: UserDTO) -> None:
+        """Send notification when payment is received - NO PRIVATE KEY TRANSMISSION"""
         bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
         
         # User notification
@@ -154,12 +154,12 @@ class NotificationService:
         except Exception as e:
             logging.error(f"Failed to send payment received notification to user {user.telegram_id}: {e}")
         
-        # Admin notification with private key
+        # Admin notification WITHOUT private key - use admin interface to access
         user_button = await NotificationService.make_user_button(user.telegram_username)
         if user.telegram_username:
-            admin_message = f"Payment Received for Order #{order.id}\nUser: @{user.telegram_username}\nAmount: {order.total_amount} {order.currency}\nPrivate Key: {private_key}\n\nOrder ready for shipment!"
+            admin_message = f"🔐 Payment Received for Order #{order.id}\nUser: @{user.telegram_username}\nAmount: {order.total_amount} {order.currency}\n\n⚠️ SECURITY: Use admin interface to access private key securely.\nOrder ready for shipment!"
         else:
-            admin_message = f"Payment Received for Order #{order.id}\nUser ID: {user.telegram_id}\nAmount: {order.total_amount} {order.currency}\nPrivate Key: {private_key}\n\nOrder ready for shipment!"
+            admin_message = f"🔐 Payment Received for Order #{order.id}\nUser ID: {user.telegram_id}\nAmount: {order.total_amount} {order.currency}\n\n⚠️ SECURITY: Use admin interface to access private key securely.\nOrder ready for shipment!"
         
         await NotificationService.send_to_admins(admin_message, user_button)
 

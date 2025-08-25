@@ -1,6 +1,10 @@
 from aiogram.types import CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 import config
+import logging
+import hashlib
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional
 from callbacks import AllCategoriesCallback, CartCallback
 from enums.bot_entity import BotEntity
 from handlers.common.common import add_pagination_buttons
@@ -16,13 +20,238 @@ from repositories.cartItem import CartItemRepository
 from repositories.item import ItemRepository
 from repositories.subcategory import SubcategoryRepository
 from repositories.user import UserRepository
+from repositories.reservedStock import ReservedStockRepository
 from services.message import MessageService
 from services.notification import NotificationService
 from services.order import OrderService
 from utils.localizator import Localizator
 
+logger = logging.getLogger(__name__)
+
 
 class CartService:
+    
+    # Cart expiration time (30 minutes)
+    CART_EXPIRATION_MINUTES = 30
+    
+    @staticmethod
+    async def validate_cart_integrity(cart_items: List[CartItemDTO], user_id: int) -> Dict[str, any]:
+        """
+        Comprehensive cart validation before order creation
+        
+        Args:
+            cart_items: List of cart items to validate
+            user_id: User ID for validation
+            
+        Returns:
+            Dictionary with validation results
+        """
+        try:
+            validation_result = {
+                'valid': True,
+                'errors': [],
+                'warnings': [],
+                'total_amount': 0.0,
+                'checksum': None
+            }
+            
+            if not cart_items:
+                validation_result['valid'] = False
+                validation_result['errors'].append('Cart is empty')
+                return validation_result
+            
+            # Validate item availability and prices
+            total_amount = 0.0
+            availability_issues = []
+            price_changes = []
+            
+            for cart_item in cart_items:
+                # Check item availability
+                available = await ReservedStockRepository.check_availability(
+                    cart_item.category_id,
+                    cart_item.subcategory_id,
+                    cart_item.quantity
+                )
+                
+                if not available:
+                    availability_issues.append({
+                        'category_id': cart_item.category_id,
+                        'subcategory_id': cart_item.subcategory_id,
+                        'requested_quantity': cart_item.quantity
+                    })
+                    continue
+                
+                # Validate current price
+                item_dto = ItemDTO(
+                    category_id=cart_item.category_id, 
+                    subcategory_id=cart_item.subcategory_id
+                )
+                current_price = await ItemRepository.get_price(item_dto)
+                
+                # Check for price changes
+                if abs(current_price - cart_item.price) > 0.01:  # Allow 1 cent tolerance
+                    price_changes.append({
+                        'category_id': cart_item.category_id,
+                        'subcategory_id': cart_item.subcategory_id,
+                        'old_price': cart_item.price,
+                        'new_price': current_price
+                    })
+                
+                # Use current price for total calculation
+                total_amount += current_price * cart_item.quantity
+                
+                # Validate quantity limits
+                max_quantity = getattr(config, 'MAX_CART_ITEM_QUANTITY', 100)
+                if cart_item.quantity > max_quantity:
+                    validation_result['errors'].append(
+                        f'Quantity {cart_item.quantity} exceeds maximum {max_quantity}'
+                    )
+                    validation_result['valid'] = False
+            
+            # Handle availability issues
+            if availability_issues:
+                validation_result['valid'] = False
+                validation_result['errors'].append('Some items are no longer available')
+                validation_result['availability_issues'] = availability_issues
+            
+            # Handle price changes
+            if price_changes:
+                validation_result['warnings'].append('Some prices have changed since adding to cart')
+                validation_result['price_changes'] = price_changes
+            
+            # Validate user permissions and limits
+            user_validation = await CartService._validate_user_permissions(user_id, total_amount)
+            if not user_validation['valid']:
+                validation_result['valid'] = False
+                validation_result['errors'].extend(user_validation['errors'])
+            
+            validation_result['total_amount'] = total_amount
+            validation_result['checksum'] = CartService._generate_cart_checksum(cart_items, total_amount)
+            
+            return validation_result
+            
+        except Exception as e:
+            logger.error(f"Error validating cart integrity for user {user_id}: {str(e)}")
+            return {
+                'valid': False,
+                'errors': [f'Cart validation failed: {str(e)}'],
+                'warnings': [],
+                'total_amount': 0.0,
+                'checksum': None
+            }
+    
+    @staticmethod
+    async def _validate_user_permissions(user_id: int, total_amount: float) -> Dict[str, any]:
+        """
+        Validate user permissions for cart checkout
+        """
+        try:
+            user = await UserRepository.get_user_entity(user_id)
+            if not user:
+                return {
+                    'valid': False,
+                    'errors': ['User not found']
+                }
+            
+            # Check if user has too many timeouts
+            max_timeouts = getattr(config, 'MAX_USER_TIMEOUTS', 3)
+            if user.timeout_count >= max_timeouts:
+                return {
+                    'valid': False,
+                    'errors': [f'User has exceeded maximum timeout limit ({max_timeouts})']
+                }
+            
+            # Check minimum order amount
+            min_order_amount = getattr(config, 'MIN_ORDER_AMOUNT', 1.0)
+            if total_amount < min_order_amount:
+                return {
+                    'valid': False,
+                    'errors': [f'Order amount {total_amount} is below minimum {min_order_amount}']
+                }
+            
+            # Check maximum order amount
+            max_order_amount = getattr(config, 'MAX_ORDER_AMOUNT', 10000.0)
+            if total_amount > max_order_amount:
+                return {
+                    'valid': False,
+                    'errors': [f'Order amount {total_amount} exceeds maximum {max_order_amount}']
+                }
+            
+            return {'valid': True, 'errors': []}
+            
+        except Exception as e:
+            logger.error(f"Error validating user permissions for user {user_id}: {str(e)}")
+            return {
+                'valid': False,
+                'errors': [f'User validation failed: {str(e)}']
+            }
+    
+    @staticmethod
+    def _generate_cart_checksum(cart_items: List[CartItemDTO], total_amount: float) -> str:
+        """
+        Generate integrity checksum for cart to prevent tampering
+        """
+        try:
+            # Create deterministic string from cart contents
+            cart_data = []
+            for item in sorted(cart_items, key=lambda x: (x.category_id, x.subcategory_id)):
+                cart_data.append(f"{item.category_id}:{item.subcategory_id}:{item.quantity}:{item.price}")
+            
+            cart_string = f"{'|'.join(cart_data)}|{total_amount:.2f}"
+            
+            # Generate SHA-256 checksum
+            return hashlib.sha256(cart_string.encode('utf-8')).hexdigest()[:16]  # First 16 chars
+            
+        except Exception as e:
+            logger.error(f"Error generating cart checksum: {str(e)}")
+            return "invalid_checksum"
+    
+    @staticmethod
+    async def validate_cart_expiration(user_id: int) -> bool:
+        """
+        Check if cart has expired and should be cleared
+        """
+        try:
+            # In a full implementation, this would check cart last_updated timestamp
+            # For now, we assume carts don't expire (legacy behavior)
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error validating cart expiration for user {user_id}: {str(e)}")
+            return False
+    
+    @staticmethod
+    async def get_cart_items(user_id: int) -> List[CartItemDTO]:
+        """
+        Get validated cart items for user
+        """
+        try:
+            cart_items = await CartItemRepository.get_by_user_id(user_id, 0)
+            
+            # Validate cart expiration
+            if not await CartService.validate_cart_expiration(user_id):
+                logger.info(f"Cart expired for user {user_id}, clearing cart")
+                await CartService.clear_cart(user_id)
+                return []
+            
+            return cart_items
+            
+        except Exception as e:
+            logger.error(f"Error getting cart items for user {user_id}: {str(e)}")
+            return []
+    
+    @staticmethod
+    async def clear_cart(user_id: int) -> None:
+        """
+        Clear user's cart
+        """
+        try:
+            cart = await CartRepository.get_or_create(user_id)
+            await CartItemRepository.clear_cart(cart.id)
+            logger.info(f"Cart cleared for user {user_id}")
+            
+        except Exception as e:
+            logger.error(f"Error clearing cart for user {user_id}: {str(e)}")
 
     @staticmethod
     async def add_to_cart(callback: CallbackQuery):

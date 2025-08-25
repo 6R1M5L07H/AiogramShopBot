@@ -23,6 +23,9 @@ class Item(Base):
     is_sold = Column(Boolean, nullable=False, default=False)
     is_new = Column(Boolean, nullable=False, default=True)
     description = Column(String, nullable=False)
+    
+    # Relationship for order items
+    order_items = relationship("OrderItem", back_populates="item")
 
 
 class ItemDTO(BaseModel):

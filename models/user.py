@@ -2,6 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel
 from sqlalchemy import Column, Integer, DateTime, String, Boolean, Float, func
+from sqlalchemy.orm import relationship
 
 from models.base import Base
 
@@ -31,6 +32,9 @@ class User(Base):
     can_receive_messages = Column(Boolean, default=True)
     timeout_count = Column(Integer, default=0)
     last_timeout_at = Column(DateTime, nullable=True)
+    
+    # Relationships
+    orders = relationship("Order", foreign_keys="Order.user_id", back_populates="user", cascade="all, delete-orphan")
 
 
 class UserDTO(BaseModel):
