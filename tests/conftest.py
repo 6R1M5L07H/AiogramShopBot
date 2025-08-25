@@ -7,8 +7,12 @@ invoice-stock-management feature with security fixes.
 
 # Import test configuration first to set up environment variables
 import sys
-import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+from pathlib import Path
+
+ROOT_DIR = Path(__file__).resolve().parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
 import test_config
 
 import pytest
@@ -19,6 +23,7 @@ import shutil
 from datetime import datetime, timedelta
 from typing import Dict, Any, AsyncGenerator
 from unittest.mock import Mock, patch, AsyncMock
+import secrets
 
 import pytest_asyncio
 from sqlalchemy import create_engine, text
@@ -38,6 +43,20 @@ from models.orderItem import OrderItem
 from models.reservedStock import ReservedStock
 from db import get_db_session
 import config
+
+# Allow setting request.remote on aiohttp test requests
+from aiohttp import web_request
+
+
+def _get_remote(self):
+    return getattr(self, "_remote", None)
+
+
+def _set_remote(self, value):
+    self._remote = value
+
+
+web_request.BaseRequest.remote = property(_get_remote, _set_remote)
 
 
 @pytest.fixture(scope="session")
@@ -93,12 +112,12 @@ async def test_user(db_session) -> UserDTO:
     user = User(
         telegram_id=12345,
         telegram_username="test_user",
-        btc_address="test_btc_address_12345",
-        ltc_address="test_ltc_address_12345", 
-        trx_address="test_trx_address_12345",
-        eth_address="test_eth_address_12345",
-        sol_address="test_sol_address_12345",
-        seed="test_seed_12345",
+        btc_address=secrets.token_hex(16),
+        ltc_address=secrets.token_hex(16),
+        trx_address=secrets.token_hex(16),
+        eth_address=secrets.token_hex(16),
+        sol_address=secrets.token_hex(16),
+        seed=secrets.token_hex(16),
         timeout_count=0,
         registered_at=datetime.now()
     )
@@ -126,12 +145,12 @@ async def test_admin_user(db_session) -> UserDTO:
     admin = User(
         telegram_id=67890,
         telegram_username="test_admin",
-        btc_address="test_btc_address_67890",
-        ltc_address="test_ltc_address_67890", 
-        trx_address="test_trx_address_67890",
-        eth_address="test_eth_address_67890",
-        sol_address="test_sol_address_67890",
-        seed="test_seed_67890",
+        btc_address=secrets.token_hex(16),
+        ltc_address=secrets.token_hex(16),
+        trx_address=secrets.token_hex(16),
+        eth_address=secrets.token_hex(16),
+        sol_address=secrets.token_hex(16),
+        seed=secrets.token_hex(16),
         timeout_count=0,
         registered_at=datetime.now()
     )
