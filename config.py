@@ -26,7 +26,8 @@ PAGE_ENTRIES = int(os.environ.get("PAGE_ENTRIES", "10"))
 BOT_LANGUAGE = os.environ.get("BOT_LANGUAGE")
 MULTIBOT = os.environ.get("MULTIBOT", False) == 'true'
 ETHPLORER_API_KEY = os.environ.get("ETHPLORER_API_KEY")
-CURRENCY = Currency(os.environ.get("CURRENCY"))
+
+CURRENCY = Currency(os.environ.get("CURRENCY", "USD"))
 
 # Order and Background Task Configuration
 ORDER_TIMEOUT_MINUTES = int(os.environ.get("ORDER_TIMEOUT_MINUTES", "30"))
