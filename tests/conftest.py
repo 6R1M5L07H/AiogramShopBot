@@ -23,7 +23,8 @@ from sqlalchemy.orm import sessionmaker
 from models.base import Base
 from models.user import User, UserDTO
 from models.order import Order, OrderDTO, OrderStatus
-from models.cart import Cart, CartItemDTO
+from models.cart import Cart, CartDTO
+from models.cartItem import CartItem, CartItemDTO
 from models.item import Item, ItemDTO
 from models.category import Category, CategoryDTO
 from models.subcategory import Subcategory, SubcategoryDTO
