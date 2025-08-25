@@ -5,7 +5,7 @@ import logging
 from models.order import OrderDTO, OrderStatus
 from models.orderItem import OrderItemDTO
 from models.reservedStock import ReservedStockDTO
-from models.cart import CartItemDTO
+from models.cartItem import CartItemDTO
 from models.user import UserDTO
 from repositories.order import OrderRepository
 from repositories.orderItem import OrderItemRepository

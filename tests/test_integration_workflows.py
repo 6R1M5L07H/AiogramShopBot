@@ -28,7 +28,7 @@ from repositories.order import OrderRepository
 from repositories.cart import CartRepository
 from repositories.item import ItemRepository
 from models.order import OrderStatus, OrderDTO
-from models.cart import CartItemDTO
+from models.cartItem import CartItemDTO
 from models.item import ItemDTO
 
 
