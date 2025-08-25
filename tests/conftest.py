@@ -5,6 +5,9 @@ This module provides shared fixtures and configuration for testing the
 invoice-stock-management feature with security fixes.
 """
 
+# Import test configuration first to set up environment variables
+import test_config
+
 import pytest
 import asyncio
 import os

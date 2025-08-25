@@ -20,6 +20,9 @@ rate_limit_store = defaultdict(lambda: deque())
 
 
 class OrderPaymentProcessor:
+    # Class attribute to expose rate_limit_store for testing
+    rate_limit_store = rate_limit_store
+    
     @staticmethod
     def verify_webhook_signature(payload: bytes, signature: str, secret: str) -> bool:
         """
