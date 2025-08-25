@@ -90,6 +90,13 @@ async def session_commit(session: AsyncSession | Session) -> None:
         session.commit()
 
 
+async def session_rollback(session: AsyncSession | Session) -> None:
+    if isinstance(session, AsyncSession):
+        await session.rollback()
+    else:
+        session.rollback()
+
+
 @event.listens_for(Engine, "connect")
 def set_sqlite_pragma(dbapi_connection, connection_record):
     cursor = dbapi_connection.cursor()
