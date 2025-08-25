@@ -1,5 +1,5 @@
 import logging
-from typing import Optional
+from typing import Optional, Dict
 from datetime import datetime
 
 from models.order import OrderDTO, OrderStatus
@@ -10,6 +10,24 @@ logger = logging.getLogger(__name__)
 
 
 class PaymentObserverService:
+    # Minimum blockchain confirmations per currency
+    CONFIRMATION_REQUIREMENTS = {
+        'BTC': 3,
+        'ETH': 12,
+        'LTC': 6,
+        'SOL': 32
+    }
+    
+    # Cache for processed transaction hashes to prevent duplicates
+    _processed_tx_hashes = set()
+    
+    # Currency decimal precision for validation
+    CURRENCY_DECIMALS = {
+        'BTC': 8,
+        'ETH': 18,
+        'LTC': 8,
+        'SOL': 9
+    }
     @staticmethod
     async def monitor_order_payments() -> None:
         """
@@ -61,8 +79,8 @@ class PaymentObserverService:
             if not order:
                 return False
             
-            # Allow small tolerance for transaction fees (1% tolerance)
-            tolerance = 0.01
+            # Allow small tolerance for transaction fees (0.1% tolerance for security)
+            tolerance = 0.001
             min_amount = order.total_amount * (1 - tolerance)
             
             return received_amount >= min_amount
@@ -71,27 +89,125 @@ class PaymentObserverService:
             logger.error(f"Error validating payment amount: {str(e)}")
             return False
     
-    @staticmethod 
-    async def handle_payment_webhook(address: str, amount: float, currency: str, tx_hash: str = None) -> dict:
+    @staticmethod
+    async def validate_payment_precision(amount: float, currency: str) -> bool:
         """
-        Handle incoming payment webhook with transaction details
+        Validate payment amount precision based on currency decimal places
         """
         try:
-            result = await PaymentObserverService.process_payment_confirmation(address, amount, currency.upper())
+            max_decimals = PaymentObserverService.CURRENCY_DECIMALS.get(currency.upper(), 8)
+            
+            # Convert to string to check decimal places
+            amount_str = f"{amount:.{max_decimals}f}".rstrip('0').rstrip('.')
+            decimal_places = len(amount_str.split('.')[1]) if '.' in amount_str else 0
+            
+            return decimal_places <= max_decimals
+            
+        except Exception as e:
+            logger.error(f"Error validating payment precision: {str(e)}")
+            return False
+    
+    @staticmethod
+    async def check_transaction_duplicate(tx_hash: str) -> bool:
+        """
+        Check if transaction hash has already been processed
+        """
+        if not tx_hash:
+            return False
+            
+        # Check in-memory cache first
+        if tx_hash in PaymentObserverService._processed_tx_hashes:
+            logger.warning(f"Duplicate transaction hash detected: {tx_hash}")
+            return True
+        
+        # TODO: In production, also check database for persistent duplicate detection
+        # For now, add to memory cache
+        PaymentObserverService._processed_tx_hashes.add(tx_hash)
+        
+        # Limit cache size to prevent memory issues
+        if len(PaymentObserverService._processed_tx_hashes) > 10000:
+            # Remove oldest 50% of entries (simple approach)
+            PaymentObserverService._processed_tx_hashes = set(
+                list(PaymentObserverService._processed_tx_hashes)[5000:]
+            )
+        
+        return False
+    
+    @staticmethod
+    async def validate_confirmations(currency: str, confirmations: int = 0) -> bool:
+        """
+        Validate that transaction has sufficient blockchain confirmations
+        """
+        required_confirmations = PaymentObserverService.CONFIRMATION_REQUIREMENTS.get(
+            currency.upper(), 1
+        )
+        
+        if confirmations < required_confirmations:
+            logger.warning(f"Insufficient confirmations for {currency}: {confirmations} < {required_confirmations}")
+            return False
+        
+        return True
+    
+    @staticmethod 
+    async def handle_payment_webhook(address: str, amount: float, currency: str, tx_hash: str = None, 
+                                   confirmations: int = 0) -> dict:
+        """
+        Handle incoming payment webhook with enhanced security validation
+        """
+        try:
+            currency_upper = currency.upper()
+            
+            # 1. Check for duplicate transaction
+            if tx_hash and await PaymentObserverService.check_transaction_duplicate(tx_hash):
+                return {
+                    'success': False,
+                    'message': 'Duplicate transaction hash',
+                    'address': address,
+                    'amount': amount,
+                    'currency': currency,
+                    'tx_hash': tx_hash
+                }
+            
+            # 2. Validate payment precision
+            if not await PaymentObserverService.validate_payment_precision(amount, currency_upper):
+                return {
+                    'success': False,
+                    'message': 'Invalid payment precision for currency',
+                    'address': address,
+                    'amount': amount,
+                    'currency': currency,
+                    'tx_hash': tx_hash
+                }
+            
+            # 3. Validate blockchain confirmations
+            if not await PaymentObserverService.validate_confirmations(currency_upper, confirmations):
+                return {
+                    'success': False,
+                    'message': f'Insufficient confirmations ({confirmations} < {PaymentObserverService.CONFIRMATION_REQUIREMENTS.get(currency_upper, 1)})',
+                    'address': address,
+                    'amount': amount,
+                    'currency': currency,
+                    'tx_hash': tx_hash
+                }
+            
+            # 4. Process the payment with enhanced validation
+            result = await PaymentObserverService.process_payment_confirmation(address, amount, currency_upper)
             
             if result:
+                logger.info(f"Payment processed successfully: {tx_hash} - {amount} {currency_upper}")
                 return {
                     'success': True,
                     'message': 'Payment processed successfully',
                     'address': address,
                     'amount': amount,
                     'currency': currency,
-                    'tx_hash': tx_hash
+                    'tx_hash': tx_hash,
+                    'confirmations': confirmations
                 }
             else:
                 return {
                     'success': False,
-                    'message': 'Payment processing failed',
+                    'message': 'Payment processing failed - invalid amount or order not found',
                     'address': address,
                     'amount': amount,
                     'currency': currency,

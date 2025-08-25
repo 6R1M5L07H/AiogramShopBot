@@ -2,6 +2,8 @@ import logging
 import hmac
 import hashlib
 from typing import Dict, Any
+import time
+from collections import defaultdict, deque
 
 from aiohttp import web
 from aiohttp.web_request import Request
@@ -11,90 +13,230 @@ import config
 
 logger = logging.getLogger(__name__)
 
+# Rate limiting configuration
+RATE_LIMIT_WINDOW = 60  # 1 minute window
+RATE_LIMIT_MAX_REQUESTS = 10  # Max 10 requests per minute per IP
+rate_limit_store = defaultdict(lambda: deque())
+
 
 class OrderPaymentProcessor:
     @staticmethod
     def verify_webhook_signature(payload: bytes, signature: str, secret: str) -> bool:
         """
-        Verify webhook signature for security
+        Enhanced webhook signature verification with multiple hash algorithms
         """
         try:
-            expected_signature = hmac.new(
-                secret.encode('utf-8'),
-                payload,
-                hashlib.sha256
-            ).hexdigest()
-            
-            # Compare signatures safely
-            return hmac.compare_digest(f"sha256={expected_signature}", signature)
+            # Support multiple signature formats
+            if signature.startswith('sha256='):
+                expected_signature = hmac.new(
+                    secret.encode('utf-8'),
+                    payload,
+                    hashlib.sha256
+                ).hexdigest()
+                return hmac.compare_digest(f"sha256={expected_signature}", signature)
+            elif signature.startswith('sha1='):
+                expected_signature = hmac.new(
+                    secret.encode('utf-8'),
+                    payload,
+                    hashlib.sha1
+                ).hexdigest()
+                return hmac.compare_digest(f"sha1={expected_signature}", signature)
+            else:
+                # Default to sha256 if no prefix
+                expected_signature = hmac.new(
+                    secret.encode('utf-8'),
+                    payload,
+                    hashlib.sha256
+                ).hexdigest()
+                return hmac.compare_digest(expected_signature, signature)
             
         except Exception as e:
             logger.error(f"Error verifying webhook signature: {str(e)}")
             return False
     
     @staticmethod
+    def check_rate_limit(ip_address: str) -> bool:
+        """
+        Check if IP address has exceeded rate limit
+        """
+        current_time = time.time()
+        requests = rate_limit_store[ip_address]
+        
+        # Remove old requests outside the window
+        while requests and requests[0] < current_time - RATE_LIMIT_WINDOW:
+            requests.popleft()
+        
+        # Check if rate limit exceeded
+        if len(requests) >= RATE_LIMIT_MAX_REQUESTS:
+            logger.warning(f"Rate limit exceeded for IP {ip_address}: {len(requests)} requests in {RATE_LIMIT_WINDOW}s")
+            return False
+        
+        # Add current request
+        requests.append(current_time)
+        return True
+    
+    @staticmethod
+    def validate_payload_size(payload: bytes, max_size: int = 1024) -> bool:
+        """
+        Validate webhook payload size
+        """
+        if len(payload) > max_size:
+            logger.warning(f"Payload size too large: {len(payload)} bytes > {max_size} bytes")
+            return False
+        return True
+    
+    @staticmethod
+    def sanitize_input(data: dict) -> dict:
+        """
+        Sanitize and validate input data
+        """
+        sanitized = {}
+        
+        # Whitelist of allowed fields with validation
+        allowed_fields = {
+            'address': (str, 100),  # Max 100 chars
+            'amount': (float, None),
+            'currency': (str, 10),  # Max 10 chars
+            'tx_hash': (str, 128),  # Max 128 chars
+            'confirmations': (int, None)
+        }
+        
+        for field, (expected_type, max_length) in allowed_fields.items():
+            if field in data:
+                value = data[field]
+                
+                # Type validation
+                if expected_type == str and isinstance(value, str):
+                    # String length validation
+                    if max_length and len(value) > max_length:
+                        logger.warning(f"Field {field} too long: {len(value)} > {max_length}")
+                        continue
+                    # Remove potentially dangerous characters
+                    sanitized[field] = ''.join(c for c in value if c.isprintable()).strip()
+                elif expected_type == float:
+                    try:
+                        sanitized[field] = float(value)
+                    except (ValueError, TypeError):
+                        logger.warning(f"Invalid float value for {field}: {value}")
+                        continue
+                elif expected_type == int:
+                    try:
+                        sanitized[field] = int(value)
+                    except (ValueError, TypeError):
+                        logger.warning(f"Invalid int value for {field}: {value}")
+                        continue
+        
+        return sanitized
+    
+    @staticmethod
     async def process_order_payment_webhook(request: Request) -> web.Response:
         """
-        Process payment confirmation webhook for orders
+        Enhanced process payment confirmation webhook for orders with security hardening
         Endpoint: POST /cryptoprocessing/order_payment
         """
+        client_ip = request.remote or 'unknown'
+        
         try:
-            # Read request body
-            payload = await request.read()
+            # 1. Rate limiting check
+            if not OrderPaymentProcessor.check_rate_limit(client_ip):
+                return web.json_response(
+                    {'error': 'Rate limit exceeded'}, 
+                    status=429
+                )
             
-            # Verify signature if webhook secret is configured
+            # 2. Read and validate payload size
+            payload = await request.read()
+            if not OrderPaymentProcessor.validate_payload_size(payload, max_size=1024):
+                return web.json_response(
+                    {'error': 'Payload too large'}, 
+                    status=413
+                )
+            
+            # 3. Enhanced signature verification
             webhook_secret = getattr(config, 'WEBHOOK_SECRET', None)
             if webhook_secret:
-                signature = request.headers.get('X-Signature', '')
+                signature = request.headers.get('X-Signature', '') or request.headers.get('X-Hub-Signature', '')
+                if not signature:
+                    logger.warning(f"Missing signature from IP {client_ip}")
+                    return web.json_response(
+                        {'error': 'Missing signature'}, 
+                        status=401
+                    )
+                
                 if not OrderPaymentProcessor.verify_webhook_signature(payload, signature, webhook_secret):
-                    logger.warning("Invalid webhook signature")
+                    logger.warning(f"Invalid webhook signature from IP {client_ip}")
                     return web.json_response(
                         {'error': 'Invalid signature'}, 
                         status=401
                     )
             
-            # Parse JSON payload
+            # 4. Parse and validate JSON payload
             try:
-                data = await request.json()
+                raw_data = await request.json()
             except Exception as e:
-                logger.error(f"Error parsing webhook JSON: {str(e)}")
+                logger.error(f"Error parsing webhook JSON from IP {client_ip}: {str(e)}")
                 return web.json_response(
                     {'error': 'Invalid JSON payload'}, 
                     status=400
                 )
             
-            # Validate required fields
+            # 5. Sanitize input data
+            data = OrderPaymentProcessor.sanitize_input(raw_data)
+            
+            # 6. Validate required fields
             required_fields = ['address', 'amount', 'currency']
             missing_fields = [field for field in required_fields if field not in data]
             if missing_fields:
+                logger.warning(f"Missing required fields from IP {client_ip}: {missing_fields}")
                 return web.json_response(
                     {'error': f'Missing required fields: {missing_fields}'}, 
                     status=400
                 )
             
-            # Extract payment data
-            address = data.get('address')
-            amount = float(data.get('amount', 0))
-            currency = data.get('currency', '').upper()
-            tx_hash = data.get('tx_hash', '')
+            # 7. Extract and validate payment data
+            address = data.get('address', '').strip()
+            amount = data.get('amount', 0)
+            currency = data.get('currency', '').upper().strip()
+            tx_hash = data.get('tx_hash', '').strip()
+            confirmations = data.get('confirmations', 0)
             
-            # Process payment
+            # Additional validation
+            if not address or len(address) < 10:
+                return web.json_response(
+                    {'error': 'Invalid payment address'}, 
+                    status=400
+                )
+            
+            if amount <= 0:
+                return web.json_response(
+                    {'error': 'Invalid payment amount'}, 
+                    status=400
+                )
+            
+            if currency not in ['BTC', 'ETH', 'LTC', 'SOL']:
+                return web.json_response(
+                    {'error': 'Unsupported currency'}, 
+                    status=400
+                )
+            
+            # 8. Process payment with enhanced validation
             result = await PaymentObserverService.handle_payment_webhook(
                 address=address,
                 amount=amount,
                 currency=currency,
-                tx_hash=tx_hash
+                tx_hash=tx_hash,
+                confirmations=confirmations
             )
             
             if result['success']:
-                logger.info(f"Payment webhook processed successfully: {address}")
+                logger.info(f"Payment webhook processed successfully from IP {client_ip}: {address}")
                 return web.json_response(result, status=200)
             else:
-                logger.warning(f"Payment webhook processing failed: {result['message']}")
+                logger.warning(f"Payment webhook processing failed from IP {client_ip}: {result['message']}")
                 return web.json_response(result, status=400)
                 
         except Exception as e:
-            logger.error(f"Error processing order payment webhook: {str(e)}")
+            logger.error(f"Error processing order payment webhook from IP {client_ip}: {str(e)}")
             return web.json_response(
                 {'error': 'Internal server error'}, 
                 status=500

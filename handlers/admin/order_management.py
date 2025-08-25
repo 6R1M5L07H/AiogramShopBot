@@ -149,6 +149,8 @@ Created: {order.created_at.strftime('%Y-%m-%d %H:%M:%S')}"""
     if order.status == "paid":
         kb_builder.button(text="✅ Mark as Shipped", 
                           callback_data=AdminCallback.create("ship_order", order_id=order.id))
+        kb_builder.button(text="🔐 Access Private Key", 
+                          callback_data=AdminCallback.create("access_private_key", order_id=order.id))
     
     kb_builder.button(text="◀️ Back", 
                       callback_data=AdminCallback.create("orders_ready_shipment", page=0))
@@ -164,9 +166,10 @@ Created: {order.created_at.strftime('%Y-%m-%d %H:%M:%S')}"""
 async def mark_order_as_shipped(callback: CallbackQuery, callback_data: AdminCallback):
     """Mark order as shipped"""
     order_id = callback_data.order_id
+    admin_id = callback.from_user.id
     
     try:
-        await OrderService.ship_order(order_id)
+        await OrderService.ship_order(order_id, admin_id)
         
         kb_builder = InlineKeyboardBuilder()
         kb_builder.button(text="◀️ Back to Orders", 
@@ -292,5 +295,108 @@ async def run_manual_cleanup(callback: CallbackQuery, callback_data: AdminCallba
         
         await callback.message.edit_text(
             text=f"❌ Cleanup failed: {str(e)}",
+            reply_markup=kb_builder.as_markup()
+        )
+
+
+@router.callback_query(AdminCallback.filter(F.action == "access_private_key"))
+async def access_private_key(callback: CallbackQuery, callback_data: AdminCallback):
+    """Securely access private key for paid order - ADMIN ONLY"""
+    order_id = callback_data.order_id
+    admin_id = callback.from_user.id
+    
+    try:
+        # Get order with decrypted private key (this logs the access)
+        order_with_key = await OrderRepository.get_with_private_key(order_id, admin_id)
+        
+        if not order_with_key:
+            kb_builder = InlineKeyboardBuilder()
+            kb_builder.button(text="◀️ Back", 
+                              callback_data=AdminCallback.create("view_order", order_id=order_id))
+            
+            await callback.message.edit_text(
+                text="❌ Order not found or private key unavailable.",
+                reply_markup=kb_builder.as_markup()
+            )
+            return
+        
+        if order_with_key.status != "paid":
+            kb_builder = InlineKeyboardBuilder()
+            kb_builder.button(text="◀️ Back", 
+                              callback_data=AdminCallback.create("view_order", order_id=order_id))
+            
+            await callback.message.edit_text(
+                text="❌ Private key access only available for paid orders.",
+                reply_markup=kb_builder.as_markup()
+            )
+            return
+        
+        # Security warning message with private key
+        warning_text = f"""🔐 PRIVATE KEY ACCESS - CONFIDENTIAL
+
+⚠️ SECURITY WARNING:
+• This private key grants full control over the payment address
+• Access is logged and audited
+• Delete this message after use
+• Never share or transmit this key insecurely
+
+Order #{order_id}
+Payment Address: {order_with_key.payment_address}
+Private Key: `{order_with_key.private_key}`
+
+Currency: {order_with_key.currency}
+Amount: {order_with_key.total_amount}"""
+        
+        kb_builder = InlineKeyboardBuilder()
+        kb_builder.button(text="🗑️ Delete This Message", 
+                          callback_data=AdminCallback.create("delete_key_message"))
+        kb_builder.button(text="◀️ Back to Order", 
+                          callback_data=AdminCallback.create("view_order", order_id=order_id))
+        kb_builder.adjust(1)
+        
+        await callback.message.edit_text(
+            text=warning_text,
+            reply_markup=kb_builder.as_markup(),
+            parse_mode="Markdown"
+        )
+        
+        # Log the security event
+        import logging
+        security_logger = logging.getLogger('security')
+        security_logger.critical(f"PRIVATE_KEY_ACCESS: Admin {admin_id} accessed private key for order {order_id} at {callback.message.date}")
+        
+    except Exception as e:
+        kb_builder = InlineKeyboardBuilder()
+        kb_builder.button(text="◀️ Back", 
+                          callback_data=AdminCallback.create("view_order", order_id=order_id))
+        
+        await callback.message.edit_text(
+            text=f"❌ Error accessing private key: {str(e)}",
+            reply_markup=kb_builder.as_markup()
+        )
+
+
+@router.callback_query(AdminCallback.filter(F.action == "delete_key_message"))
+async def delete_private_key_message(callback: CallbackQuery, callback_data: AdminCallback):
+    """Delete the private key message for security"""
+    try:
+        await callback.message.delete()
+        
+        # Send a temporary confirmation that gets deleted
+        temp_message = await callback.message.answer("🗑️ Private key message deleted for security.")
+        
+        import asyncio
+        # Delete the confirmation after 3 seconds
+        await asyncio.sleep(3)
+        await temp_message.delete()
+        
+    except Exception as e:
+        # If deletion fails, edit the message to remove sensitive content
+        kb_builder = InlineKeyboardBuilder()
+        kb_builder.button(text="◀️ Back to Orders", 
+                          callback_data=AdminCallback.create("orders_ready_shipment", page=0))
+        
+        await callback.message.edit_text(
+            text="🗑️ Private key message cleared for security.",
             reply_markup=kb_builder.as_markup()
         )
