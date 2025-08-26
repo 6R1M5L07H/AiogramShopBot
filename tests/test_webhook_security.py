@@ -21,6 +21,7 @@ from aiohttp import web
 from aiohttp.test_utils import make_mocked_request
 
 from processing.order_payment import OrderPaymentProcessor, RATE_LIMIT_WINDOW, RATE_LIMIT_MAX_REQUESTS
+from services.payment_observer import PaymentObserverService
 
 
 class TestWebhookRateLimiting:

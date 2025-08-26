@@ -108,6 +108,28 @@ class OrderRepository:
             await session_commit(session)
 
     @staticmethod
+    async def get_private_key_data(order_id: int) -> Optional[tuple[str, str]]:
+        """Retrieve encrypted private key and salt for an order."""
+        stmt = select(Order.encrypted_private_key, Order.private_key_salt).where(Order.id == order_id)
+        async with get_db_session() as session:
+            result = await session_execute(stmt, session)
+            row = result.first()
+            if row:
+                return row[0], row[1]
+            return None
+
+    @staticmethod
+    async def store_encrypted_private_key(order_id: int, encrypted_key: str, salt: str) -> None:
+        """Store encrypted private key and salt for an order."""
+        stmt = update(Order).where(Order.id == order_id).values(
+            encrypted_private_key=encrypted_key,
+            private_key_salt=salt
+        )
+        async with get_db_session() as session:
+            await session_execute(stmt, session)
+            await session_commit(session)
+
+    @staticmethod
     async def get_expired_orders() -> list[OrderDTO]:
         current_time = datetime.now()
         stmt = select(Order).where(
