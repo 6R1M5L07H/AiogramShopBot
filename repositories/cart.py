@@ -8,6 +8,10 @@ from repositories.cartItem import CartItemRepository
 
 class CartRepository:
     @staticmethod
+    async def create(user_id: int) -> CartDTO:
+        return await CartRepository.get_or_create(user_id)
+
+    @staticmethod
     async def get_or_create(user_id: int):
         stmt = select(Cart).where(Cart.user_id == user_id)
         async with get_db_session() as session:
@@ -21,6 +25,16 @@ class CartRepository:
                 return CartDTO.model_validate(cart, from_attributes=True)
             else:
                 return CartDTO.model_validate(cart, from_attributes=True)
+
+    @staticmethod
+    async def get_by_user_id(user_id: int) -> CartDTO | None:
+        stmt = select(Cart).where(Cart.user_id == user_id)
+        async with get_db_session() as session:
+            cart = await session_execute(stmt, session)
+            cart = cart.scalar()
+            if cart is None:
+                return None
+            return CartDTO.model_validate(cart, from_attributes=True)
 
     @staticmethod
     async def add_to_cart(cart_item: CartItemDTO, cart: CartDTO):

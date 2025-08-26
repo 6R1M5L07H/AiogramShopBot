@@ -42,22 +42,24 @@ class TransactionManager:
         
         try:
             async with get_db_session() as session:
-                # Set transaction timeout
-                await session.execute(text(f"SET SESSION innodb_lock_wait_timeout = {timeout}"))
-                
-                # Start transaction with proper isolation level
-                await session.execute(text("SET TRANSACTION ISOLATION LEVEL READ COMMITTED"))
-                
+                bind = session.bind
+                if bind and bind.dialect.name != "sqlite":
+                    # Set transaction timeout for databases that support it
+                    await session.execute(text(f"SET SESSION innodb_lock_wait_timeout = {timeout}"))
+
+                    # Start transaction with proper isolation level
+                    await session.execute(text("SET TRANSACTION ISOLATION LEVEL READ COMMITTED"))
+
                 transaction_start = datetime.utcnow()
                 logger.debug(f"Transaction started at {transaction_start}")
-                
+
                 yield session
-                
+
                 # Check transaction duration
                 duration = (datetime.utcnow() - transaction_start).total_seconds()
                 if duration > timeout:
                     logger.warning(f"Transaction exceeded timeout: {duration}s > {timeout}s")
-                
+
                 await session_commit(session)
                 logger.debug(f"Transaction committed successfully in {duration:.2f}s")
                 
