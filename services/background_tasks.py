@@ -81,7 +81,17 @@ class BackgroundTaskService:
             
         except Exception as e:
             logger.error(f"Error monitoring order timeouts: {str(e)}")
-    
+
+    @staticmethod
+    async def run_background_tasks() -> None:
+        """Run one cycle of background tasks with error isolation."""
+        try:
+            await BackgroundTaskService.process_expired_orders()
+            await BackgroundTaskService.cleanup_expired_reservations()
+            await BackgroundTaskService.monitor_order_timeouts()
+        except Exception as e:
+            logger.error(f"Background task execution error: {str(e)}")
+
     @staticmethod
     async def schedule_cleanup_tasks() -> None:
         """
