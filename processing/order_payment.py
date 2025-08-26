@@ -177,6 +177,7 @@ class OrderPaymentProcessor:
                     status=400
                 )
 
+
             # 6. Extract and validate payment data
             address = data.get('address', '').strip()
             amount = data.get('amount', 0)
@@ -184,6 +185,7 @@ class OrderPaymentProcessor:
             tx_hash = data.get('tx_hash', '').strip()
             confirmations = data.get('confirmations', 0)
 
+          
             if not address or len(address) < 10:
                 return web.json_response(
                     {'error': 'Invalid payment address'},
@@ -201,6 +203,7 @@ class OrderPaymentProcessor:
                     {'error': 'Unsupported currency'},
                     status=400
                 )
+
 
             # 7. Enhanced signature verification after basic validation
             webhook_secret = getattr(config, 'WEBHOOK_SECRET', None)

@@ -23,7 +23,7 @@ class Item(Base):
     price = Column(Float, nullable=False)
     is_sold = Column(Boolean, nullable=False, default=False)
     is_new = Column(Boolean, nullable=False, default=True)
-    description = Column(String, nullable=False)
+    description = Column(String, nullable=False, default="")
     
     # Relationship for order items
     order_items = relationship("OrderItem", back_populates="item")
