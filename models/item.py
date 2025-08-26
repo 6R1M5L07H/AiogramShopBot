@@ -18,7 +18,8 @@ class Item(Base):
     subcategory_id = Column(Integer, ForeignKey("subcategories.id", ondelete="CASCADE"), nullable=False)
     subcategory = relationship("Subcategory", backref=backref("subcategories", cascade="all"), passive_deletes="all",
                                lazy="joined")
-    private_data = Column(String, nullable=False, unique=False)
+    name = Column(String, nullable=False)
+    private_data = Column(String, nullable=False, unique=False, default="")
     price = Column(Float, nullable=False)
     is_sold = Column(Boolean, nullable=False, default=False)
     is_new = Column(Boolean, nullable=False, default=True)
@@ -32,6 +33,7 @@ class ItemDTO(BaseModel):
     id: int | None = None
     category_id: int | None = None
     subcategory_id: int | None = None
+    name: str | None = None
     private_data: str | None = None
     price: float | None = None
     is_sold: bool | None = None
