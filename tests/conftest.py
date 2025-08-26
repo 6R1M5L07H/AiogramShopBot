@@ -22,6 +22,7 @@ import tempfile
 import shutil
 from datetime import datetime, timedelta
 from typing import Dict, Any, AsyncGenerator
+from contextlib import asynccontextmanager
 from unittest.mock import Mock, patch, AsyncMock
 import secrets
 
@@ -91,6 +92,21 @@ async def test_db_engine():
         pass
 
 
+@pytest.fixture(autouse=True)
+def override_get_db_session(monkeypatch, test_db_engine):
+    """Ensure application code uses the test database session."""
+    async_session_maker = sessionmaker(
+        test_db_engine, class_=AsyncSession, expire_on_commit=False
+    )
+
+    @asynccontextmanager
+    async def _get_session():
+        async with async_session_maker() as session:
+            yield session
+
+    monkeypatch.setattr('db.get_db_session', _get_session)
+    monkeypatch.setattr('utils.transaction_manager.get_db_session', _get_session)
+
 @pytest.fixture
 async def db_session(test_db_engine):
     """Create a test database session with transaction rollback."""
@@ -99,10 +115,19 @@ async def db_session(test_db_engine):
     )
     
     async with async_session_maker() as session:
-        # Start a transaction
-        async with session.begin():
+        # Begin a transaction for the test
+        trans = await session.begin()
+
+        # Seed default category and subcategory for foreign key constraints
+        default_category = Category(id=1, name="Default Category")
+        default_subcategory = Subcategory(id=1, name="Default Subcategory", category_id=1)
+        session.add_all([default_category, default_subcategory])
+        await session.flush()
+        try:
             yield session
-            # Transaction will be rolled back automatically
+        finally:
+            # Roll back any changes after each test to keep DB clean
+            await trans.rollback()
 
 
 @pytest.fixture
@@ -176,8 +201,7 @@ async def test_category(db_session) -> CategoryDTO:
     """Create a test category."""
     # Test Case: Create category for item organization testing
     category = Category(
-        name="Test Category",
-        created_at=datetime.now()
+        name="Test Category"
     )
     db_session.add(category)
     await db_session.flush()
@@ -194,8 +218,7 @@ async def test_subcategory(db_session, test_category) -> SubcategoryDTO:
     # Test Case: Create subcategory for item organization testing
     subcategory = Subcategory(
         name="Test Subcategory",
-        category_id=test_category.id,
-        created_at=datetime.now()
+        category_id=test_category.id
     )
     db_session.add(subcategory)
     await db_session.flush()
@@ -218,8 +241,7 @@ async def test_items(db_session, test_category, test_subcategory) -> list[ItemDT
             price=10.0 + i,
             category_id=test_category.id,
             subcategory_id=test_subcategory.id,
-            is_sold=False,
-            created_at=datetime.now()
+            is_sold=False
         )
         db_session.add(item)
         items.append(item)
@@ -252,8 +274,7 @@ async def test_cart_items(db_session, test_user, test_category, test_subcategory
             category_id=test_category.id,
             subcategory_id=test_subcategory.id,
             quantity=1,
-            price=15.0 + i,
-            created_at=datetime.now()
+            price=15.0 + i
         )
         db_session.add(cart_item)
         cart_items.append(cart_item)
@@ -340,7 +361,9 @@ def mock_notification_service():
         mock.order_shipped = AsyncMock()
         mock.order_expired = AsyncMock()
         mock.order_cancelled = AsyncMock()
-        yield mock
+        # Ensure modules that imported NotificationService earlier use this mock
+        with patch('services.order.NotificationService', mock):
+            yield mock
 
 
 @pytest.fixture
