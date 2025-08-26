@@ -1,4 +1,5 @@
 import logging
+import asyncio
 from typing import Optional, Dict
 from datetime import datetime
 
@@ -28,6 +29,8 @@ class PaymentObserverService:
         'LTC': 8,
         'SOL': 9
     }
+    # Locks per payment address to prevent concurrent processing
+    _address_locks: Dict[str, asyncio.Lock] = {}
     @staticmethod
     async def monitor_order_payments() -> None:
         """
@@ -44,30 +47,31 @@ class PaymentObserverService:
     
     @staticmethod
     async def process_payment_confirmation(address: str, amount: float, currency: str) -> bool:
-        """
-        Process payment confirmation received from webhook or monitoring
-        """
-        try:
+        """Process payment confirmation received from webhook or monitoring"""
+        lock = PaymentObserverService._address_locks.setdefault(address, asyncio.Lock())
+        async with lock:
             # Find order by payment address
             order = await OrderRepository.get_by_payment_address(address)
             if not order:
                 logger.warning(f"No order found for payment address: {address}")
                 return False
-            
+
             # Validate payment amount
             if not await PaymentObserverService.validate_payment_amount(order.id, amount):
                 logger.warning(f"Payment amount validation failed for order {order.id}")
                 return False
-            
-            # Confirm payment
-            await OrderService.confirm_payment(order.id)
+
+            # Confirm payment - selectively handle known errors
+            try:
+                await OrderService.confirm_payment(order.id)
+            except ValueError as e:
+                if str(e) == "Payment already processed":
+                    raise
+                logger.error(f"Error confirming payment for order {order.id}: {str(e)}")
+                return False
+
             logger.info(f"Payment confirmed for order {order.id}")
-            
             return True
-            
-        except Exception as e:
-            logger.error(f"Error processing payment confirmation: {str(e)}")
-            return False
     
     @staticmethod
     async def validate_payment_amount(order_id: int, received_amount: float) -> bool:
@@ -95,12 +99,17 @@ class PaymentObserverService:
         Validate payment amount precision based on currency decimal places
         """
         try:
+            from decimal import Decimal, InvalidOperation
+
             max_decimals = PaymentObserverService.CURRENCY_DECIMALS.get(currency.upper(), 8)
-            
-            # Convert to string to check decimal places
-            amount_str = f"{amount:.{max_decimals}f}".rstrip('0').rstrip('.')
-            decimal_places = len(amount_str.split('.')[1]) if '.' in amount_str else 0
-            
+
+            try:
+                decimal_amount = Decimal(str(amount))
+            except InvalidOperation:
+                return False
+
+            decimal_places = -decimal_amount.as_tuple().exponent
+
             return decimal_places <= max_decimals
             
         except Exception as e:
