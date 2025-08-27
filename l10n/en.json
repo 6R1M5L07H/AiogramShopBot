@@ -144,6 +144,7 @@
     "item_added_to_cart": "Item added to cart",
     "updated_cart": "Cart updated",
     "currency_selection_prompt": "💰 Select payment currency:",
+    "order_created_instructions": "✅ <b>Order #{order_id} Created!</b>\n\nSend {amount} {currency} to <code>{address}</code> within {timeout_minutes} minutes.",
     "order_created_success": "✅ <b>Order #{order_id} Created Successfully!</b>\n\n💰 Amount: {amount} {currency}\n🔗 Payment Address: <code>{address}</code>\n⏰ Time remaining: {timeout_minutes} minutes\n\n<i>Please send the exact amount to the address above within the time limit.</i>",
     "order_creation_failed": "❌ Order creation failed: {error}",
     "order_creation_error": "❌ An error occurred while creating your order. Please try again.",

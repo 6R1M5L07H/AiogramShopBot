@@ -68,10 +68,10 @@ class CryptoAddressGenerator:
         """
         Generate unique one-time address for an order
         """
-        # Create unique seed using order_id for uniqueness
+        # Create unique seed using order_id as passphrase for uniqueness
         order_mnemonic = Bip39MnemonicGenerator().FromWordsNumber(Bip39WordsNum.WORDS_NUM_12)
-        order_seed = f"{order_mnemonic.ToStr()}_{order_id}"
-        order_seed_bytes = Bip39SeedGenerator(order_seed).Generate()
+        # Use order_id as passphrase rather than altering mnemonic words
+        order_seed_bytes = Bip39SeedGenerator(order_mnemonic.ToStr()).Generate(str(order_id))
         
         currency = currency.upper()
         
