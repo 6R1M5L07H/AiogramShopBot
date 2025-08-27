@@ -1,3 +1,6 @@
 /data/
 /.env.localvalues
 .env
+__pycache__/
+*.py[cod]
+.pytest_cache/

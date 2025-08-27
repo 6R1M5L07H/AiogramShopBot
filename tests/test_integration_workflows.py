@@ -30,6 +30,8 @@ from repositories.item import ItemRepository
 from models.order import OrderStatus, OrderDTO
 from models.cartItem import CartItemDTO
 from models.item import ItemDTO
+from services.payment_observer import PaymentObserverService
+from services.notification import NotificationService
 
 
 class TestCartToOrderIntegration:
