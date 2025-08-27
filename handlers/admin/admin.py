@@ -4,7 +4,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from callbacks import AdminMenuCallback, AdminAnnouncementCallback, AdminInventoryManagementCallback, \
-    UserManagementCallback, StatisticsCallback, WalletCallback, AdminCallback
+    UserManagementCallback, StatisticsCallback, WalletCallback
 from enums.bot_entity import BotEntity
 from handlers.admin.announcement import announcement_router
 from handlers.admin.inventory_management import inventory_management
@@ -36,7 +36,7 @@ async def admin(message: Message | CallbackQuery):
     admin_menu_builder.button(text=Localizator.get_text(BotEntity.ADMIN, "inventory_management"),
                               callback_data=AdminInventoryManagementCallback.create(level=0))
     admin_menu_builder.button(text="📦 Order Management",
-                              callback_data=AdminCallback.create("order_management"))
+                              callback_data=AdminMenuCallback.create(level=0, action="order_management"))
     admin_menu_builder.button(text=Localizator.get_text(BotEntity.ADMIN, "user_management"),
                               callback_data=UserManagementCallback.create(level=0))
     admin_menu_builder.button(text=Localizator.get_text(BotEntity.ADMIN, "statistics"),

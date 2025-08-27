@@ -12,7 +12,7 @@ else:
     # For dev/test environments, use localhost or skip webhook setup
     WEBHOOK_HOST = os.environ.get("WEBHOOK_HOST", "http://localhost")
 WEBHOOK_PATH = os.environ.get("WEBHOOK_PATH")
-WEBAPP_HOST = os.environ.get("WEBAPP_HOST")
+WEBAPP_HOST = os.environ.get("WEBAPP_HOST", "0.0.0.0")
 WEBAPP_PORT = int(os.environ.get("WEBAPP_PORT", "8000"))
 WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
 TOKEN = os.environ.get("TOKEN")

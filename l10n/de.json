@@ -144,6 +144,7 @@
     "item_added_to_cart": "Artikel wurde dem Warenkorb hinzugefügt",
     "updated_cart": "Warenkorb aktualisiert",
     "currency_selection_prompt": "💰 Zahlungswährung auswählen:",
+    "order_created_instructions": "✅ <b>Bestellung #{order_id} erstellt!</b>\n\nSende {amount} {currency} an <code>{address}</code> innerhalb von {timeout_minutes} Minuten.",
     "order_created_success": "✅ <b>Bestellung #{order_id} erfolgreich erstellt!</b>\n\n💰 Betrag: {amount} {currency}\n🔗 Zahlungsadresse: <code>{address}</code>\n⏰ Verbleibende Zeit: {timeout_minutes} Minuten\n\n<i>Bitte senden Sie den exakten Betrag an die obige Adresse innerhalb des Zeitlimits.</i>",
     "order_creation_failed": "❌ Bestellerstellung fehlgeschlagen: {error}",
     "order_creation_error": "❌ Ein Fehler ist beim Erstellen Ihrer Bestellung aufgetreten. Bitte versuchen Sie es erneut.",

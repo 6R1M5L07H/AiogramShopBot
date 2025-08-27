@@ -2,7 +2,7 @@ from aiogram import types, Router, F
 from aiogram.types import CallbackQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from callbacks import AdminCallback
+from callbacks import AdminMenuCallback
 from enums.bot_entity import BotEntity
 from handlers.admin.constants import ELEMENTS_ON_PAGE
 from repositories.order import OrderRepository
@@ -13,26 +13,26 @@ from utils.localizator import Localizator
 router = Router()
 
 
-@router.callback_query(AdminCallback.filter(F.action == "order_management"))
-async def show_order_management_menu(callback: CallbackQuery, callback_data: AdminCallback):
+@router.callback_query(AdminMenuCallback.filter(F.action == "order_management"))
+async def show_order_management_menu(callback: CallbackQuery, callback_data: AdminMenuCallback):
     """Show order management main menu"""
     kb_builder = InlineKeyboardBuilder()
     
     # Orders ready for shipment
     kb_builder.button(text="📦 Orders Ready for Shipment", 
-                      callback_data=AdminCallback.create("orders_ready_shipment", page=0))
+                      callback_data=AdminMenuCallback.create(level=0, action="orders_ready_shipment", page=0))
     
     # Search users by timeout count
     kb_builder.button(text="⏰ Users with Timeouts", 
-                      callback_data=AdminCallback.create("users_timeouts", page=0))
+                      callback_data=AdminMenuCallback.create(level=0, action="users_timeouts", page=0))
     
     # Manual cleanup orders
     kb_builder.button(text="🧹 Run Cleanup", 
-                      callback_data=AdminCallback.create("manual_cleanup"))
+                      callback_data=AdminMenuCallback.create(level=0, action="manual_cleanup"))
     
     # Back to admin menu
     kb_builder.button(text="◀️ Back", 
-                      callback_data=AdminCallback.create("admin_panel"))
+                      callback_data=AdminMenuCallback.create(level=0, action="admin_panel"))
     
     kb_builder.adjust(1)
     
@@ -42,15 +42,15 @@ async def show_order_management_menu(callback: CallbackQuery, callback_data: Adm
     )
 
 
-@router.callback_query(AdminCallback.filter(F.action == "orders_ready_shipment"))
-async def show_orders_ready_for_shipment(callback: CallbackQuery, callback_data: AdminCallback):
+@router.callback_query(AdminMenuCallback.filter(F.action == "orders_ready_shipment"))
+async def show_orders_ready_for_shipment(callback: CallbackQuery, callback_data: AdminMenuCallback):
     """Show orders that are ready for shipment"""
     orders = await OrderRepository.get_orders_ready_for_shipment()
     
     if not orders:
         kb_builder = InlineKeyboardBuilder()
         kb_builder.button(text="◀️ Back", 
-                          callback_data=AdminCallback.create("order_management"))
+                          callback_data=AdminMenuCallback.create(level=0, action="order_management"))
         
         await callback.message.edit_text(
             text="No orders ready for shipment.",
@@ -73,7 +73,7 @@ async def show_orders_ready_for_shipment(callback: CallbackQuery, callback_data:
         
         kb_builder.button(
             text=f"Order #{order.id} - {user_info} - {order.total_amount} {order.currency}",
-            callback_data=AdminCallback.create("view_order", order_id=order.id)
+            callback_data=AdminMenuCallback.create(level=0, action="view_order", args_to_action=order.id)
         )
     
     # Pagination
@@ -83,7 +83,7 @@ async def show_orders_ready_for_shipment(callback: CallbackQuery, callback_data:
         if page > 0:
             nav_buttons.append(types.InlineKeyboardButton(
                 text="◀️", 
-                callback_data=AdminCallback.create("orders_ready_shipment", page=page-1)
+                callback_data=AdminMenuCallback.create(level=0, action="orders_ready_shipment", page=page-1)
             ))
         
         nav_buttons.append(types.InlineKeyboardButton(
@@ -94,13 +94,13 @@ async def show_orders_ready_for_shipment(callback: CallbackQuery, callback_data:
         if page < total_pages - 1:
             nav_buttons.append(types.InlineKeyboardButton(
                 text="▶️", 
-                callback_data=AdminCallback.create("orders_ready_shipment", page=page+1)
+                callback_data=AdminMenuCallback.create(level=0, action="orders_ready_shipment", page=page+1)
             ))
         
         kb_builder.row(*nav_buttons)
     
     kb_builder.button(text="◀️ Back", 
-                      callback_data=AdminCallback.create("order_management"))
+                      callback_data=AdminMenuCallback.create(level=0, action="order_management"))
     kb_builder.adjust(1)
     
     await callback.message.edit_text(
@@ -109,16 +109,16 @@ async def show_orders_ready_for_shipment(callback: CallbackQuery, callback_data:
     )
 
 
-@router.callback_query(AdminCallback.filter(F.action == "view_order"))
-async def view_order_details(callback: CallbackQuery, callback_data: AdminCallback):
+@router.callback_query(AdminMenuCallback.filter(F.action == "view_order"))
+async def view_order_details(callback: CallbackQuery, callback_data: AdminMenuCallback):
     """View detailed order information"""
-    order_id = callback_data.order_id
+    order_id = int(callback_data.args_to_action)
     order = await OrderRepository.get_by_id(order_id)
     
     if not order:
         kb_builder = InlineKeyboardBuilder()
         kb_builder.button(text="◀️ Back", 
-                          callback_data=AdminCallback.create("orders_ready_shipment", page=0))
+                          callback_data=AdminMenuCallback.create(level=0, action="orders_ready_shipment", page=0))
         
         await callback.message.edit_text(
             text="Order not found.",
@@ -148,12 +148,12 @@ Created: {order.created_at.strftime('%Y-%m-%d %H:%M:%S')}"""
     
     if order.status == "paid":
         kb_builder.button(text="✅ Mark as Shipped", 
-                          callback_data=AdminCallback.create("ship_order", order_id=order.id))
+                          callback_data=AdminMenuCallback.create(level=0, action="ship_order", args_to_action=order.id))
         kb_builder.button(text="🔐 Access Private Key", 
-                          callback_data=AdminCallback.create("access_private_key", order_id=order.id))
+                          callback_data=AdminMenuCallback.create(level=0, action="access_private_key", args_to_action=order.id))
     
     kb_builder.button(text="◀️ Back", 
-                      callback_data=AdminCallback.create("orders_ready_shipment", page=0))
+                      callback_data=AdminMenuCallback.create(level=0, action="orders_ready_shipment", page=0))
     kb_builder.adjust(1)
     
     await callback.message.edit_text(
@@ -162,10 +162,10 @@ Created: {order.created_at.strftime('%Y-%m-%d %H:%M:%S')}"""
     )
 
 
-@router.callback_query(AdminCallback.filter(F.action == "ship_order"))
-async def mark_order_as_shipped(callback: CallbackQuery, callback_data: AdminCallback):
+@router.callback_query(AdminMenuCallback.filter(F.action == "ship_order"))
+async def mark_order_as_shipped(callback: CallbackQuery, callback_data: AdminMenuCallback):
     """Mark order as shipped"""
-    order_id = callback_data.order_id
+    order_id = int(callback_data.args_to_action)
     admin_id = callback.from_user.id
     
     try:
@@ -173,7 +173,7 @@ async def mark_order_as_shipped(callback: CallbackQuery, callback_data: AdminCal
         
         kb_builder = InlineKeyboardBuilder()
         kb_builder.button(text="◀️ Back to Orders", 
-                          callback_data=AdminCallback.create("orders_ready_shipment", page=0))
+                          callback_data=AdminMenuCallback.create(level=0, action="orders_ready_shipment", page=0))
         
         await callback.message.edit_text(
             text=f"✅ Order #{order_id} has been marked as shipped!\nUser has been notified.",
@@ -183,7 +183,7 @@ async def mark_order_as_shipped(callback: CallbackQuery, callback_data: AdminCal
     except Exception as e:
         kb_builder = InlineKeyboardBuilder()
         kb_builder.button(text="◀️ Back", 
-                          callback_data=AdminCallback.create("view_order", order_id=order_id))
+                          callback_data=AdminMenuCallback.create(level=0, action="view_order", args_to_action=order_id))
         
         await callback.message.edit_text(
             text=f"❌ Error shipping order: {str(e)}",
@@ -191,15 +191,15 @@ async def mark_order_as_shipped(callback: CallbackQuery, callback_data: AdminCal
         )
 
 
-@router.callback_query(AdminCallback.filter(F.action == "users_timeouts"))
-async def search_users_by_timeout_count(callback: CallbackQuery, callback_data: AdminCallback):
+@router.callback_query(AdminMenuCallback.filter(F.action == "users_timeouts"))
+async def search_users_by_timeout_count(callback: CallbackQuery, callback_data: AdminMenuCallback):
     """Show users with timeout counts"""
     users = await UserRepository.get_users_by_timeout_count(1)  # Users with at least 1 timeout
     
     if not users:
         kb_builder = InlineKeyboardBuilder()
         kb_builder.button(text="◀️ Back", 
-                          callback_data=AdminCallback.create("order_management"))
+                          callback_data=AdminMenuCallback.create(level=0, action="order_management"))
         
         await callback.message.edit_text(
             text="No users with timeouts found.",
@@ -230,7 +230,7 @@ async def search_users_by_timeout_count(callback: CallbackQuery, callback_data: 
         if page > 0:
             nav_buttons.append(types.InlineKeyboardButton(
                 text="◀️", 
-                callback_data=AdminCallback.create("users_timeouts", page=page-1)
+                callback_data=AdminMenuCallback.create(level=0, action="users_timeouts", page=page-1)
             ))
         
         nav_buttons.append(types.InlineKeyboardButton(
@@ -241,13 +241,13 @@ async def search_users_by_timeout_count(callback: CallbackQuery, callback_data: 
         if page < total_pages - 1:
             nav_buttons.append(types.InlineKeyboardButton(
                 text="▶️", 
-                callback_data=AdminCallback.create("users_timeouts", page=page+1)
+                callback_data=AdminMenuCallback.create(level=0, action="users_timeouts", page=page+1)
             ))
         
         kb_builder.row(*nav_buttons)
     
     kb_builder.button(text="◀️ Back", 
-                      callback_data=AdminCallback.create("order_management"))
+                      callback_data=AdminMenuCallback.create(level=0, action="order_management"))
     kb_builder.adjust(1)
     
     await callback.message.edit_text(
@@ -256,8 +256,8 @@ async def search_users_by_timeout_count(callback: CallbackQuery, callback_data: 
     )
 
 
-@router.callback_query(AdminCallback.filter(F.action == "manual_cleanup"))
-async def run_manual_cleanup(callback: CallbackQuery, callback_data: AdminCallback):
+@router.callback_query(AdminMenuCallback.filter(F.action == "manual_cleanup"))
+async def run_manual_cleanup(callback: CallbackQuery, callback_data: AdminMenuCallback):
     """Run manual cleanup of expired orders"""
     from services.background_tasks import BackgroundTaskService
     
@@ -281,7 +281,7 @@ async def run_manual_cleanup(callback: CallbackQuery, callback_data: AdminCallba
         
         kb_builder = InlineKeyboardBuilder()
         kb_builder.button(text="◀️ Back", 
-                          callback_data=AdminCallback.create("order_management"))
+                          callback_data=AdminMenuCallback.create(level=0, action="order_management"))
         
         await callback.message.edit_text(
             text=message_text,  
@@ -291,7 +291,7 @@ async def run_manual_cleanup(callback: CallbackQuery, callback_data: AdminCallba
     except Exception as e:
         kb_builder = InlineKeyboardBuilder()
         kb_builder.button(text="◀️ Back", 
-                          callback_data=AdminCallback.create("order_management"))
+                          callback_data=AdminMenuCallback.create(level=0, action="order_management"))
         
         await callback.message.edit_text(
             text=f"❌ Cleanup failed: {str(e)}",
@@ -299,10 +299,10 @@ async def run_manual_cleanup(callback: CallbackQuery, callback_data: AdminCallba
         )
 
 
-@router.callback_query(AdminCallback.filter(F.action == "access_private_key"))
-async def access_private_key(callback: CallbackQuery, callback_data: AdminCallback):
+@router.callback_query(AdminMenuCallback.filter(F.action == "access_private_key"))
+async def access_private_key(callback: CallbackQuery, callback_data: AdminMenuCallback):
     """Securely access private key for paid order - ADMIN ONLY"""
-    order_id = callback_data.order_id
+    order_id = int(callback_data.args_to_action)
     admin_id = callback.from_user.id
     
     try:
@@ -312,7 +312,7 @@ async def access_private_key(callback: CallbackQuery, callback_data: AdminCallba
         if not order_with_key:
             kb_builder = InlineKeyboardBuilder()
             kb_builder.button(text="◀️ Back", 
-                              callback_data=AdminCallback.create("view_order", order_id=order_id))
+                              callback_data=AdminMenuCallback.create(level=0, action="view_order", args_to_action=order_id))
             
             await callback.message.edit_text(
                 text="❌ Order not found or private key unavailable.",
@@ -323,7 +323,7 @@ async def access_private_key(callback: CallbackQuery, callback_data: AdminCallba
         if order_with_key.status != "paid":
             kb_builder = InlineKeyboardBuilder()
             kb_builder.button(text="◀️ Back", 
-                              callback_data=AdminCallback.create("view_order", order_id=order_id))
+                              callback_data=AdminMenuCallback.create(level=0, action="view_order", args_to_action=order_id))
             
             await callback.message.edit_text(
                 text="❌ Private key access only available for paid orders.",
@@ -349,9 +349,9 @@ Amount: {order_with_key.total_amount}"""
         
         kb_builder = InlineKeyboardBuilder()
         kb_builder.button(text="🗑️ Delete This Message", 
-                          callback_data=AdminCallback.create("delete_key_message"))
+                          callback_data=AdminMenuCallback.create(level=0, action="delete_key_message"))
         kb_builder.button(text="◀️ Back to Order", 
-                          callback_data=AdminCallback.create("view_order", order_id=order_id))
+                          callback_data=AdminMenuCallback.create(level=0, action="view_order", args_to_action=order_id))
         kb_builder.adjust(1)
         
         await callback.message.edit_text(
@@ -368,7 +368,7 @@ Amount: {order_with_key.total_amount}"""
     except Exception as e:
         kb_builder = InlineKeyboardBuilder()
         kb_builder.button(text="◀️ Back", 
-                          callback_data=AdminCallback.create("view_order", order_id=order_id))
+                          callback_data=AdminMenuCallback.create(level=0, action="view_order", args_to_action=order_id))
         
         await callback.message.edit_text(
             text=f"❌ Error accessing private key: {str(e)}",
@@ -376,8 +376,8 @@ Amount: {order_with_key.total_amount}"""
         )
 
 
-@router.callback_query(AdminCallback.filter(F.action == "delete_key_message"))
-async def delete_private_key_message(callback: CallbackQuery, callback_data: AdminCallback):
+@router.callback_query(AdminMenuCallback.filter(F.action == "delete_key_message"))
+async def delete_private_key_message(callback: CallbackQuery, callback_data: AdminMenuCallback):
     """Delete the private key message for security"""
     try:
         await callback.message.delete()
@@ -394,7 +394,7 @@ async def delete_private_key_message(callback: CallbackQuery, callback_data: Adm
         # If deletion fails, edit the message to remove sensitive content
         kb_builder = InlineKeyboardBuilder()
         kb_builder.button(text="◀️ Back to Orders", 
-                          callback_data=AdminCallback.create("orders_ready_shipment", page=0))
+                          callback_data=AdminMenuCallback.create(level=0, action="orders_ready_shipment", page=0))
         
         await callback.message.edit_text(
             text="🗑️ Private key message cleared for security.",
