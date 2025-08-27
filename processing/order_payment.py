@@ -167,6 +167,7 @@ class OrderPaymentProcessor:
             # 4. Sanitize input data
             data = OrderPaymentProcessor.sanitize_input(raw_data)
 
+
             # 5. Validate required fields
             required_fields = ['address', 'amount', 'currency']
             missing_fields = [field for field in required_fields if field not in data]
@@ -184,7 +185,6 @@ class OrderPaymentProcessor:
             currency = data.get('currency', '').upper().strip()
             tx_hash = data.get('tx_hash', '').strip()
             confirmations = data.get('confirmations', 0)
-
           
             if not address or len(address) < 10:
                 return web.json_response(
