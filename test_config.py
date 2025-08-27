@@ -22,3 +22,5 @@ os.environ.setdefault("ORDER_TIMEOUT_MINUTES", "30")
 # Minimal configuration required by config.py
 os.environ.setdefault("CURRENCY", "USD")
 os.environ.setdefault("WEBHOOK_PATH", "/test-webhook")
+os.environ.setdefault("TOKEN", "0000000:TESTTOKEN")
+os.environ.setdefault("BOT_LANGUAGE", "en")
