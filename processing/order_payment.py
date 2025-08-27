@@ -167,25 +167,8 @@ class OrderPaymentProcessor:
             # 4. Sanitize input data
             data = OrderPaymentProcessor.sanitize_input(raw_data)
 
-            # 5. Signature verification before validating fields
-            webhook_secret = getattr(config, 'WEBHOOK_SECRET', None)
-            if webhook_secret:
-                signature = request.headers.get('X-Signature', '') or request.headers.get('X-Hub-Signature', '')
-                if not signature:
-                    logger.warning(f"Missing signature from IP {client_ip}")
-                    return web.json_response(
-                        {'error': 'Missing signature'},
-                        status=401
-                    )
 
-                if not OrderPaymentProcessor.verify_webhook_signature(payload, signature, webhook_secret):
-                    logger.warning(f"Invalid webhook signature from IP {client_ip}")
-                    return web.json_response(
-                        {'error': 'Invalid signature'},
-                        status=401
-                    )
-
-            # 6. Validate required fields
+            # 5. Validate required fields
             required_fields = ['address', 'amount', 'currency']
             missing_fields = [field for field in required_fields if field not in data]
             if missing_fields:
@@ -195,14 +178,14 @@ class OrderPaymentProcessor:
                     status=400
                 )
 
-            # 7. Extract basic payment data
+
+            # 6. Extract and validate payment data
             address = data.get('address', '').strip()
             amount = data.get('amount', 0)
             currency = data.get('currency', '').upper().strip()
             tx_hash = data.get('tx_hash', '').strip()
             confirmations = data.get('confirmations', 0)
-
-            # 8. Validate payment data
+          
             if not address or len(address) < 10:
                 return web.json_response(
                     {'error': 'Invalid payment address'},
@@ -221,7 +204,26 @@ class OrderPaymentProcessor:
                     status=400
                 )
 
-            # 9. Process payment with enhanced validation
+
+            # 7. Enhanced signature verification after basic validation
+            webhook_secret = getattr(config, 'WEBHOOK_SECRET', None)
+            if webhook_secret:
+                signature = request.headers.get('X-Signature', '') or request.headers.get('X-Hub-Signature', '')
+                if not signature:
+                    logger.warning(f"Missing signature from IP {client_ip}")
+                    return web.json_response(
+                        {'error': 'Missing signature'},
+                        status=401
+                    )
+
+                if not OrderPaymentProcessor.verify_webhook_signature(payload, signature, webhook_secret):
+                    logger.warning(f"Invalid webhook signature from IP {client_ip}")
+                    return web.json_response(
+                        {'error': 'Invalid signature'},
+                        status=401
+                    )
+
+            # 8. Process payment with enhanced validation
             result = await PaymentObserverService.handle_payment_webhook(
                 address=address,
                 amount=amount,
