@@ -167,7 +167,6 @@ class OrderPaymentProcessor:
             # 4. Sanitize input data
             data = OrderPaymentProcessor.sanitize_input(raw_data)
 
-
             # 5. Validate required fields
             required_fields = ['address', 'amount', 'currency']
             missing_fields = [field for field in required_fields if field not in data]
@@ -177,7 +176,6 @@ class OrderPaymentProcessor:
                     {'error': f'Missing required fields: {missing_fields}'},
                     status=400
                 )
-
 
             # 6. Extract and validate payment data
             address = data.get('address', '').strip()

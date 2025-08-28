@@ -1,9 +1,11 @@
 from datetime import datetime
 import logging
+import math
 from typing import Optional
 
-from sqlalchemy import select, update
+from sqlalchemy import select, update, func
 
+import config
 from db import get_db_session, session_commit, session_execute, session_refresh
 from models.order import Order, OrderDTO, OrderDTOWithPrivateKey, OrderStatus
 from services.encryption import EncryptionService
@@ -141,11 +143,27 @@ class OrderRepository:
             return [OrderDTO.model_validate(order, from_attributes=True) for order in orders.scalars().all()]
 
     @staticmethod
-    async def get_orders_ready_for_shipment() -> list[OrderDTO]:
-        stmt = select(Order).where(Order.status == OrderStatus.PAID.value).order_by(Order.paid_at.desc())
+    async def get_orders_ready_for_shipment(page: int) -> list[OrderDTO]:
+        stmt = select(Order).where(Order.status == OrderStatus.PAID.value).order_by(Order.paid_at.desc()) \
+            .limit(config.PAGE_ENTRIES).offset(config.PAGE_ENTRIES * page)
         async with get_db_session() as session:
             orders = await session_execute(stmt, session)
             return [OrderDTO.model_validate(order, from_attributes=True) for order in orders.scalars().all()]
+
+    @staticmethod
+    async def get_orders_ready_for_shipment_count() -> int:
+        stmt = select(func.count(Order.id)).where(Order.status == OrderStatus.PAID.value)
+        async with get_db_session() as session:
+            result = await session_execute(stmt, session)
+            return result.scalar_one()
+
+    @staticmethod
+    async def get_orders_ready_for_shipment_max_page() -> int:
+        max_page = await OrderRepository.get_orders_ready_for_shipment_count()
+        if max_page % config.PAGE_ENTRIES == 0:
+            return max_page / config.PAGE_ENTRIES - 1
+        else:
+            return math.trunc(max_page / config.PAGE_ENTRIES)
 
     @staticmethod
     async def update_shipped(order_id: int, shipped_at: datetime) -> None:
