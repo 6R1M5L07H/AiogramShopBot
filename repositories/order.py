@@ -132,35 +132,6 @@ class OrderRepository:
             await session_commit(session)
 
     @staticmethod
-    async def update_key_access_audit(order_id: int, admin_id: int, timestamp_source=datetime) -> None:
-        """Update audit fields when an admin accesses a private key."""
-        access_time = timestamp_source.utcnow() if hasattr(timestamp_source, "utcnow") else timestamp_source
-        stmt = update(Order).where(Order.id == order_id).values(
-            key_accessed_at=access_time,
-            key_accessed_by_admin=admin_id,
-            key_access_count=Order.key_access_count + 1
-        )
-        async with get_db_session() as session:
-            await session_execute(stmt, session)
-            await session_commit(session)
-
-    @staticmethod
-    async def get_decrypted_private_key(order_id: int, admin_id: int) -> Optional[str]:
-        """Retrieve and decrypt a private key for admin access."""
-        data = await OrderRepository.get_private_key_data(order_id)
-        if not data:
-            return None
-        encrypted_key, salt = data
-        private_key = EncryptionService.decrypt_private_key(
-            encrypted_key,
-            salt,
-            order_id,
-            admin_id
-        )
-        await OrderRepository.update_key_access_audit(order_id, admin_id, datetime)
-        return private_key
-
-    @staticmethod
     async def get_expired_orders() -> list[OrderDTO]:
         current_time = datetime.now()
         stmt = select(Order).where(

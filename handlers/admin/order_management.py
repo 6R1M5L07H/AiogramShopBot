@@ -48,8 +48,9 @@ async def show_orders_ready_for_shipment(callback: CallbackQuery, callback_data:
     total_orders = await OrderRepository.get_orders_ready_for_shipment_count()
     if total_orders == 0:
         kb_builder = InlineKeyboardBuilder()
-        kb_builder.button(text="◀️ Back",
-                          callback_data=AdminMenuCallback.create(level=0, action="order_management"))
+
+        kb_builder.button(text="◀️ Back", 
+                          callback_data=AdminMenuCallback.create(level=0, action="order_management"))        
         await callback.message.edit_text(
             text="No orders ready for shipment.",
             reply_markup=kb_builder.as_markup()
@@ -68,7 +69,32 @@ async def show_orders_ready_for_shipment(callback: CallbackQuery, callback_data:
             text=f"Order #{order.id} - {user_info} - {order.total_amount} {order.currency}",
             callback_data=AdminMenuCallback.create(level=0, action="view_order", args_to_action=order.id)
         )
-
+    
+    # Pagination
+    total_pages = (len(orders) + ELEMENTS_ON_PAGE - 1) // ELEMENTS_ON_PAGE
+    if total_pages > 1:
+        nav_buttons = []
+        if page > 0:
+            nav_buttons.append(types.InlineKeyboardButton(
+                text="◀️", 
+                callback_data=AdminMenuCallback.create(level=0, action="orders_ready_shipment", page=page-1)
+            ))
+        
+        nav_buttons.append(types.InlineKeyboardButton(
+            text=f"{page + 1}/{total_pages}", 
+            callback_data="noop"
+        ))
+        
+        if page < total_pages - 1:
+            nav_buttons.append(types.InlineKeyboardButton(
+                text="▶️", 
+                callback_data=AdminMenuCallback.create(level=0, action="orders_ready_shipment", page=page+1)
+            ))
+        
+        kb_builder.row(*nav_buttons)
+    
+    kb_builder.button(text="◀️ Back", 
+                      callback_data=AdminMenuCallback.create(level=0, action="order_management"))
     kb_builder.adjust(1)
     back_button = AdminMenuCallback.create(level=0, action="order_management").get_back_button(0)
     kb_builder = await add_pagination_buttons(kb_builder, callback_data,
@@ -169,8 +195,9 @@ async def search_users_by_timeout_count(callback: CallbackQuery, callback_data: 
     total_users = await UserRepository.get_users_by_timeout_count_total(1)
     if total_users == 0:
         kb_builder = InlineKeyboardBuilder()
-        kb_builder.button(text="◀️ Back",
+        kb_builder.button(text="◀️ Back", 
                           callback_data=AdminMenuCallback.create(level=0, action="order_management"))
+        
         await callback.message.edit_text(
             text="No users with timeouts found.",
             reply_markup=kb_builder.as_markup()
@@ -187,11 +214,34 @@ async def search_users_by_timeout_count(callback: CallbackQuery, callback_data: 
         message_text += f"{user_info} - {user.timeout_count} timeouts (Last: {last_timeout})\n"
 
     kb_builder = InlineKeyboardBuilder()
-    back_button = AdminMenuCallback.create(level=0, action="order_management").get_back_button(0)
-    kb_builder = await add_pagination_buttons(kb_builder, callback_data,
-                                              UserRepository.get_users_by_timeout_count_max_page(1),
-                                              back_button)
-
+    
+    # Pagination
+    total_pages = (len(users) + ELEMENTS_ON_PAGE - 1) // ELEMENTS_ON_PAGE
+    if total_pages > 1:
+        nav_buttons = []
+        if page > 0:
+            nav_buttons.append(types.InlineKeyboardButton(
+                text="◀️", 
+                callback_data=AdminMenuCallback.create(level=0, action="users_timeouts", page=page-1)
+            ))
+        
+        nav_buttons.append(types.InlineKeyboardButton(
+            text=f"{page + 1}/{total_pages}", 
+            callback_data="noop"
+        ))
+        
+        if page < total_pages - 1:
+            nav_buttons.append(types.InlineKeyboardButton(
+                text="▶️", 
+                callback_data=AdminMenuCallback.create(level=0, action="users_timeouts", page=page+1)
+            ))
+        
+        kb_builder.row(*nav_buttons)
+    
+    kb_builder.button(text="◀️ Back", 
+                      callback_data=AdminMenuCallback.create(level=0, action="order_management"))
+    kb_builder.adjust(1)
+ 
     await callback.message.edit_text(
         text=message_text,
         reply_markup=kb_builder.as_markup()
