@@ -1,9 +1,11 @@
 from datetime import datetime
 import logging
+import math
 from typing import Optional
 
-from sqlalchemy import select, update
+from sqlalchemy import select, update, func
 
+import config
 from db import get_db_session, session_commit, session_execute, session_refresh
 from models.order import Order, OrderDTO, OrderDTOWithPrivateKey, OrderStatus
 from services.encryption import EncryptionService
@@ -108,6 +110,57 @@ class OrderRepository:
             await session_commit(session)
 
     @staticmethod
+    async def get_private_key_data(order_id: int) -> Optional[tuple[str, str]]:
+        """Retrieve encrypted private key and salt for an order."""
+        stmt = select(Order.encrypted_private_key, Order.private_key_salt).where(Order.id == order_id)
+        async with get_db_session() as session:
+            result = await session_execute(stmt, session)
+            row = result.first()
+            if row:
+                return row[0], row[1]
+            return None
+
+    @staticmethod
+    async def store_encrypted_private_key(order_id: int, encrypted_key: str, salt: str) -> None:
+        """Store encrypted private key and salt for an order."""
+        stmt = update(Order).where(Order.id == order_id).values(
+            encrypted_private_key=encrypted_key,
+            private_key_salt=salt
+        )
+        async with get_db_session() as session:
+            await session_execute(stmt, session)
+            await session_commit(session)
+
+    @staticmethod
+    async def update_key_access_audit(order_id: int, admin_id: int, timestamp_source=datetime) -> None:
+        """Update audit fields when an admin accesses a private key."""
+        access_time = timestamp_source.utcnow() if hasattr(timestamp_source, "utcnow") else timestamp_source
+        stmt = update(Order).where(Order.id == order_id).values(
+            key_accessed_at=access_time,
+            key_accessed_by_admin=admin_id,
+            key_access_count=Order.key_access_count + 1
+        )
+        async with get_db_session() as session:
+            await session_execute(stmt, session)
+            await session_commit(session)
+
+    @staticmethod
+    async def get_decrypted_private_key(order_id: int, admin_id: int) -> Optional[str]:
+        """Retrieve and decrypt a private key for admin access."""
+        data = await OrderRepository.get_private_key_data(order_id)
+        if not data:
+            return None
+        encrypted_key, salt = data
+        private_key = EncryptionService.decrypt_private_key(
+            encrypted_key,
+            salt,
+            order_id,
+            admin_id
+        )
+        await OrderRepository.update_key_access_audit(order_id, admin_id, datetime)
+        return private_key
+
+    @staticmethod
     async def get_expired_orders() -> list[OrderDTO]:
         current_time = datetime.now()
         stmt = select(Order).where(
@@ -119,11 +172,27 @@ class OrderRepository:
             return [OrderDTO.model_validate(order, from_attributes=True) for order in orders.scalars().all()]
 
     @staticmethod
-    async def get_orders_ready_for_shipment() -> list[OrderDTO]:
-        stmt = select(Order).where(Order.status == OrderStatus.PAID.value).order_by(Order.paid_at.desc())
+    async def get_orders_ready_for_shipment(page: int) -> list[OrderDTO]:
+        stmt = select(Order).where(Order.status == OrderStatus.PAID.value).order_by(Order.paid_at.desc()) \
+            .limit(config.PAGE_ENTRIES).offset(config.PAGE_ENTRIES * page)
         async with get_db_session() as session:
             orders = await session_execute(stmt, session)
             return [OrderDTO.model_validate(order, from_attributes=True) for order in orders.scalars().all()]
+
+    @staticmethod
+    async def get_orders_ready_for_shipment_count() -> int:
+        stmt = select(func.count(Order.id)).where(Order.status == OrderStatus.PAID.value)
+        async with get_db_session() as session:
+            result = await session_execute(stmt, session)
+            return result.scalar_one()
+
+    @staticmethod
+    async def get_orders_ready_for_shipment_max_page() -> int:
+        max_page = await OrderRepository.get_orders_ready_for_shipment_count()
+        if max_page % config.PAGE_ENTRIES == 0:
+            return max_page / config.PAGE_ENTRIES - 1
+        else:
+            return math.trunc(max_page / config.PAGE_ENTRIES)
 
     @staticmethod
     async def update_shipped(order_id: int, shipped_at: datetime) -> None:
