@@ -119,8 +119,24 @@ class UserRepository:
             await session_commit(session)
 
     @staticmethod
-    async def get_users_by_timeout_count(min_count: int) -> list[UserDTO]:
-        stmt = select(User).where(User.timeout_count >= min_count).order_by(User.timeout_count.desc())
+    async def get_users_by_timeout_count(min_count: int, page: int) -> list[UserDTO]:
+        stmt = select(User).where(User.timeout_count >= min_count).order_by(User.timeout_count.desc()) \
+            .limit(config.PAGE_ENTRIES).offset(config.PAGE_ENTRIES * page)
         async with get_db_session() as session:
             users = await session_execute(stmt, session)
             return [UserDTO.model_validate(user, from_attributes=True) for user in users.scalars().all()]
+
+    @staticmethod
+    async def get_users_by_timeout_count_total(min_count: int) -> int:
+        stmt = select(func.count(User.id)).where(User.timeout_count >= min_count)
+        async with get_db_session() as session:
+            result = await session_execute(stmt, session)
+            return result.scalar_one()
+
+    @staticmethod
+    async def get_users_by_timeout_count_max_page(min_count: int) -> int:
+        max_page = await UserRepository.get_users_by_timeout_count_total(min_count)
+        if max_page % config.PAGE_ENTRIES == 0:
+            return max_page / config.PAGE_ENTRIES - 1
+        else:
+            return math.trunc(max_page / config.PAGE_ENTRIES)

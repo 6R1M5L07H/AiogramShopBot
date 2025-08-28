@@ -119,6 +119,17 @@ class ItemRepository:
             return [ItemDTO.model_validate(item, from_attributes=True) for item in items.scalars().all()]
 
     @staticmethod
+    async def get_available_items(category_id: int, subcategory_id: int) -> list[ItemDTO]:
+        stmt = select(Item).where(
+            Item.category_id == category_id,
+            Item.subcategory_id == subcategory_id,
+            Item.is_sold == False
+        )
+        async with get_db_session() as session:
+            result = await session_execute(stmt, session)
+            return [ItemDTO.model_validate(item, from_attributes=True) for item in result.scalars().all()]
+
+    @staticmethod
     async def get_available_qty_with_reservations(item_dto: ItemDTO) -> int:
         # Get total available items
         available_stmt = select(func.count(Item.id)).where(
