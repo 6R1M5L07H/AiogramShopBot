@@ -1,10 +1,10 @@
-from aiogram import types, Router, F
+from aiogram import Router, F
 from aiogram.types import CallbackQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from callbacks import AdminMenuCallback
 from enums.bot_entity import BotEntity
-from handlers.admin.constants import ELEMENTS_ON_PAGE
+from handlers.common.common import add_pagination_buttons
 from repositories.order import OrderRepository
 from repositories.user import UserRepository
 from services.order import OrderService
@@ -45,32 +45,26 @@ async def show_order_management_menu(callback: CallbackQuery, callback_data: Adm
 @router.callback_query(AdminMenuCallback.filter(F.action == "orders_ready_shipment"))
 async def show_orders_ready_for_shipment(callback: CallbackQuery, callback_data: AdminMenuCallback):
     """Show orders that are ready for shipment"""
-    orders = await OrderRepository.get_orders_ready_for_shipment()
-    
-    if not orders:
+    total_orders = await OrderRepository.get_orders_ready_for_shipment_count()
+    if total_orders == 0:
         kb_builder = InlineKeyboardBuilder()
+
         kb_builder.button(text="◀️ Back", 
-                          callback_data=AdminMenuCallback.create(level=0, action="order_management"))
-        
+                          callback_data=AdminMenuCallback.create(level=0, action="order_management"))        
         await callback.message.edit_text(
             text="No orders ready for shipment.",
             reply_markup=kb_builder.as_markup()
         )
         return
-    
+
+    page = callback_data.page
+    orders = await OrderRepository.get_orders_ready_for_shipment(page)
     kb_builder = InlineKeyboardBuilder()
-    
-    # Show orders with pagination
-    page = callback_data.page or 0
-    start_idx = page * ELEMENTS_ON_PAGE
-    end_idx = start_idx + ELEMENTS_ON_PAGE
-    
-    page_orders = orders[start_idx:end_idx]
-    
-    for order in page_orders:
+
+    for order in orders:
         user = await UserRepository.get_user_entity(order.user_id)
         user_info = f"@{user.telegram_username}" if user.telegram_username else f"ID:{user.telegram_id}"
-        
+
         kb_builder.button(
             text=f"Order #{order.id} - {user_info} - {order.total_amount} {order.currency}",
             callback_data=AdminMenuCallback.create(level=0, action="view_order", args_to_action=order.id)
@@ -102,9 +96,13 @@ async def show_orders_ready_for_shipment(callback: CallbackQuery, callback_data:
     kb_builder.button(text="◀️ Back", 
                       callback_data=AdminMenuCallback.create(level=0, action="order_management"))
     kb_builder.adjust(1)
-    
+    back_button = AdminMenuCallback.create(level=0, action="order_management").get_back_button(0)
+    kb_builder = await add_pagination_buttons(kb_builder, callback_data,
+                                              OrderRepository.get_orders_ready_for_shipment_max_page(),
+                                              back_button)
+
     await callback.message.edit_text(
-        text=f"📦 Orders Ready for Shipment ({len(orders)} total):",
+        text=f"📦 Orders Ready for Shipment ({total_orders} total):",
         reply_markup=kb_builder.as_markup()
     )
 
@@ -194,9 +192,8 @@ async def mark_order_as_shipped(callback: CallbackQuery, callback_data: AdminMen
 @router.callback_query(AdminMenuCallback.filter(F.action == "users_timeouts"))
 async def search_users_by_timeout_count(callback: CallbackQuery, callback_data: AdminMenuCallback):
     """Show users with timeout counts"""
-    users = await UserRepository.get_users_by_timeout_count(1)  # Users with at least 1 timeout
-    
-    if not users:
+    total_users = await UserRepository.get_users_by_timeout_count_total(1)
+    if total_users == 0:
         kb_builder = InlineKeyboardBuilder()
         kb_builder.button(text="◀️ Back", 
                           callback_data=AdminMenuCallback.create(level=0, action="order_management"))
@@ -206,21 +203,16 @@ async def search_users_by_timeout_count(callback: CallbackQuery, callback_data: 
             reply_markup=kb_builder.as_markup()
         )
         return
-    
-    # Show users with pagination
-    page = callback_data.page or 0
-    start_idx = page * ELEMENTS_ON_PAGE
-    end_idx = start_idx + ELEMENTS_ON_PAGE
-    
-    page_users = users[start_idx:end_idx]
-    
-    message_text = f"⏰ Users with Timeouts ({len(users)} total):\n\n"
-    
-    for user in page_users:
+
+    page = callback_data.page
+    users = await UserRepository.get_users_by_timeout_count(1, page)
+
+    message_text = f"⏰ Users with Timeouts ({total_users} total):\n\n"
+    for user in users:
         user_info = f"@{user.telegram_username}" if user.telegram_username else f"ID:{user.telegram_id}"
         last_timeout = user.last_timeout_at.strftime('%Y-%m-%d %H:%M') if user.last_timeout_at else "N/A"
         message_text += f"{user_info} - {user.timeout_count} timeouts (Last: {last_timeout})\n"
-    
+
     kb_builder = InlineKeyboardBuilder()
     
     # Pagination
@@ -249,7 +241,7 @@ async def search_users_by_timeout_count(callback: CallbackQuery, callback_data: 
     kb_builder.button(text="◀️ Back", 
                       callback_data=AdminMenuCallback.create(level=0, action="order_management"))
     kb_builder.adjust(1)
-    
+ 
     await callback.message.edit_text(
         text=message_text,
         reply_markup=kb_builder.as_markup()
