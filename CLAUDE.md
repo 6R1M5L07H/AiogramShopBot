@@ -1,0 +1,2 @@
+- Never work in the directory ../AirogramShopBot
+- you must never work in ../AirogramShopBot, but always in ./ and downwards. ../AirogramShopBot is a no-go!
