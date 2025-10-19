@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## 2025-10-19
 
+### Payment Success Notifications
+- Added automatic user notification when order payment is confirmed
+- Added new localization keys: `order_payment_confirmed` (DE/EN)
+- Implemented `NotificationService.order_payment_confirmed()` method
+- Updated webhook handler in `processing.py` to send notification after successful payment
+- Enhanced logging: Added notification status to payment webhook processing
+- Notification includes: Order code, paid amount, confirmation message
+
 ### UX Improvement: Return to Category After Add to Cart
 - After adding item to cart, user is now redirected back to subcategory list
 - User can continue shopping in same category without re-navigating

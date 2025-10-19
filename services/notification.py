@@ -150,6 +150,16 @@ class NotificationService:
         await NotificationService.send_to_admins(message, user_button)
 
     @staticmethod
+    async def order_payment_confirmed(user_telegram_id: int, invoice_number: str, total_price: float):
+        """Send notification to user when order payment is confirmed"""
+        msg = Localizator.get_text(BotEntity.USER, "order_payment_confirmed").format(
+            invoice_number=invoice_number,
+            total_price=total_price,
+            currency_sym=Localizator.get_currency_symbol()
+        )
+        await NotificationService.send_to_user(msg, user_telegram_id)
+
+    @staticmethod
     async def refund(refund_data: RefundDTO):
         user_notification = Localizator.get_text(BotEntity.USER, "refund_notification").format(
             total_price=refund_data.total_price,

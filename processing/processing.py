@@ -128,7 +128,14 @@ async def _handle_order_payment(payment_dto: ProcessingPaymentDTO, invoice, sess
         await OrderService.complete_order_payment(invoice.order_id, session)
 
         logging.info(f"🎉 SUCCESS: Order {order.id} marked as PAID (Invoice: {invoice.invoice_number})")
-        # TODO: Send notification to user about successful payment
+
+        # Send notification to user about successful payment
+        await NotificationService.order_payment_confirmed(
+            user_telegram_id=order.user_id,
+            invoice_number=invoice.invoice_number,
+            total_price=order.total_price
+        )
+        logging.info(f"✉️ NOTIFICATION: Payment confirmation sent to user {order.user_id}")
 
     elif payment_dto.isPaid is True and order.status != OrderStatus.PENDING_PAYMENT:
         logging.warning(f"⚠️ DUPLICATE/LATE PAYMENT: Order {order.id} already in status {order.status.value}")

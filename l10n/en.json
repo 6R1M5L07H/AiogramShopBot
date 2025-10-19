@@ -170,6 +170,7 @@
     "cancel_order_free": "❌ Cancel Order (free)",
     "cancel_order_strike": "⚠️ Cancel Order (Strike!)",
     "order_cancelled_free": "✅ <b>Order cancelled successfully!</b>\n\nThe reserved items have been released. You can now place a new order.",
-    "order_cancelled_with_strike": "✅ <b>Order cancelled!</b>\n\n⚠️ <b>Warning:</b> Since the grace period ({grace_period} minutes) has expired, a strike has been recorded.\n\nThe reserved items have been released."
+    "order_cancelled_with_strike": "✅ <b>Order cancelled!</b>\n\n⚠️ <b>Warning:</b> Since the grace period ({grace_period} minutes) has expired, a strike has been recorded.\n\nThe reserved items have been released.",
+    "order_payment_confirmed": "✅ <b>Payment confirmed!</b>\n\n📋 <b>Order code:</b> {invoice_number}\n💰 <b>Paid:</b> {currency_sym}{total_price:.2f}\n\n🎉 Your order has been successfully paid!\n\nYour items are now being processed and are available in your purchase history.\n\nThank you for your purchase!"
   }
 }
