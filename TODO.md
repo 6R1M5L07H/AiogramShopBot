@@ -1,30 +1,5 @@
 # List of features to be implemented
 
-## Return to Category After Add to Cart
-
-### Description
-After adding an item to the cart, the user should be redirected back to the category/subcategory view they were browsing, instead of being taken back to the main bittcategory list.
-
-### User Story
-As a user, I want to continue shopping in the same category after adding an item to my cart, so that I can quickly add multiple items from the same category without having to navigate back each time.
-
-### Acceptance Criteria
-- [ ] After clicking "Add to Cart", user is returned to the subcategory list they were viewing
-- [ ] Category and page context is preserved in callback data
-- [ ] Navigation state is maintained through the add-to-cart flow
-- [ ] User can see confirmation that item was added (existing behavior)
-
-### Technical Notes
-- The callback data needs to include category_id and current page
-- Modify `CartService.add_to_cart()` to redirect to the original category view
-- Update `AllCategoriesCallback` to carry category context through the flow
-- The "Back" navigation should also respect the category context
-
-### Estimated Effort
-Medium (20-30 minutes)
-
----
-
 ## Strike System and User Ban Management
 
 ### Description
