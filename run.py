@@ -56,11 +56,15 @@ async def faq(message: types.message):
 
 @main_router.message(F.text == Localizator.get_text(BotEntity.USER, "help"), IsUserExistFilter())
 async def support(message: types.message):
-    admin_keyboard_builder = InlineKeyboardBuilder()
+    help_text = Localizator.get_text(BotEntity.USER, "help_string")
 
-    admin_keyboard_builder.button(text=Localizator.get_text(BotEntity.USER, "help_button"), url=SUPPORT_LINK)
-    await message.answer(Localizator.get_text(BotEntity.USER, "help_string"),
-                         reply_markup=admin_keyboard_builder.as_markup())
+    # Only add button if SUPPORT_LINK is configured
+    if SUPPORT_LINK:
+        admin_keyboard_builder = InlineKeyboardBuilder()
+        admin_keyboard_builder.button(text=Localizator.get_text(BotEntity.USER, "help_button"), url=SUPPORT_LINK)
+        await message.answer(help_text, reply_markup=admin_keyboard_builder.as_markup())
+    else:
+        await message.answer(help_text)
 
 
 @main_router.error(F.update.message.as_("message"))

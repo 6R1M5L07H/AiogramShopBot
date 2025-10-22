@@ -2,6 +2,73 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2025-10-23
+
+### Payment Validation & Wallet Integration System
+
+**Core Payment Processing**
+- Implemented 4-phase payment validation system: database models (Order, Invoice, PaymentTransaction), PaymentValidator service with tolerance-based validation, invoice generation with multi-language notifications (DE/EN), automatic wallet balance usage
+- Payment edge case handling: exact payments, minor overpayment (forfeits to shop), significant overpayment (wallet credit), underpayment with retry invoice (2 attempts then cancel with penalty), late payments (credited to wallet with configurable penalty), double payments (credited to wallet without penalty), currency mismatch detection
+- Penalty calculation uses Decimal with ROUND_DOWN to favor customer (prevents rounding errors like 18.91 * 5% = 0.9455 rounding to 0.95 instead of 0.94)
+
+**Wallet Integration**
+- Automatic wallet balance deduction at checkout: calculates wallet_used = min(balance, total_price)
+- Multi-source payments: wallet + crypto invoice combined in single order
+- Wallet-only orders: status=PAID immediately, items delivered without crypto invoice
+- Wallet balance refunds with configurable penalties for late/timeout cancellations
+- Wallet rollback on stock reservation failure
+
+**Order Lifecycle Management**
+- Order creation with stock reservation using SELECT FOR UPDATE (prevents race conditions)
+- Grace period cancellation: configurable duration (default 5 min), free within period, penalty + strike after
+- Automatic timeout: configurable duration (default 15 min), applies penalty on expiration
+- Order completion workflow: set status=PAID first (source of truth), mark items sold, create Buy records, commit, deliver items via Telegram DM
+- Unified completion path for all payment methods (wallet/crypto/mixed)
+
+**Stock Management**
+- Fixed availability calculation: get_available_qty() now filters order_id == None (excludes reserved items)
+- Auto-removal of out-of-stock items from cart with user notification
+- Zero-stock items hidden from catalog automatically
+
+**User Experience**
+- Return to subcategory list after adding item to cart
+- Skip crypto selection when wallet balance sufficient
+- Conditional grace period warnings (with/without fee mention based on wallet_used)
+- Display data retention period in purchase history header (from DATA_RETENTION_DAYS config)
+- Invoice numbers (2025-ABCDEF format) instead of DB IDs in all notifications
+- Crypto amount formatting: 9e-06 → 0.000009 (8 decimals, trailing zeros removed)
+
+**Technical Improvements**
+- Database: Removed unique constraint on invoice.order_id for partial payment support, added wallet_used field to Order model, fixed SQLAlchemy relationships (Order.invoices, Invoice.order)
+- Repositories: Added UserRepository.get_by_id() for order workflows
+- Order cancellation: Unified cancel_order() method with OrderCancelReason enum (USER, TIMEOUT, ADMIN)
+- Fiat calculation: Calculate from crypto using invoice exchange rate instead of trusting webhook fiatAmount
+- Import fixes: Moved format_crypto_amount and other imports to top-level to fix UnboundLocalError/NameError
+- Session commit: Added missing session_commit() after order cancellation to persist wallet refunds
+
+**Configuration**
+- Added configurable parameters: ORDER_TIMEOUT_MINUTES, ORDER_CANCEL_GRACE_PERIOD_MINUTES, PAYMENT_TOLERANCE_OVERPAYMENT_PERCENT, PAYMENT_UNDERPAYMENT_PENALTY_PERCENT, PAYMENT_LATE_PENALTY_PERCENT, DATA_RETENTION_DAYS
+- Removed unused security config variables from .env.template (rate limiting, logging, webhook security, database backup - documented in security audit TODO for future implementation)
+
+**Testing & Documentation**
+- Manual webhook simulator with HMAC-SHA512 signature verification
+- E2E test structure for payment flows
+- Testing guide with 10 payment scenarios: exact payment, minor/significant overpayment, underpayment retry, double underpayment, late payment, double payment, currency mismatch, full/partial wallet payment, order cancellation
+- Test shop data: 23 items, 2 categories, 4 subcategories
+- Security audit findings documented with implementation roadmap
+- TODO organization: Moved completed payment-validation-followup TODO to TODO/done/ folder
+
+**Breaking Changes**
+- Database migration required: Drop unique constraint on invoice.order_id column to allow multiple invoices per order (underpayment retry scenario)
+
+## 2025-10-19
+
+### UX Improvement: Return to Category After Add to Cart
+- After adding item to cart, user is now redirected back to subcategory list
+- User can continue shopping in same category without re-navigating
+- Added toast notification (`callback.answer()`) instead of full message edit
+- Preserves shopping context and improves multi-item cart building flow
+
 ## 2025-10-18
 
 ### Code Quality: DTO Naming Refactoring
