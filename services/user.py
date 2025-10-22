@@ -3,6 +3,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
+import config
 from callbacks import MyProfileCallback
 from db import session_commit
 from enums.bot_entity import BotEntity
@@ -47,11 +48,11 @@ class UserService:
                           callback_data=MyProfileCallback.create(4, "purchase_history"))
         user = await UserRepository.get_by_tgid(telegram_id, session)
 
-        # Invoice-based system: no balance, only order history
-        # TODO: Show total spent from OrderRepository.get_total_spent_by_currency()
+        # Show wallet balance (top_up_amount = overpayments + penalties credited)
+        # Format balance to 2 decimal places
         message = (Localizator.get_text(BotEntity.USER, "my_profile_msg")
                    .format(telegram_id=user.telegram_id,
-                           fiat_balance=0.0,  # No wallet balance anymore
+                           fiat_balance=f"{user.top_up_amount:.2f}",
                            currency_text=Localizator.get_currency_text(),
                            currency_sym=Localizator.get_currency_symbol()))
         return message, kb_builder
@@ -106,6 +107,8 @@ class UserService:
                                                   BuyRepository.get_max_page_purchase_history(user.id, session),
                                                   unpacked_cb.get_back_button(0))
         if len(kb_builder.as_markup().inline_keyboard) > 1:
-            return Localizator.get_text(BotEntity.USER, "purchases"), kb_builder
+            return Localizator.get_text(BotEntity.USER, "purchases").format(
+                retention_days=config.DATA_RETENTION_DAYS
+            ), kb_builder
         else:
             return Localizator.get_text(BotEntity.USER, "no_purchases"), kb_builder

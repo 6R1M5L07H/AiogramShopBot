@@ -126,10 +126,11 @@
     "no_categories": "⚠️ Keine Angebote",
     "no_purchases": "⚠️ Sie haben noch keine Käufe getätigt",
     "out_of_stock": "\u26A0\uFE0F<b>Folgende Artikel sind ausverkauft oder nicht mehr in ausreichender Menge verfügbar:</b>\n\n",
+    "out_of_stock_removed": "⚠️ <b>Artikel aus dem Warenkorb entfernt</b>\n\nFolgende Artikel sind nicht mehr verfügbar und wurden automatisch aus Ihrem Warenkorb entfernt:\n\n",
     "purchased_item": "📦 Artikel#{count}\nDaten:<code>{private_data}</code>\n",
     "purchase_history_button": "🧾 Kaufhistorie  ",
     "purchase_history_item": "📦 {subcategory_name} | Gesamtpreis: {total_price:.2f}{currency_sym} | Menge: {quantity} Stk.",
-    "purchases": "🧾 <b>Ihre Käufe:</b>",
+    "purchases": "🧾 <b>Ihre Käufe (letzte {retention_days} Tage):</b>",
     "refresh_balance_button": "🔄 Guthaben aktualisieren",
     "refund_notification": "↩️ Sie haben eine Rückerstattung in Höhe von {currency_sym}{total_price} für den Kauf von {quantity} Stück {subcategory} erhalten",
     "select_quantity": "🛒 <b>Kategorie: {category_name}\nUnterkategorie: {subcategory_name}\nPreis: {currency_sym}{price:.2f}\nBeschreibung: {description}\nVerfügbare Menge: {quantity}</b>",
@@ -152,7 +153,14 @@
     "order_expired": "❌ <b>Bestellung abgelaufen!</b>\n\n📋 <b>Bestellcode:</b> {invoice_number}\n💰 <b>Gesamtpreis:</b> {currency_sym}{total_price:.2f}\n\n💳 <b>Zahlungsdetails:</b>\n\n🪙 <b>Zu zahlender Betrag:</b>\n<code>{crypto_amount}</code> {crypto_currency}\n\n📬 <b>Zahlungsadresse:</b>\n<code>{payment_address}</code>\n\n⏰ <b>Abgelaufen um:</b> {expires_at} Uhr\n\n<i>Diese Bestellung ist abgelaufen. Die reservierten Artikel wurden wieder freigegeben. Sie können eine neue Bestellung aufgeben.</i>",
     "cancel_order_free": "❌ Bestellung stornieren (kostenlos)",
     "cancel_order_strike": "⚠️ Bestellung stornieren (Strike!)",
+    "grace_period_expired_warning_with_fee": "⚠️ <b>Hinweis:</b> Die kostenlose Stornierungsfrist ({grace_period} Minuten) ist abgelaufen. Eine Stornierung ist weiterhin möglich, führt jedoch zu einer Verwarnung (Strike) in Ihrem Konto und einer Bearbeitungsgebühr. Weitere Informationen finden Sie in unseren FAQ/AGB.",
+    "grace_period_expired_warning_no_fee": "⚠️ <b>Hinweis:</b> Die kostenlose Stornierungsfrist ({grace_period} Minuten) ist abgelaufen. Eine Stornierung ist weiterhin möglich, führt jedoch zu einer Verwarnung (Strike) in Ihrem Konto. Weitere Informationen finden Sie in unseren FAQ/AGB.",
     "order_cancelled_free": "✅ <b>Bestellung erfolgreich storniert!</b>\n\nDie reservierten Artikel wurden wieder freigegeben. Sie können jetzt eine neue Bestellung aufgeben.",
-    "order_cancelled_with_strike": "✅ <b>Bestellung storniert!</b>\n\n⚠️ <b>Achtung:</b> Da die Grace Period ({grace_period} Minuten) abgelaufen war, wurde ein Strike vermerkt.\n\nDie reservierten Artikel wurden wieder freigegeben."
+    "order_cancelled_with_strike": "✅ <b>Bestellung storniert!</b>\n\n⚠️ <b>Achtung:</b> Da die Grace Period ({grace_period} Minuten) abgelaufen war, wurde ein Strike vermerkt.\n\nDie reservierten Artikel wurden wieder freigegeben.",
+    "payment_underpayment_retry": "⚠️ <b>Teilzahlung erhalten</b>\n\nOrder-ID: {invoice_number}\nBezahlt: {paid_crypto} {crypto_currency}\nErforderlich: {required_crypto} {crypto_currency}\nFehlend: {remaining_crypto} {crypto_currency}\n\n📋 <b>Neue Rechnung für Restbetrag:</b>\nRechnungsnummer: {new_invoice_number}\nAdresse: <code>{new_payment_address}</code>\nBetrag: {remaining_crypto} {crypto_currency}\n\n⏰ Neue Frist: {new_expires_at}\n\nBitte zahle den Restbetrag innerhalb der Frist, sonst wird die Bestellung mit 5% Gebühr storniert.",
+    "payment_cancelled_underpayment": "❌ <b>Bestellung storniert (2. Unterzahlung)</b>\n\nOrder-ID: {invoice_number}\nBezahlt gesamt: {total_paid_fiat} {currency_sym}\nStrafgebühr (5%): {penalty_amount} {currency_sym}\nGuthaben gutgeschrieben: {net_wallet_credit} {currency_sym}\n\nDie Bestellung wurde storniert, da der vollständige Betrag nach 2 Versuchen nicht eingegangen ist. Das Guthaben steht dir für zukünftige Bestellungen zur Verfügung.",
+    "payment_late": "⏰ <b>Verspätete Zahlung</b>\n\nOrder-ID: {invoice_number}\nBezahlt: {paid_fiat} {currency_sym}\nStrafgebühr (5%): {penalty_amount} {currency_sym}\nGuthaben gutgeschrieben: {net_wallet_credit} {currency_sym}\n\nDie Zahlung ist nach Ablauf der Frist eingegangen. Die Bestellung wurde storniert. Das Guthaben steht dir für zukünftige Bestellungen zur Verfügung.",
+    "payment_overpayment_wallet_credit": "✅ <b>Bestellung bezahlt</b>\n\nOrder-ID: {invoice_number}\n\n💰 Du hast {overpayment_amount} {currency_sym} zu viel bezahlt.\nDer Überschuss wurde deinem Wallet gutgeschrieben.\n\nDein Guthaben steht dir für zukünftige Bestellungen zur Verfügung.",
+    "payment_success": "✅ <b>Zahlung erfolgreich</b>\n\nOrder-ID: {invoice_number}\n\nDeine Bestellung wurde erfolgreich bezahlt und wird nun bearbeitet."
   }
 }

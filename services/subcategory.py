@@ -25,6 +25,11 @@ class SubcategoryService:
             item = await ItemRepository.get_single(unpacked_cb.category_id, subcategory.id, session)
             available_qty = await ItemRepository.get_available_qty(ItemDTO(category_id=unpacked_cb.category_id,
                                                                            subcategory_id=subcategory.id), session)
+
+            # Skip subcategories with zero stock (sold out or all reserved)
+            if available_qty == 0:
+                continue
+
             kb_builder.button(text=Localizator.get_text(BotEntity.USER, "subcategory_button").format(
                 subcategory_name=subcategory.name,
                 subcategory_price=item.price,

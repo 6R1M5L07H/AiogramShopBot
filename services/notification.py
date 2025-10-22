@@ -162,3 +162,175 @@ class NotificationService:
             await bot.session.close()
         except Exception as _:
             pass
+
+    @staticmethod
+    async def payment_underpayment_retry(
+        user: UserDTO,
+        invoice_number: str,
+        paid_crypto: float,
+        required_crypto: float,
+        remaining_crypto: float,
+        crypto_currency,
+        new_invoice_number: str,
+        new_payment_address: str,
+        new_expires_at
+    ):
+        """
+        Notifies user about underpayment and provides new invoice for remaining amount.
+
+        Called after first underpayment - gives user 30 more minutes to pay remaining amount.
+        """
+        msg = Localizator.get_text(BotEntity.USER, "payment_underpayment_retry").format(
+            invoice_number=invoice_number,
+            paid_crypto=paid_crypto,
+            crypto_currency=crypto_currency.value,
+            required_crypto=required_crypto,
+            remaining_crypto=remaining_crypto,
+            new_invoice_number=new_invoice_number,
+            new_payment_address=new_payment_address,
+            new_expires_at=new_expires_at.strftime('%d.%m.%Y %H:%M')
+        )
+
+        await NotificationService.send_to_user(msg, user.telegram_id)
+
+    @staticmethod
+    async def payment_cancelled_underpayment(
+        user: UserDTO,
+        invoice_number: str,
+        total_paid_fiat: float,
+        penalty_amount: float,
+        net_wallet_credit: float,
+        currency_sym: str
+    ):
+        """
+        Notifies user about order cancellation due to second underpayment.
+
+        Informs about 5% penalty and wallet credit.
+        """
+        msg = Localizator.get_text(BotEntity.USER, "payment_cancelled_underpayment").format(
+            invoice_number=invoice_number,
+            total_paid_fiat=f"{total_paid_fiat:.2f}",
+            penalty_amount=f"{penalty_amount:.2f}",
+            net_wallet_credit=f"{net_wallet_credit:.2f}",
+            currency_sym=currency_sym
+        )
+
+        await NotificationService.send_to_user(msg, user.telegram_id)
+
+    @staticmethod
+    async def payment_late(
+        user: UserDTO,
+        invoice_number: str,
+        paid_fiat: float,
+        penalty_amount: float,
+        net_wallet_credit: float,
+        currency_sym: str
+    ):
+        """
+        Notifies user about late payment.
+
+        Payment received after deadline - 5% penalty applied, wallet credited.
+        """
+        msg = Localizator.get_text(BotEntity.USER, "payment_late").format(
+            invoice_number=invoice_number,
+            paid_fiat=f"{paid_fiat:.2f}",
+            penalty_amount=f"{penalty_amount:.2f}",
+            net_wallet_credit=f"{net_wallet_credit:.2f}",
+            currency_sym=currency_sym
+        )
+
+        await NotificationService.send_to_user(msg, user.telegram_id)
+
+    @staticmethod
+    async def payment_overpayment_wallet_credit(
+        user: UserDTO,
+        invoice_number: str,
+        overpayment_amount: float,
+        currency_sym: str
+    ):
+        """
+        Notifies user about overpayment credited to wallet.
+
+        Significant overpayment (>0.1%) - excess credited to wallet.
+        """
+        msg = Localizator.get_text(BotEntity.USER, "payment_overpayment_wallet_credit").format(
+            invoice_number=invoice_number,
+            overpayment_amount=f"{overpayment_amount:.2f}",
+            currency_sym=currency_sym
+        )
+
+        await NotificationService.send_to_user(msg, user.telegram_id)
+
+    @staticmethod
+    async def payment_success(
+        user: UserDTO,
+        invoice_number: str
+    ):
+        """
+        Notifies user about successful payment (exact or minor overpayment).
+        """
+        msg = Localizator.get_text(BotEntity.USER, "payment_success").format(
+            invoice_number=invoice_number
+        )
+
+        await NotificationService.send_to_user(msg, user.telegram_id)
+
+    @staticmethod
+    async def notify_double_payment(
+        user: UserDTO,
+        amount: float,
+        invoice_number: str
+    ):
+        """
+        Notifies user about double payment (payment for already completed order).
+        Entire amount credited to wallet.
+        """
+        msg = (
+            f"⚠️ <b>Double Payment Detected</b>\n\n"
+            f"We received a duplicate payment for order-id {invoice_number}.\n\n"
+            f"💰 <b>Amount credited to wallet:</b> {amount:.2f} {Localizator.get_currency_symbol()}\n\n"
+            f"Your order was already completed. The payment has been fully credited to your wallet balance."
+        )
+
+        await NotificationService.send_to_user(msg, user.telegram_id)
+
+    @staticmethod
+    async def notify_order_cancelled_wallet_refund(
+        user: UserDTO,
+        invoice_number: str,
+        refund_info: dict,
+        currency_sym: str
+    ):
+        """
+        Notifies user about order cancellation and wallet refund.
+        Shows processing fee if applicable.
+        """
+        original_amount = refund_info['original_amount']
+        penalty_amount = refund_info['penalty_amount']
+        refund_amount = refund_info['refund_amount']
+        penalty_percent = refund_info['penalty_percent']
+
+        if penalty_amount > 0:
+            # Cancellation with processing fee and strike
+            reason = refund_info.get('reason', 'UNKNOWN')
+            msg = (
+                f"❌ <b>Order Cancelled</b>\n\n"
+                f"Order-id {invoice_number} has been cancelled.\n\n"
+                f"⚠️ <b>Strike issued</b> - This cancellation resulted in a strike on your account.\n\n"
+                f"💰 <b>Wallet Refund Details:</b>\n"
+                f"• Original amount used: {original_amount:.2f} {currency_sym}\n"
+                f"• Processing fee ({penalty_percent}%): -{penalty_amount:.2f} {currency_sym}\n"
+                f"• <b>Refunded to wallet: {refund_amount:.2f} {currency_sym}</b>\n\n"
+                f"ℹ️ A processing fee and strike apply when orders are cancelled/timeout after the grace period.\n"
+                f"See our Terms & Conditions for more details."
+            )
+        else:
+            # Full refund (no fee)
+            msg = (
+                f"🔔 <b>Order Cancelled</b>\n\n"
+                f"Order-id {invoice_number} has been cancelled.\n\n"
+                f"💰 <b>Full wallet refund:</b> {refund_amount:.2f} {currency_sym}\n\n"
+                f"Your wallet balance has been fully restored."
+            )
+
+        await NotificationService.send_to_user(msg, user.telegram_id)

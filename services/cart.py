@@ -27,6 +27,23 @@ from services.order import OrderService
 from utils.localizator import Localizator
 
 
+def format_crypto_amount(amount: float) -> str:
+    """
+    Formats crypto amount to avoid scientific notation.
+
+    Examples:
+        9e-06 BTC → 0.000009 BTC
+        0.00042156 BTC → 0.00042156 BTC
+        1.5 BTC → 1.5 BTC
+    """
+    # Format with enough decimal places for smallest crypto units
+    # BTC has 8 decimals (satoshi), so we use 8 decimal places
+    formatted = f"{amount:.8f}"
+    # Remove trailing zeros after decimal point
+    formatted = formatted.rstrip('0').rstrip('.')
+    return formatted
+
+
 class CartService:
 
     @staticmethod
@@ -101,29 +118,74 @@ class CartService:
         # Format expiry time (HH:MM format)
         expires_at_time = order.expires_at.strftime("%H:%M")
 
-        # Choose appropriate message based on expiry status
+        # Check if order is expired
         if is_expired:
-            localization_key = "order_expired"
-        else:
-            localization_key = "order_pending"
+            # Cancel the expired order
+            from enums.order_cancel_reason import OrderCancelReason
+            import logging
+
+            try:
+                await OrderService.cancel_order(
+                    order_id=order.id,
+                    reason=OrderCancelReason.TIMEOUT,
+                    session=session,
+                    refund_wallet=True
+                )
+                await session_commit(session)
+                logging.info(f"Auto-cancelled expired order {order.id} for user")
+            except Exception as e:
+                logging.warning(f"Could not auto-cancel expired order {order.id}: {e}")
+
+            # Return empty cart message instead of expired order details
+            kb_builder = InlineKeyboardBuilder()
+            message_text = Localizator.get_text(BotEntity.USER, "order_expired").format(
+                invoice_number=invoice.invoice_number,
+                total_price=order.total_price,
+                currency_sym=Localizator.get_currency_symbol(),
+                crypto_amount=format_crypto_amount(invoice.payment_amount_crypto),
+                crypto_currency=invoice.payment_crypto_currency.value,
+                payment_address=invoice.payment_address,
+                expires_at=expires_at_time,
+                expires_minutes=0
+            )
+            message_text += f"\n\n{Localizator.get_text(BotEntity.USER, 'no_cart_items')}"
+            return message_text, kb_builder
+
+        # Order is still active - show payment details
+        localization_key = "order_pending"
 
         # Create message with payment details
         message_text = Localizator.get_text(BotEntity.USER, localization_key).format(
             invoice_number=invoice.invoice_number,
             total_price=order.total_price,
             currency_sym=Localizator.get_currency_symbol(),
-            crypto_amount=invoice.payment_amount_crypto,
+            crypto_amount=format_crypto_amount(invoice.payment_amount_crypto),
             crypto_currency=invoice.payment_crypto_currency.value,
             payment_address=invoice.payment_address,
             expires_at=expires_at_time,
             expires_minutes=int(time_remaining) if time_remaining > 0 else 0
         )
 
+        # Add grace period warning if expired
+        if not can_cancel_free:
+            # Choose warning based on whether wallet was used (processing fee only applies if wallet was used)
+            if order.wallet_used > 0:
+                # Wallet was used -> Strike + Processing Fee
+                grace_period_warning = Localizator.get_text(BotEntity.USER, "grace_period_expired_warning_with_fee").format(
+                    grace_period=config.ORDER_CANCEL_GRACE_PERIOD_MINUTES
+                )
+            else:
+                # No wallet used -> Strike only (no fee since nothing to refund)
+                grace_period_warning = Localizator.get_text(BotEntity.USER, "grace_period_expired_warning_no_fee").format(
+                    grace_period=config.ORDER_CANCEL_GRACE_PERIOD_MINUTES
+                )
+            message_text += f"\n\n{grace_period_warning}"
+
         # Buttons
         kb_builder = InlineKeyboardBuilder()
 
-        # Only show cancel button if not expired
-        if not is_expired:
+        # Show cancel button
+        if True:
             # Cancel button with warning if grace period expired
             if can_cancel_free:
                 cancel_text = Localizator.get_text(BotEntity.USER, "cancel_order_free")
@@ -253,6 +315,7 @@ class CartService:
     ) -> tuple[str, InlineKeyboardBuilder]:
         """
         Shows crypto selection after checkout confirmation.
+        If wallet balance is sufficient, directly creates order and shows success message.
         Uses existing localization keys from wallet (btc_top_up, etc.)
         """
         user = await UserRepository.get_by_tgid(callback.from_user.id, session)
@@ -267,22 +330,64 @@ class CartService:
 
         # Check: Stock available?
         out_of_stock = []
+        cart_total = 0.0
         for cart_item in cart_items:
             item_dto = ItemDTO(category_id=cart_item.category_id, subcategory_id=cart_item.subcategory_id)
             available = await ItemRepository.get_available_qty(item_dto, session)
             if available < cart_item.quantity:
                 out_of_stock.append(cart_item)
+            # Calculate total price
+            price = await ItemRepository.get_price(item_dto, session)
+            cart_total += price * cart_item.quantity
 
         if out_of_stock:
+            # Remove out of stock items from cart
+            for item in out_of_stock:
+                await CartItemRepository.remove_from_cart(item.id, session)
+            await session_commit(session)
+
+            # Build message with removed items
             kb_builder = InlineKeyboardBuilder()
             kb_builder.row(CartCallback.create(0).get_back_button(0))
-            msg = Localizator.get_text(BotEntity.USER, "out_of_stock")
+            msg = Localizator.get_text(BotEntity.USER, "out_of_stock_removed")
             for item in out_of_stock:
                 subcategory = await SubcategoryRepository.get_by_id(item.subcategory_id, session)
-                msg += subcategory.name + "\n"
+                msg += f"- {subcategory.name}\n"
             return msg, kb_builder
 
-        # Show crypto buttons
+        # Check if wallet balance is sufficient to cover entire order
+        wallet_balance = user.top_up_amount
+        if wallet_balance >= cart_total:
+            # Wallet is sufficient → Create order directly without crypto selection
+            # Use dummy crypto currency (won't be used since no invoice is created)
+            order = await OrderService.create_order_from_cart(
+                user_id=user.id,
+                cart_items=cart_items,
+                crypto_currency=Cryptocurrency.BTC,  # Dummy value (not used when wallet covers all)
+                session=session
+            )
+
+            # Clear cart
+            for cart_item in cart_items:
+                await CartItemRepository.remove_from_cart(cart_item.id, session)
+
+            await session_commit(session)
+
+            # Show success message
+            kb_builder = InlineKeyboardBuilder()
+            message_text = (
+                f"✅ <b>Order Paid Successfully (Wallet)</b>\n\n"
+                f"💰 <b>Total price:</b> {order.total_price:.2f} {Localizator.get_currency_symbol()}\n"
+                f"💳 <b>Paid from wallet:</b> {order.wallet_used:.2f} {Localizator.get_currency_symbol()}\n\n"
+                f"Your order is being processed!"
+            )
+
+            # Send notification to admin about new purchase
+            await NotificationService.new_buy(cart_items, user, session)
+
+            return message_text, kb_builder
+
+        # Wallet insufficient → Show crypto buttons
         message_text = Localizator.get_text(BotEntity.USER, "choose_payment_crypto")
         kb_builder = InlineKeyboardBuilder()
 
@@ -332,12 +437,13 @@ class CartService:
     ) -> tuple[str, InlineKeyboardBuilder]:
         """
         Creates order + invoice after crypto selection.
+        Automatically uses wallet balance.
 
         Flow:
         1. Get cart items
-        2. Create order (incl. item reservation + invoice via KryptoExpress)
+        2. Create order (incl. wallet usage + item reservation + invoice)
         3. Clear cart
-        4. Show payment instructions
+        4. Show payment instructions (or success if fully paid by wallet)
         """
         unpacked_cb = CartCallback.unpack(callback.data)
         crypto_currency = unpacked_cb.cryptocurrency
@@ -355,7 +461,7 @@ class CartService:
         kb_builder = InlineKeyboardBuilder()
 
         try:
-            # Create order (incl. reservation + invoice)
+            # Create order (incl. wallet usage, reservation + invoice)
             order = await OrderService.create_order_from_cart(
                 user_id=user.id,
                 cart_items=cart_items,
@@ -369,9 +475,26 @@ class CartService:
 
             await session_commit(session)
 
-            # Get invoice details for payment instructions
+            # Check if order was fully paid by wallet
+            from enums.order_status import OrderStatus
             from repositories.invoice import InvoiceRepository
             from datetime import datetime
+
+            if order.status == OrderStatus.PAID:
+                # Fully paid by wallet - show success message
+                message_text = (
+                    f"✅ <b>Order Paid Successfully (Wallet)</b>\n\n"
+                    f"💰 <b>Total price:</b> {order.total_price:.2f} {Localizator.get_currency_symbol()}\n"
+                    f"💳 <b>Paid from wallet:</b> {order.wallet_used:.2f} {Localizator.get_currency_symbol()}\n\n"
+                    f"Your order is being processed!"
+                )
+
+                # Send notification to admin about new purchase
+                await NotificationService.new_buy(cart_items, user, session)
+
+                return message_text, kb_builder
+
+            # Partial wallet payment or no wallet → show invoice
             invoice = await InvoiceRepository.get_by_order_id(order.id, session)
 
             # Calculate remaining time for cancel button logic
@@ -381,16 +504,28 @@ class CartService:
             # Format expiry time (HH:MM format)
             expires_at_time = order.expires_at.strftime("%H:%M")
 
+            # Build message with wallet usage info (if any)
+            if order.wallet_used > 0:
+                wallet_info = (
+                    f"\n💳 <b>Wallet balance used:</b> {order.wallet_used:.2f} {Localizator.get_currency_symbol()}\n"
+                    f"💰 <b>Remaining to pay:</b> {invoice.fiat_amount:.2f} {Localizator.get_currency_symbol()}\n"
+                )
+            else:
+                wallet_info = ""
+
             # Success message with payment instructions
-            message_text = Localizator.get_text(BotEntity.USER, "order_created_success").format(
-                invoice_number=invoice.invoice_number,
-                total_price=order.total_price,
-                currency_sym=Localizator.get_currency_symbol(),
-                crypto_amount=invoice.payment_amount_crypto,
-                crypto_currency=invoice.payment_crypto_currency.value,
-                payment_address=invoice.payment_address,
-                expires_at=expires_at_time,
-                expires_minutes=config.ORDER_TIMEOUT_MINUTES
+            message_text = (
+                f"✅ <b>Order created successfully!</b>\n\n"
+                f"📋 <b>Order ID:</b> <code>{invoice.invoice_number}</code>\n"
+                f"💰 <b>Total price:</b> {order.total_price:.2f} {Localizator.get_currency_symbol()}"
+                f"{wallet_info}\n"
+                f"💳 <b>Payment details:</b>\n\n"
+                f"🪙 <b>Amount to pay:</b>\n"
+                f"<code>{format_crypto_amount(invoice.payment_amount_crypto)}</code> {invoice.payment_crypto_currency.value}\n\n"
+                f"📬 <b>Payment address:</b>\n"
+                f"<code>{invoice.payment_address}</code>\n\n"
+                f"⏰ <b>Expires at:</b> {expires_at_time} ({config.ORDER_TIMEOUT_MINUTES} minutes)\n\n"
+                f"<i>Please send the exact amount to the provided address. The order will be completed automatically after payment confirmation.</i>"
             )
 
             # Add cancel button with appropriate text
@@ -437,6 +572,9 @@ class CartService:
                 order_id=order_id,
                 session=session
             )
+
+            # Commit changes (wallet refund, order status update, item release)
+            await session_commit(session)
 
             # Display appropriate message
             if within_grace_period:

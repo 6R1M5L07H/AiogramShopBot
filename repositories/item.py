@@ -25,17 +25,23 @@ class ItemRepository:
         sub_stmt = (select(Item)
                     .where(Item.category_id == item_dto.category_id,
                            Item.subcategory_id == item_dto.subcategory_id,
-                           Item.is_sold == False))
+                           Item.is_sold == False,
+                           Item.order_id == None))  # Only count unreserved items
         stmt = select(func.count()).select_from(sub_stmt)
         available_qty = await session_execute(stmt, session)
         return available_qty.scalar()
 
     @staticmethod
     async def get_single(category_id: int, subcategory_id: int, session: Session | AsyncSession):
+        """
+        Get a single item for display purposes (price, description).
+        Includes reserved items since we just need metadata, not actual purchase.
+        For availability check, use get_available_qty().
+        """
         stmt = (select(Item)
                 .where(Item.category_id == category_id,
                        Item.subcategory_id == subcategory_id,
-                       Item.is_sold == False)
+                       Item.is_sold == False)  # Include reserved items
                 .limit(1))
         item = await session_execute(stmt, session)
         return ItemDTO.model_validate(item.scalar(), from_attributes=True)
@@ -50,7 +56,9 @@ class ItemRepository:
     async def get_purchased_items(category_id: int, subcategory_id: int, quantity: int, session: Session | AsyncSession) -> list[ItemDTO]:
         stmt = (select(Item)
                 .where(Item.category_id == category_id, Item.subcategory_id == subcategory_id,
-                       Item.is_sold == False).limit(quantity))
+                       Item.is_sold == False,
+                       Item.order_id == None)  # Only get unreserved items
+                .limit(quantity))
         items = await session_execute(stmt, session)
         return [ItemDTO.model_validate(item, from_attributes=True) for item in items.scalars().all()]
 
