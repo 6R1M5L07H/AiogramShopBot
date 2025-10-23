@@ -24,6 +24,11 @@ class Item(Base):
     is_new = Column(Boolean, nullable=False, default=True)
     description = Column(String, nullable=False)
 
+    # Shipping fields
+    is_physical = Column(Boolean, nullable=False, default=True)
+    shipping_cost = Column(Float, nullable=False, default=0.0)
+    packstation_allowed = Column(Boolean, nullable=False, default=True)
+
     # Order-Zuordnung (Reservierung + Verkauf)
     order_id = Column(Integer, ForeignKey('orders.id'), nullable=True)
     reserved_at = Column(DateTime, nullable=True)
@@ -42,5 +47,8 @@ class ItemDTO(BaseModel):
     is_sold: bool | None = None
     is_new: bool | None = None
     description: str | None = None
+    is_physical: bool | None = True
+    shipping_cost: float | None = 0.0
+    packstation_allowed: bool | None = True
     order_id: int | None = None
     reserved_at: datetime | None = None

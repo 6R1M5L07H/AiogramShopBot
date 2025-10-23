@@ -34,6 +34,25 @@ class ItemService:
                 subcategory = await SubcategoryRepository.get_or_create(item['subcategory'], session)
                 item.pop('category')
                 item.pop('subcategory')
+
+                # Validate shipping fields for physical items
+                is_physical = item.get('is_physical', True)  # Default: physical
+
+                if not is_physical:
+                    # Digital item: Set shipping fields to defaults
+                    item['shipping_cost'] = 0.0
+                    item['packstation_allowed'] = True  # Irrelevant for digital
+                else:
+                    # Physical item: Require shipping fields
+                    if 'shipping_cost' not in item:
+                        raise ValueError(
+                            f"Physical item '{item.get('description', 'unknown')}' missing required field 'shipping_cost'"
+                        )
+                    if 'packstation_allowed' not in item:
+                        raise ValueError(
+                            f"Physical item '{item.get('description', 'unknown')}' missing required field 'packstation_allowed'"
+                        )
+
                 items_list.append(ItemDTO(
                     category_id=category.id,
                     subcategory_id=subcategory.id,

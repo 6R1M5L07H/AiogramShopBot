@@ -16,6 +16,7 @@ class Order(Base):
     user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
     status = Column(SQLEnum(OrderStatus), nullable=False, default=OrderStatus.PENDING_PAYMENT)
     total_price = Column(Float, nullable=False)
+    shipping_cost = Column(Float, nullable=False, default=0.0)
     currency = Column(SQLEnum(Currency), nullable=False)
     created_at = Column(DateTime, default=func.now())
     expires_at = Column(DateTime, nullable=False)
@@ -26,6 +27,7 @@ class Order(Base):
     user = relationship('User', backref='orders')
     items = relationship('Item', backref='order')
     invoice = relationship('Invoice', back_populates='order', uselist=False, cascade='all, delete-orphan')
+    shipping_address = relationship('ShippingAddress', back_populates='order', uselist=False, cascade='all, delete-orphan')
 
     __table_args__ = (
         CheckConstraint('total_price > 0', name='check_order_total_price_positive'),
@@ -37,6 +39,7 @@ class OrderDTO(BaseModel):
     user_id: int | None = None
     status: OrderStatus | None = None
     total_price: float | None = None
+    shipping_cost: float | None = 0.0
     currency: Currency | None = None
     created_at: datetime | None = None
     expires_at: datetime | None = None
