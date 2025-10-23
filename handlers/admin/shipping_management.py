@@ -83,10 +83,16 @@ async def show_order_details(**kwargs):
     message_text = Localizator.get_text(BotEntity.ADMIN, "order_details_header").format(order_id=order_id) + "\n\n"
     message_text += Localizator.get_text(BotEntity.ADMIN, "order_user").format(
         username=username, user_id=user.telegram_id
-    ) + "\n"
-    message_text += Localizator.get_text(BotEntity.ADMIN, "order_total").format(
-        total_price=order.total_price, currency_sym=Localizator.get_currency_symbol()
     ) + "\n\n"
+
+    # Calculate items total
+    items_total = sum(item.price for item in order.items)
+
+    # Show price breakdown
+    message_text += f"<b>Artikel:</b> {items_total:.2f}{Localizator.get_currency_symbol()}\n"
+    if order.shipping_cost > 0:
+        message_text += f"<b>Versand:</b> {order.shipping_cost:.2f}{Localizator.get_currency_symbol()}\n"
+    message_text += f"<b><u>Gesamtsumme:</u></b> {order.total_price:.2f}{Localizator.get_currency_symbol()}\n\n"
 
     # Shipping address
     if shipping_address:
