@@ -142,7 +142,7 @@
     "purchased_item": "📦 Artikel#{count}\nDaten:<code>{private_data}</code>\n",
     "purchase_history_button": "🧾 Kaufhistorie  ",
     "purchase_history_item": "📦 {subcategory_name} | Gesamtpreis: {total_price:.2f}{currency_sym} | Menge: {quantity} Stk.",
-    "purchase_history_order_item": "📦 #{invoice_number} | {subcategory_name} +{item_count} | {total_price:.2f}{currency_sym}",
+    "purchase_history_order_item": "#{invoice_number} | {subcategory_name} +{item_count}",
     "purchase_history_order_item_shipped": "📦 #{invoice_number} | {subcategory_name} +{item_count} | {total_price:.2f}{currency_sym} | 🚚 {shipped_date}",
     "order_details_header": "📋 <b>Bestelldetails #{invoice_number}</b>",
     "purchases": "🧾 <b>Ihre Käufe:</b>",

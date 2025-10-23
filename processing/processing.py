@@ -122,7 +122,22 @@ async def _handle_order_payment(payment_dto: ProcessingPaymentDTO, invoice, sess
 
     # Only process if payment is confirmed and order is still pending
     if payment_dto.isPaid is True and order.status == OrderStatus.PENDING_PAYMENT:
-        logging.info(f"✅ PAYMENT CONFIRMED: Completing order {order.id}")
+        # Check for underpayment by comparing crypto amounts (not fiat!)
+        if payment_dto.cryptoAmount < invoice.payment_amount_crypto:
+            logging.warning(f"⚠️ UNDERPAYMENT: Order {order.id} requires {invoice.payment_amount_crypto} {invoice.payment_crypto_currency.value}, but received {payment_dto.cryptoAmount} {payment_dto.cryptoCurrency.value}")
+
+            # Credit the fiat equivalent to user's wallet
+            user = await UserRepository.get_by_id(order.user_id, session)
+            user.top_up_amount += payment_dto.fiatAmount
+            await UserRepository.update(user, session)
+            await session_commit(session)
+
+            # Notify user about underpayment and wallet credit
+            await NotificationService.late_payment_wallet_topup(order.user_id, payment_dto.fiatAmount, payment_dto.fiatCurrency, invoice.invoice_number, session)
+            logging.info(f"💰 UNDERPAYMENT: Credited {payment_dto.fiatAmount} {payment_dto.fiatCurrency} (from {payment_dto.cryptoAmount} {payment_dto.cryptoCurrency.value}) to user {order.user_id} wallet. Order remains PENDING.")
+            return
+
+        logging.info(f"✅ PAYMENT CONFIRMED: Completing order {order.id} (Received: {payment_dto.cryptoAmount} {payment_dto.cryptoCurrency.value}, Required: {invoice.payment_amount_crypto} {invoice.payment_crypto_currency.value})")
 
         # Complete order payment (marks items as sold, updates order status to PAID or PAID_AWAITING_SHIPMENT)
         await OrderService.complete_order_payment(invoice.order_id, session)

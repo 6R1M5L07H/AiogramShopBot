@@ -106,13 +106,11 @@ class UserService:
                 subcategory = await SubcategoryRepository.get_by_id(first_item.subcategory_id, session)
                 item_count = len(items)
 
-                # Always use the standard button format (no shipped date in button)
+                # Always use the standard button format (compact, no price to avoid truncation)
                 button_text = Localizator.get_text(BotEntity.USER, "purchase_history_order_item").format(
                     invoice_number=invoice.invoice_number,
                     subcategory_name=subcategory.name,
-                    item_count=item_count,
-                    total_price=order.total_price,
-                    currency_sym=Localizator.get_currency_symbol()
+                    item_count=item_count
                 )
 
                 kb_builder.button(text=button_text,
