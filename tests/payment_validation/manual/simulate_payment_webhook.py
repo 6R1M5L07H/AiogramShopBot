@@ -258,7 +258,7 @@ Examples:
     # If invoice-number provided, lookup payment-id from database
     if args.invoice_number and not args.payment_id:
         import sqlite3
-        db_path = os.path.join(os.path.dirname(__file__), '../../data/database.db')
+        db_path = os.path.join(os.path.dirname(__file__), '../../../data/database.db')
         if not os.path.exists(db_path):
             print(f"ERROR: Database not found at {db_path}")
             sys.exit(1)
