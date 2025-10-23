@@ -104,14 +104,22 @@ class UserService:
             if items:
                 first_item = items[0]
                 subcategory = await SubcategoryRepository.get_by_id(first_item.subcategory_id, session)
-                item_count = len(items)
+                total_items = len(items)
 
-                # Always use the standard button format (compact, no price to avoid truncation)
-                button_text = Localizator.get_text(BotEntity.USER, "purchase_history_order_item").format(
-                    invoice_number=invoice.invoice_number,
-                    subcategory_name=subcategory.name,
-                    item_count=item_count
-                )
+                # Format button: show first item + additional items count
+                # +X means "plus X additional items" (not total count)
+                if total_items == 1:
+                    button_text = Localizator.get_text(BotEntity.USER, "purchase_history_order_item_single").format(
+                        invoice_number=invoice.invoice_number,
+                        subcategory_name=subcategory.name
+                    )
+                else:
+                    additional_count = total_items - 1
+                    button_text = Localizator.get_text(BotEntity.USER, "purchase_history_order_item").format(
+                        invoice_number=invoice.invoice_number,
+                        subcategory_name=subcategory.name,
+                        additional_count=additional_count
+                    )
 
                 kb_builder.button(text=button_text,
                     callback_data=MyProfileCallback.create(
