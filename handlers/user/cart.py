@@ -57,9 +57,28 @@ async def buy_processing(**kwargs):
 # ========================================
 
 async def crypto_selection_for_checkout(**kwargs):
-    """Level 3: Shows crypto selection after checkout confirmation (invoice flow)"""
+    """Level 3: Shows crypto selection after checkout confirmation (invoice flow)
+    If physical items present, triggers shipping address FSM first.
+    """
+    from aiogram.fsm.context import FSMContext
+    from handlers.user.shipping_states import ShippingAddressStates
+    from services.shipping import ShippingService
+    from repositories.cartItem import CartItemRepository
+    from repositories.user import UserRepository
+
     callback = kwargs.get("callback")
     session = kwargs.get("session")
+    state = kwargs.get("state")  # FSMContext
+
+    # Get user and cart items to check for physical items
+    user = await UserRepository.get_by_tgid(callback.from_user.id, session)
+    cart_items = await CartItemRepository.get_all_by_user_id(user.id, session)
+    has_physical_items = await ShippingService.check_cart_has_physical_items(cart_items, session)
+
+    if has_physical_items and state:
+        # Set FSM state for address collection
+        await state.set_state(ShippingAddressStates.waiting_for_address)
+
     msg, kb_builder = await CartService.get_crypto_selection_for_checkout(callback, session)
     await callback.message.edit_text(text=msg, reply_markup=kb_builder.as_markup())
 
@@ -68,8 +87,20 @@ async def create_order_with_crypto(**kwargs):
     """Level 4: Creates order + invoice with selected crypto"""
     callback = kwargs.get("callback")
     session = kwargs.get("session")
+    state = kwargs.get("state")
+
+    # Get shipping address from FSM state (if present)
+    shipping_address = None
+    if state:
+        data = await state.get_data()
+        shipping_address = data.get("shipping_address")
+        # Clear FSM state after order creation
+        await state.clear()
+
     await callback.message.edit_reply_markup()  # Remove buttons during processing
-    msg, kb_builder = await CartService.create_order_with_selected_crypto(callback, session)
+    msg, kb_builder = await CartService.create_order_with_selected_crypto(
+        callback, session, shipping_address=shipping_address
+    )
     await callback.message.edit_text(msg, reply_markup=kb_builder.as_markup())
 
 
@@ -83,14 +114,16 @@ async def cancel_order(**kwargs):
 
 
 @cart_router.callback_query(CartCallback.filter(), IsUserExistFilter())
-async def navigate_cart_process(callback: CallbackQuery, callback_data: CartCallback, session: AsyncSession | Session):
+async def navigate_cart_process(callback: CallbackQuery, callback_data: CartCallback, session: AsyncSession | Session, state: FSMContext):
+    from aiogram.fsm.context import FSMContext
+
     current_level = callback_data.level
 
     levels = {
         0: show_cart,
         1: delete_cart_item,
         2: checkout_processing,
-        3: crypto_selection_for_checkout,      # INVOICE-FLOW: Crypto selection
+        3: crypto_selection_for_checkout,      # INVOICE-FLOW: Crypto selection (triggers FSM if physical items)
         4: create_order_with_crypto,           # INVOICE-FLOW: Order creation
         5: cancel_order,                       # INVOICE-FLOW: Order cancellation
         # 3: buy_processing  # OLD WALLET-FLOW (commented out for migration)
@@ -101,6 +134,7 @@ async def navigate_cart_process(callback: CallbackQuery, callback_data: CartCall
     kwargs = {
         "callback": callback,
         "session": session,
+        "state": state,
     }
 
     await current_level_function(**kwargs)

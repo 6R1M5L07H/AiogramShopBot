@@ -283,8 +283,13 @@ class CartService:
     ) -> tuple[str, InlineKeyboardBuilder]:
         """
         Shows crypto selection after checkout confirmation.
+        If cart has physical items, triggers shipping address FSM first.
         Uses existing localization keys from wallet (btc_top_up, etc.)
         """
+        from services.shipping import ShippingService
+        from aiogram.fsm.context import FSMContext
+        from handlers.user.shipping_states import ShippingAddressStates
+
         user = await UserRepository.get_by_tgid(callback.from_user.id, session)
         cart_items = await CartItemRepository.get_all_by_user_id(user.id, session)
 
@@ -312,7 +317,81 @@ class CartService:
                 msg += subcategory.name + "\n"
             return msg, kb_builder
 
+        # Check if cart has physical items → trigger address collection FSM
+        has_physical_items = await ShippingService.check_cart_has_physical_items(cart_items, session)
+
+        if has_physical_items:
+            # Trigger FSM for address collection
+            # NOTE: This requires FSMContext to be passed to this function
+            # For now, we'll return a special message that tells the handler to switch to FSM
+            # This will be handled in the cart handler
+            kb_builder = InlineKeyboardBuilder()
+            message_text = Localizator.get_text(BotEntity.USER, "shipping_address_request")
+
+            # Check if Packstation-restricted items present
+            has_packstation_restriction = await ShippingService.check_cart_has_packstation_restricted_items(
+                cart_items, session
+            )
+            if has_packstation_restriction:
+                message_text += "\n\n" + Localizator.get_text(BotEntity.USER, "shipping_address_packstation_warning")
+
+            # Return special flag to indicate FSM should be triggered
+            # This is a workaround - the actual FSM state will be set in the handler
+            return message_text, kb_builder
+
+        # No physical items → proceed directly to crypto selection
         # Show crypto buttons
+        message_text = Localizator.get_text(BotEntity.USER, "choose_payment_crypto")
+        kb_builder = InlineKeyboardBuilder()
+
+        # Crypto buttons (uses existing localization)
+        kb_builder.button(
+            text=Localizator.get_text(BotEntity.COMMON, "btc_top_up"),
+            callback_data=CartCallback.create(4, cryptocurrency=Cryptocurrency.BTC)
+        )
+        kb_builder.button(
+            text=Localizator.get_text(BotEntity.COMMON, "eth_top_up"),
+            callback_data=CartCallback.create(4, cryptocurrency=Cryptocurrency.ETH)
+        )
+        kb_builder.button(
+            text=Localizator.get_text(BotEntity.COMMON, "ltc_top_up"),
+            callback_data=CartCallback.create(4, cryptocurrency=Cryptocurrency.LTC)
+        )
+        kb_builder.button(
+            text=Localizator.get_text(BotEntity.COMMON, "sol_top_up"),
+            callback_data=CartCallback.create(4, cryptocurrency=Cryptocurrency.SOL)
+        )
+        kb_builder.button(
+            text=Localizator.get_text(BotEntity.COMMON, "bnb_top_up"),
+            callback_data=CartCallback.create(4, cryptocurrency=Cryptocurrency.BNB)
+        )
+        kb_builder.button(
+            text=Localizator.get_text(BotEntity.USER, "usdt_trc20_top_up"),
+            callback_data=CartCallback.create(4, cryptocurrency=Cryptocurrency.USDT_TRC20)
+        )
+        kb_builder.button(
+            text=Localizator.get_text(BotEntity.USER, "usdt_erc20_top_up"),
+            callback_data=CartCallback.create(4, cryptocurrency=Cryptocurrency.USDT_ERC20)
+        )
+        kb_builder.button(
+            text=Localizator.get_text(BotEntity.USER, "usdc_erc20_top_up"),
+            callback_data=CartCallback.create(4, cryptocurrency=Cryptocurrency.USDC_ERC20)
+        )
+
+        kb_builder.adjust(2)
+        kb_builder.row(CartCallback.create(0).get_back_button(0))
+
+        return message_text, kb_builder
+
+    @staticmethod
+    async def show_crypto_selection_without_physical_check(
+        callback: CallbackQuery,
+        session: AsyncSession | Session
+    ) -> tuple[str, InlineKeyboardBuilder]:
+        """
+        Shows crypto selection buttons directly (used after address confirmation).
+        Skips physical item check since address was already collected.
+        """
         message_text = Localizator.get_text(BotEntity.USER, "choose_payment_crypto")
         kb_builder = InlineKeyboardBuilder()
 
@@ -358,7 +437,8 @@ class CartService:
     @staticmethod
     async def create_order_with_selected_crypto(
         callback: CallbackQuery,
-        session: AsyncSession | Session
+        session: AsyncSession | Session,
+        shipping_address: str | None = None
     ) -> tuple[str, InlineKeyboardBuilder]:
         """
         Creates order + invoice after crypto selection.
@@ -366,9 +446,12 @@ class CartService:
         Flow:
         1. Get cart items
         2. Create order (incl. item reservation + invoice via KryptoExpress)
-        3. Clear cart
-        4. Show payment instructions
+        3. Save shipping address (if provided)
+        4. Clear cart
+        5. Show payment instructions
         """
+        from services.shipping import ShippingService
+
         unpacked_cb = CartCallback.unpack(callback.data)
         crypto_currency = unpacked_cb.cryptocurrency
 
@@ -392,6 +475,14 @@ class CartService:
                 crypto_currency=crypto_currency,
                 session=session
             )
+
+            # Save shipping address if provided (for physical items)
+            if shipping_address:
+                await ShippingService.save_shipping_address(
+                    order_id=order.id,
+                    plaintext_address=shipping_address,
+                    session=session
+                )
 
             # Clear cart
             for cart_item in cart_items:
