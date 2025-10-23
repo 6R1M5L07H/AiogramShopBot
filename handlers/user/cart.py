@@ -114,6 +114,15 @@ async def cancel_order(**kwargs):
     await callback.message.edit_text(msg, reply_markup=kb_builder.as_markup())
 
 
+async def confirm_shipping_address_handler(**kwargs):
+    """Level 6: Confirm shipping address and proceed to crypto selection"""
+    from handlers.user.shipping_handlers import confirm_shipping_address
+    callback = kwargs.get("callback")
+    session = kwargs.get("session")
+    state = kwargs.get("state")
+    await confirm_shipping_address(callback, state, session)
+
+
 @cart_router.callback_query(CartCallback.filter(), IsUserExistFilter())
 async def navigate_cart_process(callback: CallbackQuery, callback_data: CartCallback, session: AsyncSession | Session, state: FSMContext):
     from aiogram.fsm.context import FSMContext
@@ -127,6 +136,7 @@ async def navigate_cart_process(callback: CallbackQuery, callback_data: CartCall
         3: crypto_selection_for_checkout,      # INVOICE-FLOW: Crypto selection (triggers FSM if physical items)
         4: create_order_with_crypto,           # INVOICE-FLOW: Order creation
         5: cancel_order,                       # INVOICE-FLOW: Order cancellation
+        6: confirm_shipping_address_handler,   # SHIPPING: Confirm address and show crypto selection
         # 3: buy_processing  # OLD WALLET-FLOW (commented out for migration)
     }
 

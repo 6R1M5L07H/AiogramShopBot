@@ -53,10 +53,10 @@ async def process_shipping_address_input(message: Message, state: FSMContext, se
     await state.set_state(ShippingAddressStates.confirm_address)
 
 
-@shipping_router.callback_query(F.data == CartCallback.create(level=6, confirmation=True).pack(), IsUserExistFilter())
 async def confirm_shipping_address(callback: CallbackQuery, state: FSMContext, session: AsyncSession | Session):
     """
     User confirmed shipping address - proceed to crypto selection.
+    Called from cart.py level 6 handler.
     """
     # Get address from FSM context
     data = await state.get_data()
