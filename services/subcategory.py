@@ -49,14 +49,27 @@ class SubcategoryService:
         subcategory = await SubcategoryRepository.get_by_id(unpacked_cb.subcategory_id, session)
         category = await CategoryRepository.get_by_id(unpacked_cb.category_id, session)
         available_qty = await ItemRepository.get_available_qty(item, session)
-        message_text = Localizator.get_text(BotEntity.USER, "select_quantity").format(
-            category_name=category.name,
-            subcategory_name=subcategory.name,
-            price=item.price,
-            description=item.description,
-            quantity=available_qty,
-            currency_sym=Localizator.get_currency_symbol()
-        )
+
+        # Build message with shipping info for physical items
+        if item.is_physical:
+            message_text = Localizator.get_text(BotEntity.USER, "select_quantity_with_shipping").format(
+                category_name=category.name,
+                subcategory_name=subcategory.name,
+                price=item.price,
+                description=item.description,
+                quantity=available_qty,
+                shipping_cost=item.shipping_cost,
+                currency_sym=Localizator.get_currency_symbol()
+            )
+        else:
+            message_text = Localizator.get_text(BotEntity.USER, "select_quantity").format(
+                category_name=category.name,
+                subcategory_name=subcategory.name,
+                price=item.price,
+                description=item.description,
+                quantity=available_qty,
+                currency_sym=Localizator.get_currency_symbol()
+            )
         kb_builder = InlineKeyboardBuilder()
         for i in range(1, 11):
             kb_builder.button(text=str(i), callback_data=AllCategoriesCallback.create(

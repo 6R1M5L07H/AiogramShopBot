@@ -145,6 +145,11 @@ class CartService:
         if unpacked_cb.confirmation:
             await CartItemRepository.remove_from_cart(cart_item_id, session)
             await session_commit(session)
+            # Add back button to return to cart
+            kb_builder.button(
+                text=Localizator.get_text(BotEntity.USER, "back_to_cart"),
+                callback_data=CartCallback.create(0)  # Level 0 = show_cart
+            )
             return Localizator.get_text(BotEntity.USER, "delete_cart_item_confirmation_text"), kb_builder
         else:
             kb_builder.button(text=Localizator.get_text(BotEntity.COMMON, "confirm"),
