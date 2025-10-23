@@ -173,6 +173,8 @@
     "cart_items_total": "<b>Artikel:</b> {items_total:.2f} {currency_sym}",
     "cart_shipping_cost": "<b>Versand:</b> {shipping_cost:.2f} {currency_sym}",
     "cart_total_with_shipping": "<b><u>Gesamtsumme:</u></b> {total:.2f} {currency_sym}",
-    "order_shipped_notification": "📦 <b>Bestellung versendet!</b>\n\n📋 <b>Bestellcode:</b> {invoice_number}\n\nIhre Bestellung wurde versendet und ist unterwegs zu Ihnen!"
+    "order_shipped_notification": "📦 <b>Bestellung versendet!</b>\n\n📋 <b>Bestellcode:</b> {invoice_number}\n\nIhre Bestellung wurde versendet und ist unterwegs zu Ihnen!",
+    "order_payment_success": "✅ <b>Zahlung erfolgreich!</b>\n\n📋 <b>Bestellcode:</b> {invoice_number}\n💰 <b>Betrag:</b> {total_price:.2f} {currency_sym}\n\nVielen Dank für Ihren Kauf!",
+    "late_payment_wallet_topup": "💰 <b>Verspätete Zahlung erhalten!</b>\n\n📋 <b>Bestellcode:</b> {invoice_number}\n💵 <b>Gutgeschrieben:</b> {amount:.2f} {currency_sym}\n\nDa die Bestellung bereits abgeschlossen war, wurde der Betrag Ihrem Guthaben hinzugefügt."
   }
 }

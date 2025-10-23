@@ -190,6 +190,8 @@
     "cart_items_total": "<b>Items:</b> {items_total:.2f} {currency_sym}",
     "cart_shipping_cost": "<b>Shipping:</b> {shipping_cost:.2f} {currency_sym}",
     "cart_total_with_shipping": "<b><u>Total:</u></b> {total:.2f} {currency_sym}",
-    "order_shipped_notification": "📦 <b>Order shipped!</b>\n\n📋 <b>Order code:</b> {invoice_number}\n\nYour order has been shipped and is on its way to you!"
+    "order_shipped_notification": "📦 <b>Order shipped!</b>\n\n📋 <b>Order code:</b> {invoice_number}\n\nYour order has been shipped and is on its way to you!",
+    "order_payment_success": "✅ <b>Payment successful!</b>\n\n📋 <b>Order code:</b> {invoice_number}\n💰 <b>Amount:</b> {total_price:.2f} {currency_sym}\n\nThank you for your purchase!",
+    "late_payment_wallet_topup": "💰 <b>Late payment received!</b>\n\n📋 <b>Order code:</b> {invoice_number}\n💵 <b>Credited:</b> {amount:.2f} {currency_sym}\n\nSince the order was already completed, the amount has been added to your balance."
   }
 }

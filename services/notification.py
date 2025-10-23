@@ -180,3 +180,43 @@ class NotificationService:
             await bot.session.close()
         except Exception as e:
             logging.error(f"Failed to send shipped notification to user {user_id}: {e}")
+
+    @staticmethod
+    async def order_payment_success(user_id: int, invoice_number: str, total_price: float, currency, session: AsyncSession | Session):
+        """Notify user about successful order payment"""
+        from repositories.user import UserRepository
+
+        user = await UserRepository.get_by_id(user_id, session)
+
+        message_text = Localizator.get_text(BotEntity.USER, "order_payment_success").format(
+            invoice_number=invoice_number,
+            total_price=total_price,
+            currency_sym=Localizator.get_currency_symbol()
+        )
+
+        try:
+            bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+            await bot.send_message(user.telegram_id, text=message_text)
+            await bot.session.close()
+        except Exception as e:
+            logging.error(f"Failed to send payment success notification to user {user_id}: {e}")
+
+    @staticmethod
+    async def late_payment_wallet_topup(user_id: int, amount: float, currency: str, invoice_number: str, session: AsyncSession | Session):
+        """Notify user about wallet top-up from late payment"""
+        from repositories.user import UserRepository
+
+        user = await UserRepository.get_by_id(user_id, session)
+
+        message_text = Localizator.get_text(BotEntity.USER, "late_payment_wallet_topup").format(
+            invoice_number=invoice_number,
+            amount=amount,
+            currency_sym=Localizator.get_currency_symbol()
+        )
+
+        try:
+            bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+            await bot.send_message(user.telegram_id, text=message_text)
+            await bot.session.close()
+        except Exception as e:
+            logging.error(f"Failed to send late payment wallet topup notification to user {user_id}: {e}")

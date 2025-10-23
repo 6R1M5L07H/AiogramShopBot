@@ -101,7 +101,7 @@ class OrderRepository:
         stmt = (
             select(Order)
             .where(Order.user_id == user_id)
-            .where(Order.status == OrderStatus.PAID)
+            .where(Order.status.in_([OrderStatus.PAID, OrderStatus.PAID_AWAITING_SHIPMENT, OrderStatus.SHIPPED]))
             .order_by(Order.paid_at.desc())
         )
         result = await session_execute(stmt, session)
@@ -113,7 +113,7 @@ class OrderRepository:
         stmt = (
             select(Order.currency, func.sum(Order.total_price))
             .where(Order.user_id == user_id)
-            .where(Order.status == OrderStatus.PAID)
+            .where(Order.status.in_([OrderStatus.PAID, OrderStatus.PAID_AWAITING_SHIPMENT, OrderStatus.SHIPPED]))
             .group_by(Order.currency)
         )
         result = await session_execute(stmt, session)

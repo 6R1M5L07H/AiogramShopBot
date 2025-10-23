@@ -124,14 +124,29 @@ async def _handle_order_payment(payment_dto: ProcessingPaymentDTO, invoice, sess
     if payment_dto.isPaid is True and order.status == OrderStatus.PENDING_PAYMENT:
         logging.info(f"✅ PAYMENT CONFIRMED: Completing order {order.id}")
 
-        # Complete order payment (marks items as sold, updates order status to PAID)
+        # Complete order payment (marks items as sold, updates order status to PAID or PAID_AWAITING_SHIPMENT)
         await OrderService.complete_order_payment(invoice.order_id, session)
+        await session_commit(session)
 
-        logging.info(f"🎉 SUCCESS: Order {order.id} marked as PAID (Invoice: {invoice.invoice_number})")
-        # TODO: Send notification to user about successful payment
+        # Reload order to get updated status
+        order = await OrderRepository.get_by_id(invoice.order_id, session)
+
+        # Send notification to user about successful payment
+        await NotificationService.order_payment_success(order.user_id, invoice.invoice_number, order.total_price, order.currency, session)
+        logging.info(f"🎉 SUCCESS: Order {order.id} completed and user {order.user_id} notified (Invoice: {invoice.invoice_number})")
 
     elif payment_dto.isPaid is True and order.status != OrderStatus.PENDING_PAYMENT:
         logging.warning(f"⚠️ DUPLICATE/LATE PAYMENT: Order {order.id} already in status {order.status.value}")
+
+        # Handle late payment - credit user's wallet
+        user = await UserRepository.get_by_id(order.user_id, session)
+        user.top_up_amount += payment_dto.fiatAmount
+        await UserRepository.update(user, session)
+        await session_commit(session)
+
+        # Notify user about wallet top-up
+        await NotificationService.late_payment_wallet_topup(order.user_id, payment_dto.fiatAmount, payment_dto.fiatCurrency, invoice.invoice_number, session)
+        logging.info(f"💰 LATE PAYMENT: Credited {payment_dto.fiatAmount} {payment_dto.fiatCurrency} to user {order.user_id} wallet")
 
     elif payment_dto.isPaid is False:
         # Payment expired or failed - order will be cancelled by timeout job
