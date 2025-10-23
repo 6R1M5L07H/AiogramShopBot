@@ -125,16 +125,9 @@ async def _handle_order_payment(payment_dto: ProcessingPaymentDTO, invoice, sess
         # Check for underpayment by comparing crypto amounts (not fiat!)
         if payment_dto.cryptoAmount < invoice.payment_amount_crypto:
             logging.warning(f"⚠️ UNDERPAYMENT: Order {order.id} requires {invoice.payment_amount_crypto} {invoice.payment_crypto_currency.value}, but received {payment_dto.cryptoAmount} {payment_dto.cryptoCurrency.value}")
-
-            # Credit the fiat equivalent to user's wallet
-            user = await UserRepository.get_by_id(order.user_id, session)
-            user.top_up_amount += payment_dto.fiatAmount
-            await UserRepository.update(user, session)
-            await session_commit(session)
-
-            # Notify user about underpayment and wallet credit
-            await NotificationService.late_payment_wallet_topup(order.user_id, payment_dto.fiatAmount, payment_dto.fiatCurrency, invoice.invoice_number, session)
-            logging.info(f"💰 UNDERPAYMENT: Credited {payment_dto.fiatAmount} {payment_dto.fiatCurrency} (from {payment_dto.cryptoAmount} {payment_dto.cryptoCurrency.value}) to user {order.user_id} wallet. Order remains PENDING.")
+            logging.info(f"Order {order.id} remains PENDING_PAYMENT and will be cancelled by timeout job. No refund possible for underpayments.")
+            # Order stays in PENDING_PAYMENT status and will be cancelled by timeout job
+            # Items remain reserved until timeout, then unreserved by timeout job
             return
 
         logging.info(f"✅ PAYMENT CONFIRMED: Completing order {order.id} (Received: {payment_dto.cryptoAmount} {payment_dto.cryptoCurrency.value}, Required: {invoice.payment_amount_crypto} {invoice.payment_crypto_currency.value})")
@@ -161,16 +154,7 @@ async def _handle_order_payment(payment_dto: ProcessingPaymentDTO, invoice, sess
 
     elif payment_dto.isPaid is True and order.status != OrderStatus.PENDING_PAYMENT:
         logging.warning(f"⚠️ DUPLICATE/LATE PAYMENT: Order {order.id} already in status {order.status.value}")
-
-        # Handle late payment - credit user's wallet
-        user = await UserRepository.get_by_id(order.user_id, session)
-        user.top_up_amount += payment_dto.fiatAmount
-        await UserRepository.update(user, session)
-        await session_commit(session)
-
-        # Notify user about wallet top-up
-        await NotificationService.late_payment_wallet_topup(order.user_id, payment_dto.fiatAmount, payment_dto.fiatCurrency, invoice.invoice_number, session)
-        logging.info(f"💰 LATE PAYMENT: Credited {payment_dto.fiatAmount} {payment_dto.fiatCurrency} to user {order.user_id} wallet")
+        logging.info(f"Payment of {payment_dto.fiatAmount} {payment_dto.fiatCurrency} ignored - no wallet system to credit. User must contact support for refund.")
 
     elif payment_dto.isPaid is False:
         # Payment expired or failed - order will be cancelled by timeout job
