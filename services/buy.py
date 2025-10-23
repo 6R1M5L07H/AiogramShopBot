@@ -46,7 +46,11 @@ class BuyService:
     @staticmethod
     async def get_purchase(callback: CallbackQuery, session: AsyncSession | Session) -> tuple[str, InlineKeyboardBuilder]:
         unpacked_cb = MyProfileCallback.unpack(callback.data)
-        items = await ItemRepository.get_by_buy_id(unpacked_cb.args_for_action, session)
+
+        # Get items from order (new system)
+        order_id = unpacked_cb.args_for_action
+        items = await ItemRepository.get_by_order_id(order_id, session)
+
         msg = MessageService.create_message_with_bought_items(items)
         kb_builder = InlineKeyboardBuilder()
         kb_builder.row(unpacked_cb.get_back_button())

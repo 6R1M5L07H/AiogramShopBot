@@ -84,28 +84,47 @@ class UserService:
     @staticmethod
     async def get_purchase_history_buttons(callback: CallbackQuery, session: AsyncSession | Session) \
             -> tuple[str, InlineKeyboardBuilder]:
+        from repositories.order import OrderRepository
+        from repositories.invoice import InvoiceRepository
+        import config
+
         unpacked_cb = MyProfileCallback.unpack(callback.data)
         user = await UserRepository.get_by_tgid(callback.from_user.id, session)
-        buys = await BuyRepository.get_by_buyer_id(user.id, unpacked_cb.page, session)
+
+        # Get orders from new order system
+        orders = await OrderRepository.get_by_user_id(user.id, session)
+
         kb_builder = InlineKeyboardBuilder()
-        for buy in buys:
-            buy_item = await BuyItemRepository.get_single_by_buy_id(buy.id, session)
-            item = await ItemRepository.get_by_id(buy_item.item_id, session)
-            subcategory = await SubcategoryRepository.get_by_id(item.subcategory_id, session)
-            kb_builder.button(text=Localizator.get_text(BotEntity.USER, "purchase_history_item").format(
-                subcategory_name=subcategory.name,
-                total_price=buy.total_price,
-                quantity=buy.quantity,
-                currency_sym=Localizator.get_currency_symbol()),
-                callback_data=MyProfileCallback.create(
-                    unpacked_cb.level + 1,
-                    args_for_action=buy.id
-                ))
+        for order in orders:
+            # Get invoice for display
+            invoice = await InvoiceRepository.get_by_order_id(order.id, session)
+
+            # Get first item from order for display
+            items = await ItemRepository.get_by_order_id(order.id, session)
+            if items:
+                first_item = items[0]
+                subcategory = await SubcategoryRepository.get_by_id(first_item.subcategory_id, session)
+                item_count = len(items)
+
+                kb_builder.button(text=Localizator.get_text(BotEntity.USER, "purchase_history_order_item").format(
+                    invoice_number=invoice.invoice_number,
+                    subcategory_name=subcategory.name,
+                    item_count=item_count,
+                    total_price=order.total_price,
+                    currency_sym=Localizator.get_currency_symbol()),
+                    callback_data=MyProfileCallback.create(
+                        unpacked_cb.level + 1,
+                        args_for_action=order.id
+                    ))
+
         kb_builder.adjust(1)
-        kb_builder = await add_pagination_buttons(kb_builder, unpacked_cb,
-                                                  BuyRepository.get_max_page_purchase_history(user.id, session),
-                                                  unpacked_cb.get_back_button(0))
-        if len(kb_builder.as_markup().inline_keyboard) > 1:
-            return Localizator.get_text(BotEntity.USER, "purchases"), kb_builder
+        kb_builder.row(unpacked_cb.get_back_button(0))
+
+        if len(orders) > 0:
+            retention_days = getattr(config, 'DATA_RETENTION_DAYS', 90)
+            header = Localizator.get_text(BotEntity.USER, "purchases_with_retention").format(
+                retention_days=retention_days
+            )
+            return header, kb_builder
         else:
             return Localizator.get_text(BotEntity.USER, "no_purchases"), kb_builder

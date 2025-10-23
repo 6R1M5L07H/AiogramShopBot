@@ -133,7 +133,16 @@ async def _handle_order_payment(payment_dto: ProcessingPaymentDTO, invoice, sess
 
         # Send notification to user about successful payment
         await NotificationService.order_payment_success(order.user_id, invoice.invoice_number, order.total_price, order.currency, session)
-        logging.info(f"🎉 SUCCESS: Order {order.id} completed and user {order.user_id} notified (Invoice: {invoice.invoice_number})")
+
+        # Send private data (items) to user
+        from repositories.item import ItemRepository
+        from services.message import MessageService
+        items = await ItemRepository.get_by_order_id(order.id, session)
+        private_data_message = MessageService.create_message_with_bought_items(items)
+        user = await UserRepository.get_by_id(order.user_id, session)
+        await NotificationService.send_to_user(private_data_message, user.telegram_id)
+
+        logging.info(f"🎉 SUCCESS: Order {order.id} completed, user {order.user_id} notified, and {len(items)} items delivered (Invoice: {invoice.invoice_number})")
 
     elif payment_dto.isPaid is True and order.status != OrderStatus.PENDING_PAYMENT:
         logging.warning(f"⚠️ DUPLICATE/LATE PAYMENT: Order {order.id} already in status {order.status.value}")
