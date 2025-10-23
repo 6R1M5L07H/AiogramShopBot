@@ -162,3 +162,21 @@ class NotificationService:
             await bot.session.close()
         except Exception as _:
             pass
+
+    @staticmethod
+    async def order_shipped(user_id: int, invoice_number: str, session: AsyncSession | Session):
+        """Notify user that their order has been shipped"""
+        from repositories.user import UserRepository
+
+        user = await UserRepository.get_by_id(user_id, session)
+
+        message_text = Localizator.get_text(BotEntity.USER, "order_shipped_notification").format(
+            invoice_number=invoice_number
+        )
+
+        try:
+            bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+            await bot.send_message(user.telegram_id, text=message_text)
+            await bot.session.close()
+        except Exception as e:
+            logging.error(f"Failed to send shipped notification to user {user_id}: {e}")

@@ -118,3 +118,15 @@ class OrderRepository:
         )
         result = await session_execute(stmt, session)
         return result.all()
+
+    @staticmethod
+    async def get_orders_awaiting_shipment(session: Session | AsyncSession) -> list[Order]:
+        """Gets all orders awaiting shipment (for admin shipping management)"""
+        stmt = (
+            select(Order)
+            .where(Order.status == OrderStatus.AWAITING_SHIPMENT)
+            .order_by(Order.paid_at.desc())
+            .options(selectinload(Order.items))
+        )
+        result = await session_execute(stmt, session)
+        return result.scalars().all()
