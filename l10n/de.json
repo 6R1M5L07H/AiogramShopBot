@@ -144,6 +144,7 @@
     "purchase_history_item": "📦 {subcategory_name} | Gesamtpreis: {total_price:.2f}{currency_sym} | Menge: {quantity} Stk.",
     "purchase_history_order_item": "📦 #{invoice_number} | {subcategory_name} +{item_count} | {total_price:.2f}{currency_sym}",
     "purchase_history_order_item_shipped": "📦 #{invoice_number} | {subcategory_name} +{item_count} | {total_price:.2f}{currency_sym} | 🚚 {shipped_date}",
+    "order_details_header": "📋 <b>Bestelldetails #{invoice_number}</b>",
     "purchases": "🧾 <b>Ihre Käufe:</b>",
     "purchases_with_retention": "🧾 <b>Ihre Käufe (letzte {retention_days} Tage):</b>",
     "refresh_balance_button": "🔄 Guthaben aktualisieren",

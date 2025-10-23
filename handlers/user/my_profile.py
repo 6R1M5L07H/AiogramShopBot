@@ -51,9 +51,10 @@ async def purchase_history(**kwargs):
 
 
 async def get_order_from_history(**kwargs):
+    """Shows order details from purchase history (new invoice-based system)"""
     callback = kwargs.get("callback")
     session = kwargs.get("session")
-    msg, kb_builder = await BuyService.get_purchase(callback, session)
+    msg, kb_builder = await UserService.get_order_details(callback, session)
     await callback.message.edit_text(text=msg, reply_markup=kb_builder.as_markup())
 
 

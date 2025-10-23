@@ -106,27 +106,14 @@ class UserService:
                 subcategory = await SubcategoryRepository.get_by_id(first_item.subcategory_id, session)
                 item_count = len(items)
 
-                # Check if order is shipped and has shipped_at timestamp
-                from enums.order_status import OrderStatus
-                if order.status == OrderStatus.SHIPPED and order.shipped_at:
-                    # Format date as DD.MM.YYYY
-                    shipped_date_str = order.shipped_at.strftime("%d.%m.%Y")
-                    button_text = Localizator.get_text(BotEntity.USER, "purchase_history_order_item_shipped").format(
-                        invoice_number=invoice.invoice_number,
-                        subcategory_name=subcategory.name,
-                        item_count=item_count,
-                        total_price=order.total_price,
-                        currency_sym=Localizator.get_currency_symbol(),
-                        shipped_date=shipped_date_str
-                    )
-                else:
-                    button_text = Localizator.get_text(BotEntity.USER, "purchase_history_order_item").format(
-                        invoice_number=invoice.invoice_number,
-                        subcategory_name=subcategory.name,
-                        item_count=item_count,
-                        total_price=order.total_price,
-                        currency_sym=Localizator.get_currency_symbol()
-                    )
+                # Always use the standard button format (no shipped date in button)
+                button_text = Localizator.get_text(BotEntity.USER, "purchase_history_order_item").format(
+                    invoice_number=invoice.invoice_number,
+                    subcategory_name=subcategory.name,
+                    item_count=item_count,
+                    total_price=order.total_price,
+                    currency_sym=Localizator.get_currency_symbol()
+                )
 
                 kb_builder.button(text=button_text,
                     callback_data=MyProfileCallback.create(
@@ -145,3 +132,70 @@ class UserService:
             return header, kb_builder
         else:
             return Localizator.get_text(BotEntity.USER, "no_purchases"), kb_builder
+
+    @staticmethod
+    async def get_order_details(callback: CallbackQuery, session: AsyncSession | Session) \
+            -> tuple[str, InlineKeyboardBuilder]:
+        """Shows detailed view of a single order"""
+        from repositories.order import OrderRepository
+        from repositories.invoice import InvoiceRepository
+        from enums.order_status import OrderStatus
+
+        unpacked_cb = MyProfileCallback.unpack(callback.data)
+        order_id = unpacked_cb.args_for_action
+
+        # Get order details
+        order = await OrderRepository.get_by_id(order_id, session)
+        invoice = await InvoiceRepository.get_by_order_id(order_id, session)
+        items = await ItemRepository.get_by_order_id(order_id, session)
+
+        # Build message header
+        message_text = Localizator.get_text(BotEntity.USER, "order_details_header").format(
+            invoice_number=invoice.invoice_number
+        ) + "\n\n"
+
+        # Order status
+        status_map = {
+            OrderStatus.PAID: "✅ Bezahlt",
+            OrderStatus.PAID_AWAITING_SHIPMENT: "📦 Bezahlt - Versand ausstehend",
+            OrderStatus.SHIPPED: "🚚 Versendet",
+        }
+        status_text = status_map.get(order.status, str(order.status.value))
+        message_text += f"<b>Status:</b> {status_text}\n"
+
+        # Paid date
+        if order.paid_at:
+            paid_date_str = order.paid_at.strftime("%d.%m.%Y %H:%M")
+            message_text += f"<b>Bezahlt am:</b> {paid_date_str}\n"
+
+        # Shipped date (if applicable)
+        if order.status == OrderStatus.SHIPPED and order.shipped_at:
+            shipped_date_str = order.shipped_at.strftime("%d.%m.%Y %H:%M")
+            message_text += f"<b>Versendet am:</b> {shipped_date_str}\n"
+
+        message_text += "\n"
+
+        # Items list
+        message_text += "<b>📦 Artikel:</b>\n"
+        items_total = 0.0
+        for item in items:
+            subcategory = await SubcategoryRepository.get_by_id(item.subcategory_id, session)
+            message_text += f"- {subcategory.name}: {item.description} ({item.price:.2f}{Localizator.get_currency_symbol()})\n"
+            items_total += item.price
+
+        message_text += "\n"
+
+        # Price breakdown
+        message_text += f"<b>Artikel Gesamt:</b> {items_total:.2f}{Localizator.get_currency_symbol()}\n"
+        if order.shipping_cost > 0:
+            message_text += f"<b>Versandkosten:</b> {order.shipping_cost:.2f}{Localizator.get_currency_symbol()}\n"
+        message_text += f"<b><u>Gesamtsumme:</u></b> {order.total_price:.2f}{Localizator.get_currency_symbol()}\n"
+
+        # Back button
+        kb_builder = InlineKeyboardBuilder()
+        kb_builder.button(
+            text=Localizator.get_text(BotEntity.COMMON, "back_button"),
+            callback_data=MyProfileCallback.create(4, "purchase_history")
+        )
+
+        return message_text, kb_builder
