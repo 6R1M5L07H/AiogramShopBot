@@ -81,7 +81,8 @@
     "order_items_list": "📦 <b>Artikel:</b>\n{items}",
     "mark_as_shipped": "✅ Als versendet markieren",
     "confirm_mark_shipped": "❓ <b>Bestellung #{order_id} als versendet markieren?</b>\n\nDer Benutzer wird benachrichtigt.",
-    "order_marked_shipped": "✅ <b>Bestellung #{order_id} wurde als versendet markiert!</b>\n\nDer Benutzer wurde benachrichtigt."
+    "order_marked_shipped": "✅ <b>Bestellung #{order_id} wurde als versendet markiert!</b>\n\nDer Benutzer wurde benachrichtigt.",
+    "order_awaiting_shipment_notification": "📦 <b>Neue Bestellung mit Versand!</b>\n\n📋 Invoice: #{invoice_number}\n👤 Benutzer: {username}\n🆔 Order ID: {order_id}\n\n⚠️ Bitte im Shipment Management bearbeiten."
   },
   "common": {
     "back_button": "⬅️ Zurück",

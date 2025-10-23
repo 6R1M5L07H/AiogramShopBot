@@ -100,10 +100,11 @@ async def show_order_details(**kwargs):
             address=shipping_address
         ) + "\n\n"
 
-    # Items list
+    # Items list (only physical items need shipping)
     items_text = ""
     for item in order.items:
-        items_text += f"- {item.description} ({item.price:.2f}{Localizator.get_currency_symbol()})\n"
+        if item.is_physical:
+            items_text += f"- {item.description} ({item.price:.2f}{Localizator.get_currency_symbol()})\n"
 
     message_text += Localizator.get_text(BotEntity.ADMIN, "order_items_list").format(items=items_text)
 
@@ -129,7 +130,10 @@ async def mark_as_shipped_confirm(**kwargs):
 
     order_id = callback_data.order_id
 
-    message_text = Localizator.get_text(BotEntity.ADMIN, "confirm_mark_shipped").format(order_id=order_id)
+    # Get invoice number for display
+    invoice = await InvoiceRepository.get_by_order_id(order_id, session)
+
+    message_text = Localizator.get_text(BotEntity.ADMIN, "confirm_mark_shipped").format(order_id=invoice.invoice_number)
 
     kb_builder = InlineKeyboardBuilder()
     kb_builder.button(

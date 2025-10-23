@@ -164,6 +164,23 @@ class NotificationService:
             pass
 
     @staticmethod
+    async def order_awaiting_shipment(user_id: int, invoice_number: str, order_id: int, session: AsyncSession | Session):
+        """Notify admin that a new order with physical items is awaiting shipment"""
+        from repositories.user import UserRepository
+
+        user = await UserRepository.get_by_id(user_id, session)
+        username = f"@{user.telegram_username}" if user.telegram_username else f"ID:{user.telegram_id}"
+
+        message_text = Localizator.get_text(BotEntity.ADMIN, "order_awaiting_shipment_notification").format(
+            invoice_number=invoice_number,
+            username=username,
+            order_id=order_id
+        )
+
+        user_button = await NotificationService.make_user_button(user.telegram_username)
+        await NotificationService.send_to_admins(message_text, user_button)
+
+    @staticmethod
     async def order_shipped(user_id: int, invoice_number: str, session: AsyncSession | Session):
         """Notify user that their order has been shipped"""
         from repositories.user import UserRepository

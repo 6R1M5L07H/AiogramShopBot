@@ -147,6 +147,18 @@ class OrderService:
         if has_physical_items:
             # Physical items require shipment
             await OrderRepository.update_status(order_id, OrderStatus.PAID_AWAITING_SHIPMENT, session)
+
+            # Notify admin about new order awaiting shipment
+            from services.notification import NotificationService
+            from repositories.invoice import InvoiceRepository
+            order = await OrderRepository.get_by_id(order_id, session)
+            invoice = await InvoiceRepository.get_by_order_id(order_id, session)
+            await NotificationService.order_awaiting_shipment(
+                user_id=order.user_id,
+                invoice_number=invoice.invoice_number,
+                order_id=order_id,
+                session=session
+            )
         else:
             # Digital only → immediately PAID
             await OrderRepository.update_status(order_id, OrderStatus.PAID, session)
