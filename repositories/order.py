@@ -70,6 +70,21 @@ class OrderRepository:
         await session_execute(stmt, session)
 
     @staticmethod
+    async def update_order_totals(
+        order_id: int,
+        total_price: float,
+        shipping_cost: float,
+        session: Session | AsyncSession
+    ):
+        """Updates order total price and shipping cost"""
+        stmt = (
+            update(Order)
+            .where(Order.id == order_id)
+            .values(total_price=total_price, shipping_cost=shipping_cost)
+        )
+        await session_execute(stmt, session)
+
+    @staticmethod
     async def get_expired_orders(session: Session | AsyncSession) -> list[OrderDTO]:
         """Gets all expired orders (for timeout job)"""
         stmt = (

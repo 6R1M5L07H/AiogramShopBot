@@ -70,7 +70,18 @@
     "receive_msg_request": "💬 <b>Senden Sie eine Nachricht an den Newsletter oder \"cancel\" zum Abbrechen</b>:",
     "user_management": "👥 Benutzerverwaltung",
     "users_statistics": "📊 Benutzerstatistiken",
-    "withdraw_funds": "💸 Geld abheben"
+    "withdraw_funds": "💸 Geld abheben",
+    "shipping_management": "📦 Versandverwaltung",
+    "awaiting_shipment_orders": "📦 <b>Bestellungen mit ausstehender Lieferung:</b>",
+    "no_orders_awaiting_shipment": "✅ <b>Keine Bestellungen warten auf Versand</b>",
+    "order_details_header": "📋 <b>Bestelldetails #{order_id}</b>",
+    "order_user": "👤 <b>Benutzer:</b> {username} (ID: {user_id})",
+    "order_total": "💰 <b>Gesamtpreis:</b> {total_price:.2f} {currency_sym}",
+    "order_shipping_address": "📬 <b>Lieferadresse:</b>\n<code>{address}</code>",
+    "order_items_list": "📦 <b>Artikel:</b>\n{items}",
+    "mark_as_shipped": "✅ Als versendet markieren",
+    "confirm_mark_shipped": "❓ <b>Bestellung #{order_id} als versendet markieren?</b>\n\nDer Benutzer wird benachrichtigt.",
+    "order_marked_shipped": "✅ <b>Bestellung #{order_id} wurde als versendet markiert!</b>\n\nDer Benutzer wurde benachrichtigt."
   },
   "common": {
     "back_button": "⬅️ Zurück",
@@ -153,6 +164,15 @@
     "cancel_order_free": "❌ Bestellung stornieren (kostenlos)",
     "cancel_order_strike": "⚠️ Bestellung stornieren (Strike!)",
     "order_cancelled_free": "✅ <b>Bestellung erfolgreich storniert!</b>\n\nDie reservierten Artikel wurden wieder freigegeben. Sie können jetzt eine neue Bestellung aufgeben.",
-    "order_cancelled_with_strike": "✅ <b>Bestellung storniert!</b>\n\n⚠️ <b>Achtung:</b> Da die Grace Period ({grace_period} Minuten) abgelaufen war, wurde ein Strike vermerkt.\n\nDie reservierten Artikel wurden wieder freigegeben."
+    "order_cancelled_with_strike": "✅ <b>Bestellung storniert!</b>\n\n⚠️ <b>Achtung:</b> Da die Grace Period ({grace_period} Minuten) abgelaufen war, wurde ein Strike vermerkt.\n\nDie reservierten Artikel wurden wieder freigegeben.",
+    "shipping_address_request": "📦 <b>Lieferadresse benötigt</b>\n\nIhre Bestellung enthält physische Artikel, die versendet werden müssen.\n\nBitte geben Sie Ihre vollständige Lieferadresse ein (Name, Straße, PLZ, Ort, Land):",
+    "shipping_address_confirm": "📦 <b>Lieferadresse bestätigen</b>\n\nSie haben folgende Adresse eingegeben:\n\n<code>{address}</code>\n\nIst diese Adresse korrekt?",
+    "shipping_address_packstation_warning": "⚠️ <b>Hinweis:</b> Ihre Bestellung enthält Artikel, die NICHT an eine Packstation geliefert werden können. Bitte geben Sie eine vollständige Hausadresse an.",
+    "shipping_address_saved": "✅ Lieferadresse gespeichert!",
+    "shipping_address_invalid": "⚠️ Bitte geben Sie eine gültige Lieferadresse ein.",
+    "cart_items_total": "<b>Artikel:</b> {items_total:.2f} {currency_sym}",
+    "cart_shipping_cost": "<b>Versand:</b> {shipping_cost:.2f} {currency_sym}",
+    "cart_total_with_shipping": "<b><u>Gesamtsumme:</u></b> {total:.2f} {currency_sym}",
+    "order_shipped_notification": "📦 <b>Bestellung versendet!</b>\n\n📋 <b>Bestellcode:</b> {invoice_number}\n\nIhre Bestellung wurde versendet und ist unterwegs zu Ihnen!"
   }
 }

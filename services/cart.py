@@ -158,7 +158,9 @@ class CartService:
     async def __create_checkout_msg(cart_items: list[CartItemDTO], session: AsyncSession | Session) -> str:
         message_text = Localizator.get_text(BotEntity.USER, "cart_confirm_checkout_process")
         message_text += "<b>\n\n"
-        cart_grand_total = 0.0
+        items_total = 0.0
+        max_shipping_cost = 0.0
+        has_physical_items = False
 
         for cart_item in cart_items:
             item_dto = ItemDTO(category_id=cart_item.category_id, subcategory_id=cart_item.subcategory_id)
@@ -169,10 +171,38 @@ class CartService:
                 subcategory_name=subcategory.name, qty=cart_item.quantity,
                 total_price=line_item_total, currency_sym=Localizator.get_currency_symbol()
             )
-            cart_grand_total += line_item_total
+            items_total += line_item_total
             message_text += cart_line_item
-        message_text += Localizator.get_text(BotEntity.USER, "cart_grand_total_string").format(
-            cart_grand_total=cart_grand_total, currency_sym=Localizator.get_currency_symbol())
+
+            # Calculate shipping cost for physical items
+            # Get sample item to check shipping info
+            try:
+                sample_item = await ItemRepository.get_single(
+                    cart_item.category_id, cart_item.subcategory_id, session
+                )
+                if sample_item and sample_item.is_physical:
+                    has_physical_items = True
+                    if sample_item.shipping_cost > max_shipping_cost:
+                        max_shipping_cost = sample_item.shipping_cost
+            except:
+                # If no items available, skip shipping calculation
+                pass
+
+        # Show breakdown with shipping
+        message_text += "\n"
+        message_text += Localizator.get_text(BotEntity.USER, "cart_items_total").format(
+            items_total=items_total, currency_sym=Localizator.get_currency_symbol()
+        ) + "\n"
+
+        if has_physical_items and max_shipping_cost > 0:
+            message_text += Localizator.get_text(BotEntity.USER, "cart_shipping_cost").format(
+                shipping_cost=max_shipping_cost, currency_sym=Localizator.get_currency_symbol()
+            ) + "\n"
+
+        cart_grand_total = items_total + max_shipping_cost
+        message_text += Localizator.get_text(BotEntity.USER, "cart_total_with_shipping").format(
+            total=cart_grand_total, currency_sym=Localizator.get_currency_symbol()
+        )
         message_text += "</b>"
         return message_text
 

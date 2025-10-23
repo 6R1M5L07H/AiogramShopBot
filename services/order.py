@@ -41,7 +41,7 @@ class OrderService:
         """
 
         # 1. Calculate total and check stock
-        total_price = 0.0
+        items_total = 0.0
         reserved_items = []
 
         for cart_item in cart_items:
@@ -51,15 +51,16 @@ class OrderService:
                 subcategory_id=cart_item.subcategory_id
             )
             price = await ItemRepository.get_price(item_dto, session)
-            total_price += price * cart_item.quantity
+            items_total += price * cart_item.quantity
 
-        # 2. Create order
+        # 2. Create order (first without shipping cost)
         expires_at = datetime.now() + timedelta(minutes=config.ORDER_TIMEOUT_MINUTES)
 
         order_dto = OrderDTO(
             user_id=user_id,
             status=OrderStatus.PENDING_PAYMENT,
-            total_price=total_price,
+            total_price=items_total,  # Will be updated with shipping
+            shipping_cost=0.0,  # Will be updated
             currency=config.CURRENCY,
             expires_at=expires_at
         )
@@ -83,10 +84,35 @@ class OrderService:
             # Insufficient stock → pass exception through
             raise e
 
-        # 4. Create invoice
+        # 4. Calculate shipping cost from reserved items
+        # Max shipping cost wins (user only pays highest single shipping cost)
+        max_shipping_cost = 0.0
+        has_physical_items = False
+
+        for item_dto in reserved_items:
+            if item_dto.is_physical:
+                has_physical_items = True
+                if item_dto.shipping_cost > max_shipping_cost:
+                    max_shipping_cost = item_dto.shipping_cost
+
+        # 5. Update order with shipping cost
+        total_with_shipping = items_total + max_shipping_cost
+
+        await OrderRepository.update_order_totals(
+            order_id=order_id,
+            total_price=total_with_shipping,
+            shipping_cost=max_shipping_cost,
+            session=session
+        )
+
+        # Update DTO for return
+        order_dto.total_price = total_with_shipping
+        order_dto.shipping_cost = max_shipping_cost
+
+        # 6. Create invoice with final total
         await InvoiceService.create_invoice_with_kryptoexpress(
             order_id=order_id,
-            fiat_amount=total_price,
+            fiat_amount=total_with_shipping,
             fiat_currency=config.CURRENCY,
             crypto_currency=crypto_currency,
             session=session
@@ -102,20 +128,29 @@ class OrderService:
         """
         Completes order after successful payment.
         - Marks items as sold
-        - Sets order status to PAID
+        - Sets order status to PAID or AWAITING_SHIPMENT (depending on physical items)
         """
 
         # Get order items
         items = await ItemRepository.get_by_order_id(order_id, session)
 
-        # Mark as sold
+        # Mark as sold and check if any physical items
+        has_physical_items = False
         for item in items:
             item.is_sold = True
+            if item.is_physical:
+                has_physical_items = True
 
         await ItemRepository.update(items, session)
 
-        # Update order status
-        await OrderRepository.update_status(order_id, OrderStatus.PAID, session)
+        # Update order status based on item type
+        if has_physical_items:
+            # Physical items require shipment
+            await OrderRepository.update_status(order_id, OrderStatus.AWAITING_SHIPMENT, session)
+        else:
+            # Digital only → immediately PAID
+            await OrderRepository.update_status(order_id, OrderStatus.PAID, session)
+
         await session_commit(session)
 
     @staticmethod
