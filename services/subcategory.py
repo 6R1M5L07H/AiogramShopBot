@@ -51,6 +51,9 @@ class SubcategoryService:
         available_qty = await ItemRepository.get_available_qty(item, session)
 
         # Build message with shipping info for physical items
+        import logging
+        logging.info(f"DEBUG: Item {item.description} - is_physical: {item.is_physical}, shipping_cost: {item.shipping_cost}")
+
         if item.is_physical:
             message_text = Localizator.get_text(BotEntity.USER, "select_quantity_with_shipping").format(
                 category_name=category.name,
