@@ -62,6 +62,11 @@ class ItemService:
 
     @staticmethod
     async def parse_items_txt(path_to_file: str, session: AsyncSession | Session):
+        """
+        Parse TXT file with items. TXT format is DEPRECATED - use JSON instead!
+        TXT format assumes all items are digital (is_physical=false).
+        For physical items with shipping, use JSON format.
+        """
         with open(path_to_file, 'r', encoding='utf-8') as file:
             lines = file.readlines()
             items_list = []
@@ -74,7 +79,11 @@ class ItemService:
                     subcategory_id=subcategory.id,
                     price=float(price),
                     description=description,
-                    private_data=private_data
+                    private_data=private_data.strip(),  # Remove trailing newline
+                    # TXT format: Assume digital items (no shipping)
+                    is_physical=False,
+                    shipping_cost=0.0,
+                    packstation_allowed=True
                 ))
             return items_list
 
