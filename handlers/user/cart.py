@@ -1,6 +1,7 @@
 import inspect
 
 from aiogram import types, F, Router
+from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
