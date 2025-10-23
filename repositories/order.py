@@ -61,6 +61,8 @@ class OrderRepository:
             timestamp_field = Order.paid_at
         elif status in [OrderStatus.CANCELLED_BY_USER, OrderStatus.CANCELLED_BY_ADMIN, OrderStatus.TIMEOUT]:
             timestamp_field = Order.cancelled_at
+        elif status == OrderStatus.SHIPPED:
+            timestamp_field = Order.shipped_at
 
         values = {"status": status}
         if timestamp_field is not None:

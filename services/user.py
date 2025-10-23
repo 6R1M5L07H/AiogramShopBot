@@ -106,12 +106,29 @@ class UserService:
                 subcategory = await SubcategoryRepository.get_by_id(first_item.subcategory_id, session)
                 item_count = len(items)
 
-                kb_builder.button(text=Localizator.get_text(BotEntity.USER, "purchase_history_order_item").format(
-                    invoice_number=invoice.invoice_number,
-                    subcategory_name=subcategory.name,
-                    item_count=item_count,
-                    total_price=order.total_price,
-                    currency_sym=Localizator.get_currency_symbol()),
+                # Check if order is shipped and has shipped_at timestamp
+                from enums.order_status import OrderStatus
+                if order.status == OrderStatus.SHIPPED and order.shipped_at:
+                    # Format date as DD.MM.YYYY
+                    shipped_date_str = order.shipped_at.strftime("%d.%m.%Y")
+                    button_text = Localizator.get_text(BotEntity.USER, "purchase_history_order_item_shipped").format(
+                        invoice_number=invoice.invoice_number,
+                        subcategory_name=subcategory.name,
+                        item_count=item_count,
+                        total_price=order.total_price,
+                        currency_sym=Localizator.get_currency_symbol(),
+                        shipped_date=shipped_date_str
+                    )
+                else:
+                    button_text = Localizator.get_text(BotEntity.USER, "purchase_history_order_item").format(
+                        invoice_number=invoice.invoice_number,
+                        subcategory_name=subcategory.name,
+                        item_count=item_count,
+                        total_price=order.total_price,
+                        currency_sym=Localizator.get_currency_symbol()
+                    )
+
+                kb_builder.button(text=button_text,
                     callback_data=MyProfileCallback.create(
                         unpacked_cb.level + 1,
                         args_for_action=order.id

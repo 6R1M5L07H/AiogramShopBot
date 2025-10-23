@@ -22,6 +22,7 @@ class Order(Base):
     expires_at = Column(DateTime, nullable=False)
     paid_at = Column(DateTime, nullable=True)
     cancelled_at = Column(DateTime, nullable=True)
+    shipped_at = Column(DateTime, nullable=True)
 
     # Relations
     user = relationship('User', backref='orders')
@@ -45,3 +46,4 @@ class OrderDTO(BaseModel):
     expires_at: datetime | None = None
     paid_at: datetime | None = None
     cancelled_at: datetime | None = None
+    shipped_at: datetime | None = None
