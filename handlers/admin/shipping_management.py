@@ -24,7 +24,7 @@ async def show_awaiting_shipment_orders(**kwargs):
     callback = kwargs.get("callback")
     session = kwargs.get("session")
 
-    # Get all orders with AWAITING_SHIPMENT status
+    # Get all orders with PAID_AWAITING_SHIPMENT status
     orders = await OrderRepository.get_orders_awaiting_shipment(session)
 
     if not orders:

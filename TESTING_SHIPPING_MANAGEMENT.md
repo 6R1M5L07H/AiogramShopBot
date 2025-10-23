@@ -219,20 +219,28 @@ cp database.db database.db.backup
 ---
 
 ### Test 8: Order Cancellation (With Physical Items)
-**Purpose:** Verify address handling when order is cancelled
+**Purpose:** Verify address is deleted immediately when order is cancelled
 
 **Steps:**
 1. Create order with physical items + address
-2. Cancel order (within grace period)
-3. **Expected:** Order cancelled, address remains in database
-4. Check database: `shipping_addresses` table
-5. **Expected:** Address record still exists (for audit/GDPR compliance)
-
-**Note:** Address auto-deletion after DATA_RETENTION_DAYS is a future feature
+2. Note the order_id
+3. Check database before cancellation:
+   ```sql
+   SELECT * FROM shipping_addresses WHERE order_id = <order_id>;
+   ```
+   **Expected:** Address exists
+4. Cancel order (within grace period)
+5. **Expected:** Order cancelled successfully
+6. Check database after cancellation:
+   ```sql
+   SELECT * FROM shipping_addresses WHERE order_id = <order_id>;
+   ```
+   **Expected:** Address record deleted (GDPR compliance!)
 
 **✅ Pass Criteria:**
 - Order cancellation works normally
-- Address not immediately deleted
+- Address is immediately deleted from database
+- No orphaned address records remain
 
 ---
 

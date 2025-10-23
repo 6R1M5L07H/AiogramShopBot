@@ -128,7 +128,7 @@ class OrderService:
         """
         Completes order after successful payment.
         - Marks items as sold
-        - Sets order status to PAID or AWAITING_SHIPMENT (depending on physical items)
+        - Sets order status to PAID (digital) or PAID_AWAITING_SHIPMENT (physical)
         """
 
         # Get order items
@@ -146,7 +146,7 @@ class OrderService:
         # Update order status based on item type
         if has_physical_items:
             # Physical items require shipment
-            await OrderRepository.update_status(order_id, OrderStatus.AWAITING_SHIPMENT, session)
+            await OrderRepository.update_status(order_id, OrderStatus.PAID_AWAITING_SHIPMENT, session)
         else:
             # Digital only → immediately PAID
             await OrderRepository.update_status(order_id, OrderStatus.PAID, session)
@@ -189,6 +189,10 @@ class OrderService:
         for item in items:
             item.order_id = None  # Remove reservation
         await ItemRepository.update(items, session)
+
+        # Delete shipping address (GDPR compliance - immediate deletion on cancel)
+        from repositories.shipping_address import ShippingAddressRepository
+        await ShippingAddressRepository.delete_by_order_id(order_id, session)
 
         # Set order status
         await OrderRepository.update_status(order_id, OrderStatus.CANCELLED_BY_USER, session)

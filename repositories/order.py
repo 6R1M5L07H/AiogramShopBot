@@ -124,7 +124,7 @@ class OrderRepository:
         """Gets all orders awaiting shipment (for admin shipping management)"""
         stmt = (
             select(Order)
-            .where(Order.status == OrderStatus.AWAITING_SHIPMENT)
+            .where(Order.status == OrderStatus.PAID_AWAITING_SHIPMENT)
             .order_by(Order.paid_at.desc())
             .options(selectinload(Order.items))
         )
