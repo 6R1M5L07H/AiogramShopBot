@@ -19,6 +19,7 @@ from handlers.user.cart import cart_router
 from handlers.admin.admin import admin_router
 from handlers.user.all_categories import all_categories_router
 from handlers.user.my_profile import my_profile_router
+from handlers.user.shipping_handlers import shipping_router
 from services.notification import NotificationService
 from services.user import UserService
 from utils.custom_filters import IsUserExistFilter
@@ -82,7 +83,8 @@ users_routers = Router()
 users_routers.include_routers(
     all_categories_router,
     my_profile_router,
-    cart_router
+    cart_router,
+    shipping_router
 )
 users_routers.message.middleware(throttling_middleware)
 users_routers.callback_query.middleware(throttling_middleware)
