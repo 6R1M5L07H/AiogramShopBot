@@ -45,7 +45,7 @@ async def show_awaiting_shipment_orders(**kwargs):
             # Get invoice number for display
             invoice = await InvoiceRepository.get_by_order_id(order.id, session)
             user = await UserRepository.get_by_id(order.user_id, session)
-            username = f"@{user.username}" if user.username else f"ID:{user.telegram_id}"
+            username = f"@{user.telegram_username}" if user.telegram_username else f"ID:{user.telegram_id}"
 
             button_text = f"📦 Order #{invoice.invoice_number} | {username} | {order.total_price:.2f}{Localizator.get_currency_symbol()}"
             kb_builder.button(
@@ -77,7 +77,7 @@ async def show_order_details(**kwargs):
     user = await UserRepository.get_by_id(order.user_id, session)
     shipping_address = await ShippingService.get_shipping_address(order_id, session)
 
-    username = f"@{user.username}" if user.username else str(user.telegram_id)
+    username = f"@{user.telegram_username}" if user.telegram_username else str(user.telegram_id)
 
     # Build message
     message_text = Localizator.get_text(BotEntity.ADMIN, "order_details_header").format(order_id=order_id) + "\n\n"
