@@ -14,6 +14,16 @@ from models.user import UserDTO, User
 
 class UserRepository:
     @staticmethod
+    async def get_by_id(user_id: int, session: AsyncSession | Session) -> UserDTO | None:
+        stmt = select(User).where(User.id == user_id)
+        user = await session_execute(stmt, session)
+        user = user.scalar()
+        if user is not None:
+            return UserDTO.model_validate(user, from_attributes=True)
+        else:
+            return user
+
+    @staticmethod
     async def get_by_tgid(telegram_id: int, session: AsyncSession | Session) -> UserDTO | None:
         stmt = select(User).where(User.telegram_id == telegram_id)
         user = await session_execute(stmt, session)
