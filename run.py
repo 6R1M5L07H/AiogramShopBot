@@ -54,11 +54,13 @@ async def start(message: types.Message, session: AsyncSession | Session):
 
 @main_router.message(F.text == Localizator.get_text(BotEntity.USER, "faq"), IsUserExistFilter())
 async def faq(message: types.Message):
+    logging.info("❓ FAQ BUTTON HANDLER TRIGGERED")
     await message.answer(Localizator.get_text(BotEntity.USER, "faq_string"))
 
 
 @main_router.message(F.text == Localizator.get_text(BotEntity.USER, "help"), IsUserExistFilter())
 async def support(message: types.Message):
+    logging.info("❔ HELP BUTTON HANDLER TRIGGERED")
     help_text = Localizator.get_text(BotEntity.USER, "help_string")
 
     # Only add button if SUPPORT_LINK is configured
