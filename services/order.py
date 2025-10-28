@@ -507,7 +507,7 @@ class OrderService:
                 return message_text, kb_builder
 
             # 6. UI Fork: Digital items → Redirect directly to payment (no intermediate screen)
-            return await OrderService.process_payment(callback, session, state)
+            return await OrderService.process_payment(callback, session, state, order_id=order.id)
 
         except ValueError as e:
             # All items out of stock - remove them from cart immediately to prevent loop
@@ -531,7 +531,8 @@ class OrderService:
     async def process_payment(
         callback: CallbackQuery,
         session: AsyncSession | Session,
-        state=None
+        state=None,
+        order_id: int = None
     ) -> tuple[str, InlineKeyboardBuilder]:
         """
         Level 4: Payment Processing Router
@@ -546,6 +547,9 @@ class OrderService:
         B. First visit + wallet insufficient: Show crypto selection
         C. Crypto selected: Process payment with crypto
 
+        Args:
+            order_id: Optional order_id to use directly (when called from Cart domain)
+
         Returns:
             Tuple of (message, keyboard)
         """
@@ -553,13 +557,20 @@ class OrderService:
         from enums.cryptocurrency import Cryptocurrency
         from repositories.invoice import InvoiceRepository
 
-        unpacked_cb = OrderCallback.unpack(callback.data)
+        # Get order_id from parameter, callback, or FSM (in that order)
+        if not order_id:
+            # Try to unpack as OrderCallback first, fall back to CartCallback
+            try:
+                unpacked_cb = OrderCallback.unpack(callback.data)
+                order_id = unpacked_cb.order_id
+            except (ValueError, TypeError):
+                # If that fails, try CartCallback (which also has order_id field)
+                unpacked_cb = CartCallback.unpack(callback.data)
+                order_id = unpacked_cb.order_id
 
-        # Get order_id from callback or FSM
-        order_id = unpacked_cb.order_id
-        if order_id == -1 and state:
-            state_data = await state.get_data()
-            order_id = state_data.get("order_id")
+            if order_id == -1 and state:
+                state_data = await state.get_data()
+                order_id = state_data.get("order_id")
 
         if not order_id or order_id == -1:
             # No order found - error
