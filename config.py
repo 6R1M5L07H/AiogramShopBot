@@ -63,3 +63,6 @@ REFERRAL_DATA_RETENTION_DAYS = int(os.environ.get("REFERRAL_DATA_RETENTION_DAYS"
 
 # Shipping Management Configuration
 SHIPPING_ADDRESS_SECRET = os.environ.get("ENCRYPTION_SECRET", "")
+
+# Strike System Configuration
+MAX_STRIKES_BEFORE_BAN = int(os.environ.get("MAX_STRIKES_BEFORE_BAN", "3"))  # Default: 3 strikes = ban

@@ -12,6 +12,7 @@ from db import session_commit
 from enums.bot_entity import BotEntity
 from enums.order_cancel_reason import OrderCancelReason
 from enums.order_status import OrderStatus
+from enums.strike_type import StrikeType
 from models.cart import CartDTO
 from models.cartItem import CartItemDTO
 from models.item import ItemDTO
@@ -324,7 +325,13 @@ class OrderService:
                     'penalty_percent': penalty_percent,
                     'reason': reason.value
                 }
-                # TODO: Create strike for late cancellation/timeout
+                # Add strike for late cancellation/timeout
+                await OrderService._add_strike_and_check_ban(
+                    user_id=user.id,
+                    order_id=order_id,
+                    strike_type=StrikeType.TIMEOUT if reason == OrderCancelReason.TIMEOUT else StrikeType.LATE_CANCEL,
+                    session=session
+                )
             else:
                 # Full refund for: ADMIN or USER within grace period (rounded to 2 decimals)
                 user.top_up_amount = round(user.top_up_amount + order.wallet_used, 2)
@@ -372,11 +379,27 @@ class OrderService:
         if reason == OrderCancelReason.USER:
             new_status = OrderStatus.CANCELLED_BY_USER
             message = "Order successfully cancelled"
-            # TODO: If not within_grace_period → create strike!
+            # Add strike if cancelled outside grace period
+            if not within_grace_period:
+                await OrderService._add_strike_and_check_ban(
+                    user_id=user.id,
+                    order_id=order_id,
+                    strike_type=StrikeType.LATE_CANCEL,
+                    session=session
+                )
         elif reason == OrderCancelReason.TIMEOUT:
             new_status = OrderStatus.TIMEOUT
             within_grace_period = False  # Timeouts never count as grace period
             message = "Order cancelled due to timeout"
+            # Add strike for timeout (if not already added above)
+            # Check if wallet was used (strike already added in wallet refund section)
+            if order.wallet_used == 0:
+                await OrderService._add_strike_and_check_ban(
+                    user_id=user.id,
+                    order_id=order_id,
+                    strike_type=StrikeType.TIMEOUT,
+                    session=session
+                )
         elif reason == OrderCancelReason.ADMIN:
             new_status = OrderStatus.CANCELLED_BY_ADMIN
             within_grace_period = True  # Admin cancels don't cause strikes
@@ -1527,3 +1550,50 @@ class OrderService:
             wallet_spacing=wallet_spacing,
             currency_sym=Localizator.get_currency_symbol()
         )
+
+    @staticmethod
+    async def _add_strike_and_check_ban(
+        user_id: int,
+        order_id: int,
+        strike_type: StrikeType,
+        session: AsyncSession | Session
+    ):
+        """
+        Adds a strike to user and checks if ban threshold reached.
+
+        Args:
+            user_id: User ID
+            order_id: Order ID that caused the strike
+            strike_type: Type of strike (TIMEOUT, LATE_CANCEL, etc.)
+            session: Database session
+        """
+        from models.user_strike import UserStrikeDTO
+        from repositories.user_strike import UserStrikeRepository
+
+        # Create strike record
+        strike_dto = UserStrikeDTO(
+            user_id=user_id,
+            order_id=order_id,
+            strike_type=strike_type,
+            reason=f"{strike_type.name} for order {order_id}"
+        )
+        await UserStrikeRepository.create(strike_dto, session)
+
+        # Update user strike count
+        user = await UserRepository.get_by_id(user_id, session)
+        user.strike_count += 1
+
+        # Check if ban threshold reached
+        if user.strike_count >= config.MAX_STRIKES_BEFORE_BAN:
+            user.is_blocked = True
+            user.blocked_at = datetime.utcnow()
+            user.blocked_reason = f"Automatic ban: {user.strike_count} strikes (threshold: {config.MAX_STRIKES_BEFORE_BAN})"
+            logging.warning(f"🚫 User {user_id} BANNED: {user.strike_count} strikes reached")
+
+            # Send ban notification
+            from services.notification import NotificationService
+            await NotificationService.notify_user_banned(user, user.strike_count)
+        else:
+            logging.warning(f"⚠️ User {user_id} received strike #{user.strike_count} (type: {strike_type.name})")
+
+        await UserRepository.update(user, session)

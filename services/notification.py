@@ -396,3 +396,17 @@ class NotificationService:
             username=username
         )
         await NotificationService.send_to_admins(msg, None)
+
+    @staticmethod
+    async def notify_user_banned(user, strike_count: int):
+        """
+        Sends notification to user when they are banned due to strikes.
+
+        Args:
+            user: User object
+            strike_count: Number of strikes that caused the ban
+        """
+        msg = Localizator.get_text(BotEntity.USER, "user_banned_notification").format(
+            strike_count=strike_count
+        )
+        await NotificationService.send_to_user(user.telegram_id, msg, None)

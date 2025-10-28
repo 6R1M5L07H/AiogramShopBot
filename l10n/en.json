@@ -241,6 +241,13 @@
     "order_status_paid": "✅ Paid",
     "order_status_shipped": "📦 Shipped",
     "order_status_awaiting_shipment": "⏳ Awaiting Shipment",
-    "order_shipped_on": "<b>Shipped on:</b> {shipped_at}\n"
+    "order_shipped_on": "<b>Shipped on:</b> {shipped_at}\n",
+    "user_banned_notification": "🚫 <b>Your account has been banned</b>\n\nYou have received {strike_count} strikes for order timeouts/late cancellations.\n\nPlease contact support if you believe this is an error.",
+    "strike_statistics": "⚠️ Strike Statistics",
+    "strike_statistics_msg": "⚠️ <b>Strike Statistics</b>\n\n<b>Total Strikes:</b> {strike_count}/{max_strikes}\n<b>Status:</b> {status}\n\n<b>Recent Strikes:</b>\n{strikes_list}\n\n<i>Strikes are given for order timeouts or late cancellations (after {grace_period} min).</i>",
+    "strike_list_item": "• {date} - {strike_type} (Order #{order_id})\n",
+    "strike_status_ok": "✅ Active",
+    "strike_status_warning": "⚠️ Warning - {remaining} strikes until ban",
+    "strike_status_banned": "🚫 Banned"
   }
 }

@@ -224,6 +224,13 @@
     "order_completed_wallet_only_physical": "<b>RECHNUNG #{invoice_number}</b>\nDatum: {date}\nStatus: BEZAHLT\n\n<b>ARTIKEL</b>\n─────────────────────────────\n{items_list}─────────────────────────────\nZwischensumme{subtotal_spacing}{currency_sym}{subtotal:.2f}\n{shipping_line}─────────────────────────────\n<b>GESAMT{total_spacing}{currency_sym}{total:.2f}</b>\n\n<b>ZAHLUNG</b>\n─────────────────────────────\nGuthaben{wallet_spacing}{currency_sym}{wallet_used:.2f}\nStatus: BEZAHLT\n\n📦 Deine Bestellung wird vorbereitet und bald versendet!",
     "payment_processing_error": "❌ Fehler bei der Zahlungsabwicklung: {error}",
     "payment_required_screen": "<b>RECHNUNG #{invoice_number}</b>\nDatum: {date}\nStatus: WARTE AUF ZAHLUNG\n\n<b>ARTIKEL</b>\n─────────────────────────────\n{items_list}─────────────────────────────\nZwischensumme{subtotal_spacing}{currency_sym}{subtotal:.2f}\n{shipping_line}─────────────────────────────\n<b>GESAMT{total_spacing}{currency_sym}{total:.2f}</b>\n\n\n<b>ZAHLUNGSDETAILS</b>\n─────────────────────────────\n{wallet_line}Crypto fällig{crypto_spacing}{currency_sym}{crypto_amount_fiat:.2f}\n  <code>{crypto_amount} {crypto_currency}</code>\n\nZahlungsadresse:\n<code>{payment_address}</code>\n\nVerfällt in {time_remaining} Minuten ({expires_time})",
-    "payment_wallet_line": "Guthaben verwendet{wallet_spacing}{currency_sym}{wallet_used:.2f}\n"
+    "payment_wallet_line": "Guthaben verwendet{wallet_spacing}{currency_sym}{wallet_used:.2f}\n",
+    "user_banned_notification": "🚫 <b>Dein Konto wurde gesperrt</b>\n\nDu hast {strike_count} Verwarnungen für Bestellungs-Timeouts/verspätete Stornierungen erhalten.\n\nBitte kontaktiere den Support, wenn du glaubst, dass dies ein Fehler ist.",
+    "strike_statistics": "⚠️ Verwarnungsstatistik",
+    "strike_statistics_msg": "⚠️ <b>Verwarnungsstatistik</b>\n\n<b>Verwarnungen:</b> {strike_count}/{max_strikes}\n<b>Status:</b> {status}\n\n<b>Letzte Verwarnungen:</b>\n{strikes_list}\n\n<i>Verwarnungen werden vergeben für Bestellungs-Timeouts oder verspätete Stornierungen (nach {grace_period} Min.).</i>",
+    "strike_list_item": "• {date} - {strike_type} (Bestellung #{order_id})\n",
+    "strike_status_ok": "✅ Aktiv",
+    "strike_status_warning": "⚠️ Warnung - noch {remaining} Verwarnungen bis zur Sperre",
+    "strike_status_banned": "🚫 Gesperrt"
   }
 }
