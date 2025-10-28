@@ -1,0 +1,2 @@
+- auf deutsch fortfahren, code in englisch, doku in englisch, keine referenz auf claude
+- testing auf einer anderen Maschine. You must never invoke ngrok. always strictly human in the loop unless told otherwise. talk in German, code and document in english.

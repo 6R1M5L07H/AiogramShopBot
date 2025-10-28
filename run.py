@@ -32,7 +32,7 @@ main_router = Router()
 
 
 @main_router.message(Command(commands=["start", "help"]))
-async def start(message: types.message, session: AsyncSession | Session):
+async def start(message: types.Message, session: AsyncSession | Session):
     all_categories_button = types.KeyboardButton(text=Localizator.get_text(BotEntity.USER, "all_categories"))
     my_profile_button = types.KeyboardButton(text=Localizator.get_text(BotEntity.USER, "my_profile"))
     faq_button = types.KeyboardButton(text=Localizator.get_text(BotEntity.USER, "faq"))
@@ -53,12 +53,12 @@ async def start(message: types.message, session: AsyncSession | Session):
 
 
 @main_router.message(F.text == Localizator.get_text(BotEntity.USER, "faq"), IsUserExistFilter())
-async def faq(message: types.message):
+async def faq(message: types.Message):
     await message.answer(Localizator.get_text(BotEntity.USER, "faq_string"))
 
 
 @main_router.message(F.text == Localizator.get_text(BotEntity.USER, "help"), IsUserExistFilter())
-async def support(message: types.message):
+async def support(message: types.Message):
     help_text = Localizator.get_text(BotEntity.USER, "help_string")
 
     # Only add button if SUPPORT_LINK is configured
