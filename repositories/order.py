@@ -87,7 +87,11 @@ class OrderRepository:
         """Gets all expired orders (for timeout job)"""
         stmt = (
             select(Order)
-            .where(Order.status == OrderStatus.PENDING_PAYMENT)
+            .where(Order.status.in_([
+                OrderStatus.PENDING_PAYMENT,
+                OrderStatus.PENDING_PAYMENT_AND_ADDRESS,
+                OrderStatus.PENDING_PAYMENT_PARTIAL
+            ]))
             .where(Order.expires_at < datetime.now())
         )
         result = await session_execute(stmt, session)
