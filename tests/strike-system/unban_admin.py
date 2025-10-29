@@ -36,10 +36,19 @@ os.environ["RUNTIME_ENVIRONMENT"] = "TEST"
 
 import asyncio
 from datetime import datetime
+
+# Import all models to ensure SQLAlchemy relationships work
+from models.user import User, UserDTO
+from models.user_strike import UserStrike
+from models.order import Order
+from models.shipping_address import ShippingAddress
+from models.item import Item
+from models.category import Category
+from models.subcategory import Subcategory
+
 from db import get_db_session
 from repositories.user import UserRepository
 from repositories.user_strike import UserStrikeRepository
-from models.user import UserDTO
 import config
 
 
