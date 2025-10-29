@@ -66,3 +66,4 @@ SHIPPING_ADDRESS_SECRET = os.environ.get("ENCRYPTION_SECRET", "")
 
 # Strike System Configuration
 MAX_STRIKES_BEFORE_BAN = int(os.environ.get("MAX_STRIKES_BEFORE_BAN", "3"))  # Default: 3 strikes = ban
+EXEMPT_ADMINS_FROM_BAN = os.environ.get("EXEMPT_ADMINS_FROM_BAN", "true") == "true"  # Default: admins exempt from bans

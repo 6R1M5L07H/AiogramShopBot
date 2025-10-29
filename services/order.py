@@ -1597,8 +1597,11 @@ class OrderService:
         user = await UserRepository.get_by_id(user_id, session)
         user.strike_count += 1
 
-        # Check if ban threshold reached
-        if user.strike_count >= config.MAX_STRIKES_BEFORE_BAN:
+        # Check if ban threshold reached (unless admin is exempt)
+        is_admin = user.telegram_id in config.ADMIN_ID_LIST
+        admin_exempt = is_admin and config.EXEMPT_ADMINS_FROM_BAN
+
+        if user.strike_count >= config.MAX_STRIKES_BEFORE_BAN and not admin_exempt:
             user.is_blocked = True
             user.blocked_at = datetime.utcnow()
             user.blocked_reason = f"Automatic ban: {user.strike_count} strikes (threshold: {config.MAX_STRIKES_BEFORE_BAN})"
@@ -1607,6 +1610,8 @@ class OrderService:
             # Send ban notification
             from services.notification import NotificationService
             await NotificationService.notify_user_banned(user, user.strike_count)
+        elif admin_exempt and user.strike_count >= config.MAX_STRIKES_BEFORE_BAN:
+            logging.warning(f"⚠️ Admin {user_id} reached ban threshold ({user.strike_count} strikes) but is exempt from ban")
         else:
             logging.warning(f"⚠️ User {user_id} received strike #{user.strike_count} (type: {strike_type.name})")
 
