@@ -231,6 +231,9 @@
     "strike_list_item": "• {date} - {strike_type} (Bestellung #{order_id})\n",
     "strike_status_ok": "✅ Aktiv",
     "strike_status_warning": "⚠️ Warnung - noch {remaining} Verwarnungen bis zur Sperre",
-    "strike_status_banned": "🚫 Gesperrt"
+    "strike_status_banned": "🚫 Gesperrt",
+    "order_cancelled_strike_timeout_reason": "⏱️ <b>Grund:</b> Ihre Reservierungszeit ist abgelaufen.\n\nDie Artikel waren für Sie reserviert und konnten von anderen Kunden nicht gekauft werden.",
+    "order_cancelled_strike_late_cancel_reason": "⚠️ <b>Grund:</b> Stornierung nach Ablauf der Kulanzfrist.\n\nDie kostenlose Stornierungsfrist war bereits abgelaufen.",
+    "order_cancelled_strike_only": "❌ <b>Bestellung storniert</b>\n\n📋 Bestellnummer: {invoice_number}\n\n{reason_text}\n\n⚠️ <b>Strike erhalten</b> - Diese Stornierung führte zu einem Strike auf Ihrem Konto.\n\nSie können Ihre Strike-Statistik in Ihrem Profil einsehen.\n\nℹ️ Weitere Informationen finden Sie in unseren AGB."
   }
 }

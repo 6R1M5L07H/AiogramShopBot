@@ -248,6 +248,9 @@
     "strike_list_item": "• {date} - {strike_type} (Order #{order_id})\n",
     "strike_status_ok": "✅ Active",
     "strike_status_warning": "⚠️ Warning - {remaining} strikes until ban",
-    "strike_status_banned": "🚫 Banned"
+    "strike_status_banned": "🚫 Banned",
+    "order_cancelled_strike_timeout_reason": "⏱️ <b>Reason:</b> Your reservation time has expired.\n\nThe items were reserved for you and could not be purchased by other customers.",
+    "order_cancelled_strike_late_cancel_reason": "⚠️ <b>Reason:</b> Cancellation after grace period expired.\n\nThe free cancellation period had already expired.",
+    "order_cancelled_strike_only": "❌ <b>Order Cancelled</b>\n\n📋 Order Number: {invoice_number}\n\n{reason_text}\n\n⚠️ <b>Strike Received</b> - This cancellation resulted in a strike on your account.\n\nYou can view your strike statistics in your profile.\n\nℹ️ For more information, see our Terms and Conditions."
   }
 }
