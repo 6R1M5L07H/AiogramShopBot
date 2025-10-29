@@ -46,6 +46,11 @@ class UserService:
         kb_builder = InlineKeyboardBuilder()
         kb_builder.button(text=Localizator.get_text(BotEntity.USER, "purchase_history_button"),
                           callback_data=MyProfileCallback.create(4, "purchase_history"))
+        kb_builder.button(text=Localizator.get_text(BotEntity.USER, "strike_statistics"),
+                          callback_data=MyProfileCallback.create(6, "strike_statistics"))
+        # TODO: Add Top-Up button placeholder here
+        kb_builder.adjust(1)
+
         user = await UserRepository.get_by_tgid(telegram_id, session)
 
         # Show wallet balance (top_up_amount = overpayments + penalties credited)
@@ -112,3 +117,54 @@ class UserService:
             ), kb_builder
         else:
             return Localizator.get_text(BotEntity.USER, "no_purchases"), kb_builder
+
+    @staticmethod
+    async def get_strike_statistics_buttons(callback: CallbackQuery, session: AsyncSession | Session) -> tuple[str, InlineKeyboardBuilder]:
+        """
+        Shows user's strike statistics and history.
+        """
+        from repositories.user_strike import UserStrikeRepository
+        import config
+
+        unpacked_cb = MyProfileCallback.unpack(callback.data)
+        user = await UserRepository.get_by_tgid(callback.from_user.id, session)
+
+        # Get user's strikes
+        strikes = await UserStrikeRepository.get_by_user_id(user.id, session)
+
+        # Determine status
+        remaining_strikes = config.MAX_STRIKES_BEFORE_BAN - user.strike_count
+        if user.is_blocked:
+            status = Localizator.get_text(BotEntity.USER, "strike_status_banned")
+        elif user.strike_count >= config.MAX_STRIKES_BEFORE_BAN - 1:
+            status = Localizator.get_text(BotEntity.USER, "strike_status_warning").format(remaining=remaining_strikes)
+        else:
+            status = Localizator.get_text(BotEntity.USER, "strike_status_ok")
+
+        # Build strike list (show last 5)
+        strikes_list = ""
+        for strike in strikes[:5]:
+            date_str = strike.created_at.strftime("%d.%m.%Y")
+            strikes_list += Localizator.get_text(BotEntity.USER, "strike_list_item").format(
+                date=date_str,
+                strike_type=strike.strike_type.name,
+                order_id=strike.order_id
+            )
+
+        if not strikes_list:
+            strikes_list = "No strikes\n"
+
+        # Build message
+        message = Localizator.get_text(BotEntity.USER, "strike_statistics_msg").format(
+            strike_count=user.strike_count,
+            max_strikes=config.MAX_STRIKES_BEFORE_BAN,
+            status=status,
+            strikes_list=strikes_list,
+            grace_period=config.ORDER_CANCEL_GRACE_PERIOD_MINUTES
+        )
+
+        # Build keyboard
+        kb_builder = InlineKeyboardBuilder()
+        kb_builder.row(unpacked_cb.get_back_button(0))
+
+        return message, kb_builder
