@@ -443,4 +443,4 @@ class NotificationService:
         msg = Localizator.get_text(BotEntity.USER, "user_banned_notification").format(
             strike_count=strike_count
         )
-        await NotificationService.send_to_user(user.telegram_id, msg, None)
+        await NotificationService.send_to_user(msg, user.telegram_id)
