@@ -145,10 +145,16 @@ class UserService:
         strikes_list = ""
         for strike in strikes[:5]:
             date_str = strike.created_at.strftime("%d.%m.%Y")
+
+            # Get invoice number for this order
+            from repositories.invoice import InvoiceRepository
+            invoice = await InvoiceRepository.get_by_order_id(strike.order_id, session)
+            invoice_number = invoice.invoice_number if invoice else f"#{strike.order_id}"
+
             strikes_list += Localizator.get_text(BotEntity.USER, "strike_list_item").format(
                 date=date_str,
                 strike_type=strike.strike_type.name,
-                order_id=strike.order_id
+                order_id=invoice_number
             )
 
         if not strikes_list:
