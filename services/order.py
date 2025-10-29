@@ -409,21 +409,29 @@ class OrderService:
 
         await OrderRepository.update_status(order_id, new_status, session)
 
-        # Send notification to user about wallet refund if applicable
+        # Send notification to user
+        from services.notification import NotificationService
+        from utils.localizator import Localizator
+        from repositories.invoice import InvoiceRepository
+
+        # Get invoice number for notification
+        invoice = await InvoiceRepository.get_by_order_id(order_id, session)
+        invoice_number = invoice.invoice_number if invoice else str(order_id)
+
         if wallet_refund_info:
-            from services.notification import NotificationService
-            from utils.localizator import Localizator
-            from repositories.invoice import InvoiceRepository
-
-            # Get invoice number for notification
-            invoice = await InvoiceRepository.get_by_order_id(order_id, session)
-            invoice_number = invoice.invoice_number if invoice else str(order_id)
-
+            # Wallet-based notification (includes strike info if penalty was applied)
             await NotificationService.notify_order_cancelled_wallet_refund(
                 user=user,
                 invoice_number=invoice_number,
                 refund_info=wallet_refund_info,
                 currency_sym=Localizator.get_currency_symbol()
+            )
+        elif not within_grace_period and reason != OrderCancelReason.ADMIN:
+            # No wallet involved but strike was given - notify user about strike
+            await NotificationService.notify_order_cancelled_strike_only(
+                user=user,
+                invoice_number=invoice_number,
+                reason=reason
             )
 
         return within_grace_period, message

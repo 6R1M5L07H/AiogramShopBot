@@ -369,6 +369,40 @@ class NotificationService:
         await NotificationService.send_to_user(msg, user.telegram_id)
 
     @staticmethod
+    async def notify_order_cancelled_strike_only(
+        user: UserDTO,
+        invoice_number: str,
+        reason
+    ):
+        """
+        Notifies user about order cancellation when no wallet was involved but strike was given.
+        """
+        from enums.order_cancel_reason import OrderCancelReason
+
+        if reason == OrderCancelReason.TIMEOUT:
+            reason_text = (
+                f"⏱️ <b>Grund:</b> Ihre Reservierungszeit ist abgelaufen.\n\n"
+                f"Die Artikel waren für Sie reserviert und konnten von anderen Kunden "
+                f"nicht gekauft werden."
+            )
+        else:
+            reason_text = (
+                f"⚠️ <b>Grund:</b> Stornierung nach Ablauf der Kulanzfrist.\n\n"
+                f"Die kostenlose Stornierungsfrist war bereits abgelaufen."
+            )
+
+        msg = (
+            f"❌ <b>Bestellung storniert</b>\n\n"
+            f"📋 Bestellnummer: {invoice_number}\n\n"
+            f"{reason_text}\n\n"
+            f"⚠️ <b>Strike erhalten</b> - Diese Stornierung führte zu einem Strike auf Ihrem Konto.\n\n"
+            f"Sie können Ihre Strike-Statistik in Ihrem Profil einsehen.\n\n"
+            f"ℹ️ Weitere Informationen finden Sie in unseren AGB."
+        )
+
+        await NotificationService.send_to_user(msg, user.telegram_id)
+
+    @staticmethod
     async def order_shipped(user_id: int, invoice_number: str, session: AsyncSession | Session):
         """
         Sends notification to user when their order has been marked as shipped.
