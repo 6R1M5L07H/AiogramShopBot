@@ -589,6 +589,7 @@ class OrderService:
         from repositories.invoice import InvoiceRepository
 
         # Get order_id from parameter, callback, or FSM (in that order)
+        unpacked_cb = None
         if not order_id:
             # Try to unpack as OrderCallback first, fall back to CartCallback
             try:
@@ -634,8 +635,8 @@ class OrderService:
 
             return payment_message, kb_builder
 
-        # Check if crypto already selected
-        crypto_selected = unpacked_cb.cryptocurrency and unpacked_cb.cryptocurrency != Cryptocurrency.PENDING_SELECTION
+        # Check if crypto already selected (only if callback was unpacked)
+        crypto_selected = unpacked_cb and unpacked_cb.cryptocurrency and unpacked_cb.cryptocurrency != Cryptocurrency.PENDING_SELECTION
 
         # Mode A/B: First visit - Check wallet balance first
         if not crypto_selected:
@@ -682,6 +683,11 @@ class OrderService:
                 return await CartService._show_crypto_selection(order_id)
 
         # Mode C: Crypto selected - Process payment
+        if not unpacked_cb or not unpacked_cb.cryptocurrency:
+            # Should never happen (crypto_selected would be False), but safety check
+            from services.cart import CartService
+            return await CartService._show_crypto_selection(order_id)
+
         try:
             invoice, needs_crypto_payment = await PaymentService.orchestrate_payment_processing(
                 order_id=order_id,
