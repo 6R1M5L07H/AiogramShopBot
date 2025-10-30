@@ -290,8 +290,7 @@ async def cancel_order_admin_execute(**kwargs):
         order_id=order_id,
         reason=OrderCancelReason.ADMIN,
         session=session,
-        refund_wallet=True,
-        apply_penalty=False  # No penalty for admin cancellation
+        refund_wallet=True  # Full refund, no penalty for admin cancellation
     )
     await session_commit(session)
 
