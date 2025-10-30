@@ -443,9 +443,12 @@ class OrderService:
             # Wallet-based notification (includes strike info if penalty was applied)
             await NotificationService.notify_order_cancelled_wallet_refund(
                 user=user,
+                order=order,
+                invoice=invoice,
                 invoice_number=invoice_number,
                 refund_info=wallet_refund_info,
-                currency_sym=Localizator.get_currency_symbol()
+                currency_sym=Localizator.get_currency_symbol(),
+                session=session
             )
         elif not within_grace_period and reason != OrderCancelReason.ADMIN:
             # No wallet involved but strike was given - notify user about strike

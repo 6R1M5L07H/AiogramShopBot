@@ -297,13 +297,17 @@ class NotificationService:
     @staticmethod
     async def notify_order_cancelled_wallet_refund(
         user: UserDTO,
+        order,
+        invoice,
         invoice_number: str,
         refund_info: dict,
-        currency_sym: str
+        currency_sym: str,
+        session
     ):
         """
         Notifies user about order cancellation and wallet refund.
         Shows processing fee if applicable.
+        For admin cancellations, shows full invoice with refund line.
         """
         original_amount = refund_info['original_amount']
         penalty_amount = refund_info['penalty_amount']
@@ -363,12 +367,60 @@ class NotificationService:
 
             # Check if this is an admin cancellation
             if 'ADMIN' in reason.upper():
+                # Build full invoice with items and refund line for admin cancellation
+                from repositories.item import ItemRepository
+                from repositories.subcategory import SubcategoryRepository
+                from datetime import datetime
+
+                # Get order items
+                order_items = await ItemRepository.get_by_order_id(order.id, session)
+
+                # Build items list (same format as invoice)
+                items_dict = {}
+                for item in order_items:
+                    subcategory = await SubcategoryRepository.get_by_id(item.subcategory_id, session)
+                    key = (subcategory.name, item.price)
+                    items_dict[key] = items_dict.get(key, 0) + 1
+
+                items_list = ""
+                subtotal = 0.0
+                for (name, price), qty in items_dict.items():
+                    line_total = price * qty
+                    items_list += f"{qty}x {name}\n  {currency_sym}{price:.2f} × {qty}{' ' * (20 - len(name))}{currency_sym}{line_total:.2f}\n"
+                    subtotal += line_total
+
+                # Shipping line
+                shipping_line = ""
+                if order.shipping_cost > 0:
+                    shipping_line = f"Versand{' ' * 21}{currency_sym}{order.shipping_cost:.2f}\n"
+
+                # Calculate spacing for alignment
+                subtotal_spacing = " " * 18
+                total_spacing = " " * 23
+                refund_spacing = " " * 18
+
+                # Format date
+                date_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+
                 msg = (
-                    f"🔔 <b>Bestellung storniert</b>\n\n"
-                    f"📋 Bestellnummer: {invoice_number}\n\n"
-                    f"⚠️ <b>Ihre Bestellung wurde vom Administrator storniert.</b>\n\n"
-                    f"💰 <b>Vollständige Rückerstattung:</b> {refund_amount:.2f} {currency_sym}\n\n"
-                    f"Ihr Guthaben wurde vollständig erstattet und Sie erhalten keinen Strike.\n\n"
+                    f"<b>RECHNUNG INV-{invoice_number}</b>\n"
+                    f"Datum: {date_str}\n"
+                    f"Status: STORNIERT (Admin)\n\n"
+                    f"<b>ARTIKEL</b>\n"
+                    f"─────────────────────────────\n"
+                    f"{items_list}"
+                    f"─────────────────────────────\n"
+                    f"Zwischensumme{subtotal_spacing}{currency_sym}{subtotal:.2f}\n"
+                    f"{shipping_line}"
+                    f"─────────────────────────────\n"
+                    f"<b>GESAMT{total_spacing}{currency_sym}{order.total_price:.2f}</b>\n\n"
+                    f"<b>ERSTATTUNG</b>\n"
+                    f"─────────────────────────────\n"
+                    f"Erstattungsbetrag{refund_spacing}-{currency_sym}{refund_amount:.2f}\n"
+                    f"─────────────────────────────\n"
+                    f"<b>SALDO{total_spacing}{currency_sym}0.00</b>\n\n"
+                    f"⚠️ <b>Diese Bestellung wurde vom Administrator storniert.</b>\n\n"
+                    f"Der Betrag wurde vollständig erstattet und steht für weitere Einkäufe zur Verfügung. Sie erhalten keinen Strike.\n\n"
                     f"ℹ️ Bei Fragen kontaktieren Sie bitte den Support."
                 )
             else:
