@@ -273,9 +273,19 @@ class OrderService:
         if not order:
             raise ValueError("Order not found")
 
-        # Only pending/paid (not yet delivered) orders can be cancelled
-        # PAID status means wallet covered amount but items not yet delivered (awaiting user confirmation of adjustments)
-        if order.status not in [OrderStatus.PENDING_PAYMENT, OrderStatus.PENDING_PAYMENT_AND_ADDRESS, OrderStatus.PENDING_PAYMENT_PARTIAL, OrderStatus.PAID]:
+        # Determine which statuses can be cancelled
+        cancellable_statuses = [
+            OrderStatus.PENDING_PAYMENT,
+            OrderStatus.PENDING_PAYMENT_AND_ADDRESS,
+            OrderStatus.PENDING_PAYMENT_PARTIAL,
+            OrderStatus.PAID
+        ]
+
+        # Admin can also cancel orders awaiting shipment (paid physical items)
+        if reason == OrderCancelReason.ADMIN:
+            cancellable_statuses.append(OrderStatus.PAID_AWAITING_SHIPMENT)
+
+        if order.status not in cancellable_statuses:
             raise ValueError("Order cannot be cancelled (Status: {})".format(order.status.value))
 
         # Check grace period (only relevant for USER cancellation)
