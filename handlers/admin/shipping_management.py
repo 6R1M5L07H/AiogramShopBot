@@ -153,6 +153,11 @@ async def show_order_details(**kwargs):
         callback_data=ShippingManagementCallback.create(level=2, order_id=order_id).pack()
     )
     kb_builder.button(
+        text=Localizator.get_text(BotEntity.ADMIN, "cancel_order_admin"),
+        callback_data=ShippingManagementCallback.create(level=4, order_id=order_id).pack()
+    )
+    kb_builder.adjust(1)
+    kb_builder.button(
         text=Localizator.get_text(BotEntity.COMMON, "back_button"),
         callback_data=ShippingManagementCallback.create(level=0).pack()
     )
@@ -226,6 +231,84 @@ async def mark_as_shipped_execute(**kwargs):
     await callback.message.edit_text(message_text, reply_markup=kb_builder.as_markup())
 
 
+async def cancel_order_admin_confirm(**kwargs):
+    """Level 4: Confirmation before cancelling order (admin)"""
+    callback = kwargs.get("callback")
+    session = kwargs.get("session")
+    callback_data = kwargs.get("callback_data")
+
+    order_id = callback_data.order_id
+
+    # Get invoice number for display
+    invoice = await InvoiceRepository.get_by_order_id(order_id, session)
+    if invoice:
+        invoice_number = invoice.invoice_number
+    else:
+        from datetime import datetime
+        invoice_number = f"ORDER-{datetime.now().year}-{order_id:06d}"
+
+    message_text = Localizator.get_text(BotEntity.ADMIN, "confirm_cancel_order_admin").format(
+        invoice_number=invoice_number
+    )
+
+    kb_builder = InlineKeyboardBuilder()
+    kb_builder.button(
+        text=Localizator.get_text(BotEntity.COMMON, "confirm"),
+        callback_data=ShippingManagementCallback.create(level=5, order_id=order_id, confirmation=True).pack()
+    )
+    kb_builder.button(
+        text=Localizator.get_text(BotEntity.COMMON, "cancel"),
+        callback_data=ShippingManagementCallback.create(level=1, order_id=order_id).pack()
+    )
+
+    await callback.message.edit_text(message_text, reply_markup=kb_builder.as_markup())
+
+
+async def cancel_order_admin_execute(**kwargs):
+    """Level 5: Execute order cancellation (admin)"""
+    callback = kwargs.get("callback")
+    session = kwargs.get("session")
+    callback_data = kwargs.get("callback_data")
+
+    order_id = callback_data.order_id
+
+    # Get order and invoice
+    order = await OrderRepository.get_by_id(order_id, session)
+    invoice = await InvoiceRepository.get_by_order_id(order_id, session)
+
+    if invoice:
+        invoice_number = invoice.invoice_number
+    else:
+        from datetime import datetime
+        invoice_number = f"ORDER-{datetime.now().year}-{order_id:06d}"
+
+    # Cancel order using OrderService
+    from services.order import OrderService
+    from enums.order_cancel_reason import OrderCancelReason
+
+    await OrderService.cancel_order(
+        order_id=order_id,
+        reason=OrderCancelReason.ADMIN,
+        session=session,
+        refund_wallet=True,
+        apply_penalty=False  # No penalty for admin cancellation
+    )
+    await session_commit(session)
+
+    # Success message
+    message_text = Localizator.get_text(BotEntity.ADMIN, "order_cancelled_by_admin").format(
+        invoice_number=invoice_number
+    )
+
+    kb_builder = InlineKeyboardBuilder()
+    kb_builder.button(
+        text=Localizator.get_text(BotEntity.ADMIN, "back_to_menu"),
+        callback_data=ShippingManagementCallback.create(level=0).pack()
+    )
+
+    await callback.message.edit_text(message_text, reply_markup=kb_builder.as_markup())
+
+
 @shipping_management_router.callback_query(AdminIdFilter(), ShippingManagementCallback.filter())
 async def shipping_management_navigation(callback: CallbackQuery, callback_data: ShippingManagementCallback, session: AsyncSession | Session):
     current_level = callback_data.level
@@ -235,6 +318,8 @@ async def shipping_management_navigation(callback: CallbackQuery, callback_data:
         1: show_order_details,
         2: mark_as_shipped_confirm,
         3: mark_as_shipped_execute,
+        4: cancel_order_admin_confirm,
+        5: cancel_order_admin_execute,
     }
 
     current_level_function = levels[current_level]

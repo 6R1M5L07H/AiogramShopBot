@@ -96,6 +96,9 @@
     "mark_as_shipped": "✅ Mark as Shipped",
     "confirm_mark_shipped": "❓ <b>Do you really want to mark order #{invoice_number} as shipped?</b>",
     "order_marked_shipped": "✅ <b>Order #{invoice_number} has been marked as shipped!</b>\n\nThe customer has been notified.",
+    "cancel_order_admin": "❌ Cancel Order",
+    "confirm_cancel_order_admin": "❓ <b>Do you really want to cancel order #{invoice_number}?</b>\n\n⚠️ This will:\n• Release reserved stock\n• Refund wallet balance (100%, no penalty)\n• Notify the customer",
+    "order_cancelled_by_admin": "✅ <b>Order #{invoice_number} has been cancelled!</b>\n\nStock has been released and wallet refunded.",
     "order_awaiting_shipment_notification": "📦 <b>New Physical Order!</b>\n\nOrder #{invoice_number} from user {username} is awaiting shipment processing.\n\nPlease check the shipping management.",
     "admin_user_banned_notification": "🚫 <b>User Banned (Automatic)</b>\n\n<b>User:</b> {user_display} (ID: {telegram_id})\n<b>Reason:</b> {strike_count} strikes reached (order timeouts/late cancellations)\n<b>Ban reason:</b> {ban_reason}\n\n⚠️ <b>Note:</b> User can unban themselves by topping up their wallet with at least {unban_amount} EUR. The balance can be used for shopping.\n\nStrikes will remain after unbanning."
   },

@@ -89,6 +89,9 @@
     "mark_as_shipped": "✅ Als versendet markieren",
     "confirm_mark_shipped": "❓ <b>Möchten Sie die Bestellung #{invoice_number} wirklich als versendet markieren?</b>",
     "order_marked_shipped": "✅ <b>Bestellung #{invoice_number} wurde als versendet markiert!</b>\n\nDer Kunde wurde benachrichtigt.",
+    "cancel_order_admin": "❌ Bestellung stornieren",
+    "confirm_cancel_order_admin": "❓ <b>Möchten Sie die Bestellung #{invoice_number} wirklich stornieren?</b>\n\n⚠️ Dies wird:\n• Reservierten Bestand freigeben\n• Guthaben zurückerstatten (100%, keine Gebühr)\n• Den Kunden benachrichtigen",
+    "order_cancelled_by_admin": "✅ <b>Bestellung #{invoice_number} wurde storniert!</b>\n\nBestand wurde freigegeben und Guthaben zurückerstattet.",
     "order_awaiting_shipment_notification": "📦 <b>Neue physische Bestellung!</b>\n\nBestellung #{invoice_number} von Benutzer {username} wartet auf Versandbearbeitung.\n\nBitte überprüfen Sie die Versandverwaltung.",
     "admin_user_banned_notification": "🚫 <b>Benutzer gesperrt (Automatisch)</b>\n\n<b>Benutzer:</b> {user_display} (ID: {telegram_id})\n<b>Grund:</b> {strike_count} Strikes erreicht (Bestellungs-Timeouts/verspätete Stornierungen)\n<b>Sperrgrund:</b> {ban_reason}\n\n⚠️ <b>Hinweis:</b> Benutzer kann sich durch Guthaben-Aufladung von mindestens {unban_amount} EUR selbst entsperren. Das Guthaben kann zum Einkaufen verwendet werden.\n\nStrikes bleiben nach Entsperrung bestehen."
   },
