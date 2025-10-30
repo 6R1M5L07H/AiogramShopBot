@@ -359,12 +359,26 @@ class NotificationService:
             )
         else:
             # Full refund (no fee)
-            msg = (
-                f"🔔 <b>Order Cancelled</b>\n\n"
-                f"Order-id {invoice_number} has been cancelled.\n\n"
-                f"💰 <b>Full wallet refund:</b> {refund_amount:.2f} {currency_sym}\n\n"
-                f"Your wallet balance has been fully restored."
-            )
+            reason = refund_info.get('reason', 'UNKNOWN')
+
+            # Check if this is an admin cancellation
+            if 'ADMIN' in reason.upper():
+                msg = (
+                    f"🔔 <b>Bestellung storniert</b>\n\n"
+                    f"📋 Bestellnummer: {invoice_number}\n\n"
+                    f"⚠️ <b>Ihre Bestellung wurde vom Administrator storniert.</b>\n\n"
+                    f"💰 <b>Vollständige Rückerstattung:</b> {refund_amount:.2f} {currency_sym}\n\n"
+                    f"Ihr Guthaben wurde vollständig zurückerstattet.\n"
+                    f"Sie erhalten keine Gebühr und keinen Strike.\n\n"
+                    f"ℹ️ Bei Fragen kontaktieren Sie bitte den Support."
+                )
+            else:
+                msg = (
+                    f"🔔 <b>Bestellung storniert</b>\n\n"
+                    f"📋 Bestellnummer: {invoice_number}\n\n"
+                    f"💰 <b>Vollständige Rückerstattung:</b> {refund_amount:.2f} {currency_sym}\n\n"
+                    f"Ihr Guthaben wurde vollständig zurückerstattet."
+                )
 
         await NotificationService.send_to_user(msg, user.telegram_id)
 
