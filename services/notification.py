@@ -368,16 +368,15 @@ class NotificationService:
                     f"📋 Bestellnummer: {invoice_number}\n\n"
                     f"⚠️ <b>Ihre Bestellung wurde vom Administrator storniert.</b>\n\n"
                     f"💰 <b>Vollständige Rückerstattung:</b> {refund_amount:.2f} {currency_sym}\n\n"
-                    f"Ihr Guthaben wurde vollständig zurückerstattet.\n"
-                    f"Sie erhalten keine Gebühr und keinen Strike.\n\n"
+                    f"Ihr Guthaben wurde vollständig erstattet und Sie erhalten keinen Strike.\n\n"
                     f"ℹ️ Bei Fragen kontaktieren Sie bitte den Support."
                 )
             else:
                 msg = (
-                    f"🔔 <b>Bestellung storniert</b>\n\n"
-                    f"📋 Bestellnummer: {invoice_number}\n\n"
-                    f"💰 <b>Vollständige Rückerstattung:</b> {refund_amount:.2f} {currency_sym}\n\n"
-                    f"Ihr Guthaben wurde vollständig zurückerstattet."
+                    f"🔔 <b>Order Cancelled</b>\n\n"
+                    f"📋 Order Number: {invoice_number}\n\n"
+                    f"💰 <b>Full Refund:</b> {refund_amount:.2f} {currency_sym}\n\n"
+                    f"Your wallet balance has been fully refunded and you will not receive a strike."
                 )
 
         await NotificationService.send_to_user(msg, user.telegram_id)
