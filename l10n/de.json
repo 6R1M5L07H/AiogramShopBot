@@ -188,7 +188,7 @@
     "usdt_erc20_top_up": "USDT ERC-20",
     "usdt_trc20_top_up": "USDT TRC-20",
     "checkout": "\uD83D\uDECD\uFE0F Kasse",
-    "delete_cart_item_confirmation": "Artikel aus dem Warenkorb entfernen?",
+    "delete_cart_item_confirmation": "❓ <b>Artikel aus dem Warenkorb entfernen?</b>\n\n{quantity}x {subcategory_name}\n\nMöchten Sie diesen Artikel wirklich entfernen?",
     "delete_cart_item_confirmation_text": "Artikel aus dem Warenkorb entfernt!",
     "back_to_cart": "⤵️ Zurück zum Warenkorb",
     "updated_cart": "Warenkorb aktualisiert",

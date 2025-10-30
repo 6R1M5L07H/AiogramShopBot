@@ -331,10 +331,41 @@ class CartService:
         return message_text, kb_builder
 
     @staticmethod
-    async def delete_cart_item(callback: CallbackQuery, session: AsyncSession | Session):
+    async def delete_cart_item_confirm(callback: CallbackQuery, session: AsyncSession | Session):
         """
-        Delete cart item and directly show updated cart.
-        No confirmation needed - better UX.
+        Show confirmation dialog before deleting cart item.
+        """
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+        unpacked_cb = CartCallback.unpack(callback.data)
+        cart_item_id = unpacked_cb.cart_item_id
+
+        # Get item details for confirmation message
+        cart_item = await CartItemRepository.get_by_id(cart_item_id, session)
+        subcategory = await SubcategoryRepository.get_by_id(cart_item.subcategory_id, session)
+
+        msg = Localizator.get_text(BotEntity.USER, "delete_cart_item_confirmation").format(
+            subcategory_name=subcategory.name,
+            quantity=cart_item.quantity
+        )
+
+        kb_builder = InlineKeyboardBuilder()
+        kb_builder.button(
+            text=Localizator.get_text(BotEntity.COMMON, "confirm"),
+            callback_data=CartCallback.create(level=4, cart_item_id=cart_item_id).pack()
+        )
+        kb_builder.button(
+            text=Localizator.get_text(BotEntity.COMMON, "cancel"),
+            callback_data=CartCallback.create(level=0).pack()
+        )
+        kb_builder.adjust(2)
+
+        return msg, kb_builder
+
+    @staticmethod
+    async def delete_cart_item_execute(callback: CallbackQuery, session: AsyncSession | Session):
+        """
+        Execute cart item deletion after confirmation.
         """
         unpacked_cb = CartCallback.unpack(callback.data)
         cart_item_id = unpacked_cb.cart_item_id
