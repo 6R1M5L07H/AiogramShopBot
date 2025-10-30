@@ -369,6 +369,29 @@ class NotificationService:
         await NotificationService.send_to_user(msg, user.telegram_id)
 
     @staticmethod
+    async def notify_order_cancelled_strike_only(
+        user: UserDTO,
+        invoice_number: str,
+        reason
+    ):
+        """
+        Notifies user about order cancellation when no wallet was involved but strike was given.
+        """
+        from enums.order_cancel_reason import OrderCancelReason
+
+        if reason == OrderCancelReason.TIMEOUT:
+            reason_text = Localizator.get_text(BotEntity.USER, "order_cancelled_strike_timeout_reason")
+        else:
+            reason_text = Localizator.get_text(BotEntity.USER, "order_cancelled_strike_late_cancel_reason")
+
+        msg = Localizator.get_text(BotEntity.USER, "order_cancelled_strike_only").format(
+            invoice_number=invoice_number,
+            reason_text=reason_text
+        )
+
+        await NotificationService.send_to_user(msg, user.telegram_id)
+
+    @staticmethod
     async def order_shipped(user_id: int, invoice_number: str, session: AsyncSession | Session):
         """
         Sends notification to user when their order has been marked as shipped.
@@ -396,3 +419,62 @@ class NotificationService:
             username=username
         )
         await NotificationService.send_to_admins(msg, None)
+
+    @staticmethod
+    async def notify_user_banned(user, strike_count: int):
+        """
+        Sends notification to user when they are banned due to strikes.
+
+        Args:
+            user: User object
+            strike_count: Number of strikes that caused the ban
+        """
+        msg = Localizator.get_text(BotEntity.USER, "user_banned_notification").format(
+            strike_count=strike_count
+        )
+        await NotificationService.send_to_user(msg, user.telegram_id)
+
+    @staticmethod
+    async def notify_admin_user_banned(user, strike_count: int):
+        """
+        Sends notification to admins when a user is banned due to strikes.
+
+        Args:
+            user: User object
+            strike_count: Number of strikes that caused the ban
+        """
+        from config import UNBAN_TOP_UP_AMOUNT
+
+        # Format user display
+        if user.telegram_username:
+            user_display = f"@{user.telegram_username}"
+        else:
+            user_display = f"ID: {user.telegram_id}"
+
+        msg = Localizator.get_text(BotEntity.ADMIN, "admin_user_banned_notification").format(
+            user_display=user_display,
+            telegram_id=user.telegram_id,
+            strike_count=strike_count,
+            ban_reason=user.blocked_reason or "Unknown",
+            unban_amount=UNBAN_TOP_UP_AMOUNT
+        )
+
+        user_button = await NotificationService.make_user_button(user.telegram_username)
+        await NotificationService.send_to_admins(msg, user_button)
+
+    @staticmethod
+    async def notify_user_unbanned(user, top_up_amount: float, strike_count: int):
+        """
+        Sends notification to user when they are unbanned via wallet top-up.
+
+        Args:
+            user: User object
+            top_up_amount: Amount that was topped up (EUR)
+            strike_count: Current strike count (remains after unban)
+        """
+        msg = Localizator.get_text(BotEntity.USER, "user_unbanned_notification").format(
+            top_up_amount=top_up_amount,
+            currency_sym=Localizator.get_currency_symbol(),
+            strike_count=strike_count
+        )
+        await NotificationService.send_to_user(msg, user.telegram_id)

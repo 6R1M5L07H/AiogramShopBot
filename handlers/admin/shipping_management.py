@@ -53,7 +53,11 @@ async def show_awaiting_shipment_orders(**kwargs):
                 user_display = f"ID:{user.telegram_id}"
 
             # Handle orders without invoice (e.g., PENDING_SELECTION status after stock adjustment)
-            invoice_display = invoice.invoice_number if invoice else f"Order #{order.id}"
+            if invoice:
+                invoice_display = invoice.invoice_number
+            else:
+                from datetime import datetime
+                invoice_display = f"ORDER-{datetime.now().year}-{order.id:06d}"
 
             # Format creation timestamp
             created_time = order.created_at.strftime("%d.%m %H:%M") if order.created_at else "N/A"
@@ -90,9 +94,16 @@ async def show_order_details(**kwargs):
 
     username = f"@{user.telegram_username}" if user.telegram_username else str(user.telegram_id)
 
+    # Get invoice number with fallback
+    if invoice:
+        invoice_number = invoice.invoice_number
+    else:
+        from datetime import datetime
+        invoice_number = f"ORDER-{datetime.now().year}-{order_id:06d}"
+
     # Build message header with invoice number and user info
     message_text = Localizator.get_text(BotEntity.ADMIN, "order_details_header").format(
-        invoice_number=invoice.invoice_number,
+        invoice_number=invoice_number,
         username=username,
         user_id=user.telegram_id
     )
@@ -159,8 +170,13 @@ async def mark_as_shipped_confirm(**kwargs):
 
     # Get invoice number for display
     invoice = await InvoiceRepository.get_by_order_id(order_id, session)
+    if invoice:
+        invoice_number = invoice.invoice_number
+    else:
+        from datetime import datetime
+        invoice_number = f"ORDER-{datetime.now().year}-{order_id:06d}"
 
-    message_text = Localizator.get_text(BotEntity.ADMIN, "confirm_mark_shipped").format(invoice_number=invoice.invoice_number)
+    message_text = Localizator.get_text(BotEntity.ADMIN, "confirm_mark_shipped").format(invoice_number=invoice_number)
 
     kb_builder = InlineKeyboardBuilder()
     kb_builder.button(
@@ -190,10 +206,16 @@ async def mark_as_shipped_execute(**kwargs):
     # Send notification to user
     order = await OrderRepository.get_by_id(order_id, session)
     invoice = await InvoiceRepository.get_by_order_id(order_id, session)
-    await NotificationService.order_shipped(order.user_id, invoice.invoice_number, session)
+    if invoice:
+        invoice_number = invoice.invoice_number
+    else:
+        from datetime import datetime
+        invoice_number = f"ORDER-{datetime.now().year}-{order_id:06d}"
+
+    await NotificationService.order_shipped(order.user_id, invoice_number, session)
 
     # Success message
-    message_text = Localizator.get_text(BotEntity.ADMIN, "order_marked_shipped").format(invoice_number=invoice.invoice_number)
+    message_text = Localizator.get_text(BotEntity.ADMIN, "order_marked_shipped").format(invoice_number=invoice_number)
 
     kb_builder = InlineKeyboardBuilder()
     kb_builder.button(

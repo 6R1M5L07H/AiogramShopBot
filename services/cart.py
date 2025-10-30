@@ -163,6 +163,7 @@ class CartService:
             from repositories.item import ItemRepository
             from repositories.subcategory import SubcategoryRepository
             from collections import Counter
+            from callbacks import OrderCallback
 
             kb_builder = InlineKeyboardBuilder()
 
@@ -218,10 +219,10 @@ class CartService:
                     grace_period_info=grace_period_info
                 )
 
-                # Button: Enter shipping address (redirect back to checkout which will trigger address input)
+                # Button: Enter shipping address (redirect to address input)
                 kb_builder.button(
                     text=Localizator.get_text(BotEntity.USER, "enter_shipping_address"),
-                    callback_data=CartCallback.create(level=2, order_id=order.id)  # Level 2 = Checkout (will detect pending order and set FSM state)
+                    callback_data=OrderCallback.create(level=2, order_id=order.id)  # Level 2 = Re-enter Shipping Address
                 )
             else:
                 # Order created, address entered, waiting for payment
@@ -1005,6 +1006,11 @@ class CartService:
             from datetime import datetime
 
             invoice = await InvoiceRepository.get_by_order_id(order.id, session)
+
+            # Invoice should always exist at this point, but add fallback for robustness
+            if not invoice:
+                logging.error(f"❌ ERROR: No invoice found for order {order.id} during payment display")
+                raise ValueError(f"No invoice found for order {order.id}")
 
             # Calculate remaining time for cancel button logic
             time_elapsed = (datetime.utcnow() - order.created_at).total_seconds() / 60  # Minutes
