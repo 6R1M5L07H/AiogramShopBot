@@ -754,7 +754,7 @@ class OrderService:
         callback: CallbackQuery,
         session: AsyncSession | Session,
         state=None
-    ) -> str:
+    ) -> tuple[str, InlineKeyboardBuilder]:
         """
         Level 2: Re-enter Shipping Address
 
@@ -762,11 +762,12 @@ class OrderService:
         Restart address input process.
 
         Returns:
-            Message prompting for address input
+            Tuple of (message, keyboard) with cancel button
         """
         from handlers.user.shipping_states import ShippingAddressStates
 
         # Get order_id from FSM
+        order_id = None
         if state:
             state_data = await state.get_data()
             order_id = state_data.get("order_id")
@@ -774,10 +775,19 @@ class OrderService:
             # Set FSM state to waiting for address
             await state.set_state(ShippingAddressStates.waiting_for_address)
 
-        # Return prompt message
-        return Localizator.get_text(BotEntity.USER, "shipping_address_request").format(
+        # Build keyboard with cancel button
+        kb_builder = InlineKeyboardBuilder()
+        if order_id:
+            kb_builder.button(
+                text=Localizator.get_text(BotEntity.USER, "cancel_order"),
+                callback_data=OrderCallback.create(level=4, order_id=order_id)  # Level 4 = Cancel Order
+            )
+
+        # Return prompt message with keyboard
+        message = Localizator.get_text(BotEntity.USER, "shipping_address_request").format(
             retention_days=config.DATA_RETENTION_DAYS
         )
+        return message, kb_builder
 
     @staticmethod
     async def confirm_shipping_address(
