@@ -1199,7 +1199,7 @@ class OrderService:
                 callback_data=OrderCallback.create(level=5, order_id=order_id)  # Level 5 = Execute cancellation
             )
 
-            # Check if we came from stock adjustment screen
+            # Determine where Back button should go based on order status
             has_stock_adjustment = False
             if state:
                 state_data = await state.get_data()
@@ -1211,11 +1211,17 @@ class OrderService:
                     text=Localizator.get_text(BotEntity.COMMON, "back_button"),
                     callback_data=OrderCallback.create(level=6, order_id=order_id)  # Level 6 = Re-show stock adjustment
                 )
-            else:
-                # Back to payment screen
+            elif order.status == OrderStatus.PENDING_PAYMENT_AND_ADDRESS:
+                # Back to address input (don't go to payment - would finalize order without address!)
                 kb_builder.button(
                     text=Localizator.get_text(BotEntity.COMMON, "back_button"),
-                    callback_data=OrderCallback.create(level=3, order_id=order_id)  # Back to payment screen
+                    callback_data=OrderCallback.create(level=2, order_id=order_id)  # Level 2 = Re-enter address
+                )
+            else:
+                # Back to payment screen (order already has address or no physical items)
+                kb_builder.button(
+                    text=Localizator.get_text(BotEntity.COMMON, "back_button"),
+                    callback_data=OrderCallback.create(level=3, order_id=order_id)  # Level 3 = Payment screen
                 )
 
             return message_text, kb_builder
