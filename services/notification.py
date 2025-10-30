@@ -371,6 +371,8 @@ class NotificationService:
                 from repositories.item import ItemRepository
                 from repositories.subcategory import SubcategoryRepository
                 from datetime import datetime
+                from utils.localizator import Localizator
+                from enums.bot_entity import BotEntity
 
                 # Get order items
                 order_items = await ItemRepository.get_by_order_id(order.id, session)
@@ -392,36 +394,43 @@ class NotificationService:
                 # Shipping line
                 shipping_line = ""
                 if order.shipping_cost > 0:
-                    shipping_line = f"Versand{' ' * 21}{currency_sym}{order.shipping_cost:.2f}\n"
+                    shipping_label = Localizator.get_text(BotEntity.USER, "admin_cancel_invoice_shipping")
+                    shipping_line = f"{shipping_label}{' ' * (29 - len(shipping_label))}{currency_sym}{order.shipping_cost:.2f}\n"
 
                 # Calculate spacing for alignment
-                subtotal_spacing = " " * 18
-                total_spacing = " " * 23
-                refund_spacing = " " * 18
+                subtotal_label = Localizator.get_text(BotEntity.USER, "admin_cancel_invoice_subtotal")
+                total_label = Localizator.get_text(BotEntity.USER, "admin_cancel_invoice_total")
+                refund_label = Localizator.get_text(BotEntity.USER, "admin_cancel_invoice_refund_amount")
+                balance_label = Localizator.get_text(BotEntity.USER, "admin_cancel_invoice_balance")
+
+                subtotal_spacing = " " * (29 - len(subtotal_label))
+                total_spacing = " " * (29 - len(total_label))
+                refund_spacing = " " * (29 - len(refund_label))
+                balance_spacing = " " * (29 - len(balance_label))
 
                 # Format date
                 date_str = datetime.now().strftime("%Y-%m-%d %H:%M")
 
                 msg = (
-                    f"<b>RECHNUNG INV-{invoice_number}</b>\n"
-                    f"Datum: {date_str}\n"
-                    f"Status: STORNIERT (Admin)\n\n"
-                    f"<b>ARTIKEL</b>\n"
+                    f"<b>{Localizator.get_text(BotEntity.USER, 'admin_cancel_invoice_header')}{invoice_number}</b>\n"
+                    f"{Localizator.get_text(BotEntity.USER, 'admin_cancel_invoice_date')} {date_str}\n"
+                    f"{Localizator.get_text(BotEntity.USER, 'admin_cancel_invoice_status')}\n\n"
+                    f"<b>{Localizator.get_text(BotEntity.USER, 'admin_cancel_invoice_items')}</b>\n"
                     f"─────────────────────────────\n"
                     f"{items_list}"
                     f"─────────────────────────────\n"
-                    f"Zwischensumme{subtotal_spacing}{currency_sym}{subtotal:.2f}\n"
+                    f"{subtotal_label}{subtotal_spacing}{currency_sym}{subtotal:.2f}\n"
                     f"{shipping_line}"
                     f"─────────────────────────────\n"
-                    f"<b>GESAMT{total_spacing}{currency_sym}{order.total_price:.2f}</b>\n\n"
-                    f"<b>ERSTATTUNG</b>\n"
+                    f"<b>{total_label}{total_spacing}{currency_sym}{order.total_price:.2f}</b>\n\n"
+                    f"<b>{Localizator.get_text(BotEntity.USER, 'admin_cancel_invoice_refund_section')}</b>\n"
                     f"─────────────────────────────\n"
-                    f"Erstattungsbetrag{refund_spacing}-{currency_sym}{refund_amount:.2f}\n"
+                    f"{refund_label}{refund_spacing}-{currency_sym}{refund_amount:.2f}\n"
                     f"─────────────────────────────\n"
-                    f"<b>SALDO{total_spacing}{currency_sym}0.00</b>\n\n"
-                    f"⚠️ <b>Diese Bestellung wurde vom Administrator storniert.</b>\n\n"
-                    f"Der Betrag wurde vollständig erstattet und steht für weitere Einkäufe zur Verfügung. Sie erhalten keinen Strike.\n\n"
-                    f"ℹ️ Bei Fragen kontaktieren Sie bitte den Support."
+                    f"<b>{balance_label}{balance_spacing}{currency_sym}0.00</b>\n\n"
+                    f"{Localizator.get_text(BotEntity.USER, 'admin_cancel_notice')}\n\n"
+                    f"{Localizator.get_text(BotEntity.USER, 'admin_cancel_refund_notice')}\n\n"
+                    f"{Localizator.get_text(BotEntity.USER, 'admin_cancel_contact_support')}"
                 )
             else:
                 msg = (

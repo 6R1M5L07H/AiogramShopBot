@@ -267,6 +267,19 @@
     "order_cancelled_strike_late_cancel_reason": "⚠️ <b>Reason:</b> Cancellation after grace period expired.\n\nThe free cancellation period had already expired.",
     "order_cancelled_strike_only": "❌ <b>Order Cancelled</b>\n\n📋 Order Number: {invoice_number}\n\n{reason_text}\n\n⚠️ <b>Strike Received</b> - This cancellation resulted in a strike on your account.\n\nYou can view your strike statistics in your profile.\n\nℹ️ For more information, see our Terms and Conditions.",
     "user_unbanned_notification": "🔓 <b>Account Unbanned</b>\n\nThank you for your {top_up_amount:.2f} {currency_sym} wallet top-up!\n\nYour account has been unbanned and you can now shop again.\n\n⚠️ <b>Important:</b> Your strike count remains at {strike_count}. One more strike will result in an immediate ban.\n\nPlease ensure timely payments to avoid future issues.",
-    "account_banned_access_denied": "🚫 <b>Access Denied - Account Banned</b>\n\n<b>Reason:</b> Your account has been banned due to {strike_count} strikes (order timeouts/late cancellations).\n\n💡 <b>Unban your account:</b>\nTop up your wallet with at least {unban_amount:.2f} {currency_sym} to automatically unban your account.\n• Go to \"My Profile\" → \"Top Up Wallet\"\n• Your strikes will remain, but you can shop again\n• One more strike = immediate re-ban\n\n❓ <b>Questions?</b> Contact our support team.\n\nℹ️ See FAQ/Terms for more information."
+    "account_banned_access_denied": "🚫 <b>Access Denied - Account Banned</b>\n\n<b>Reason:</b> Your account has been banned due to {strike_count} strikes (order timeouts/late cancellations).\n\n💡 <b>Unban your account:</b>\nTop up your wallet with at least {unban_amount:.2f} {currency_sym} to automatically unban your account.\n• Go to \"My Profile\" → \"Top Up Wallet\"\n• Your strikes will remain, but you can shop again\n• One more strike = immediate re-ban\n\n❓ <b>Questions?</b> Contact our support team.\n\nℹ️ See FAQ/Terms for more information.",
+    "admin_cancel_invoice_header": "INVOICE INV-",
+    "admin_cancel_invoice_date": "Date:",
+    "admin_cancel_invoice_status": "Status: CANCELLED (Admin)",
+    "admin_cancel_invoice_items": "ITEMS",
+    "admin_cancel_invoice_subtotal": "Subtotal",
+    "admin_cancel_invoice_shipping": "Shipping",
+    "admin_cancel_invoice_total": "TOTAL",
+    "admin_cancel_invoice_refund_section": "REFUND",
+    "admin_cancel_invoice_refund_amount": "Refund Amount",
+    "admin_cancel_invoice_balance": "BALANCE",
+    "admin_cancel_notice": "⚠️ <b>This order was cancelled by the administrator.</b>",
+    "admin_cancel_refund_notice": "The amount has been fully refunded and is available for future purchases. You will not receive a strike.",
+    "admin_cancel_contact_support": "ℹ️ If you have any questions, please contact support."
   }
 }
