@@ -52,6 +52,7 @@ async def on_startup():
     # Start payment timeout job
     await payment_timeout_job.start()
 
+    # Notify admins on startup
     for admin in config.ADMIN_ID_LIST:
         try:
             await bot.send_message(admin, 'Bot is working')

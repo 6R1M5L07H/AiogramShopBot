@@ -29,8 +29,28 @@ else:  # PROD
 WEBAPP_HOST = os.environ.get("WEBAPP_HOST")
 WEBAPP_PORT = int(os.environ.get("WEBAPP_PORT")) if os.environ.get("WEBAPP_PORT") else None
 TOKEN = os.environ.get("TOKEN")
+
+# Admin Authentication - ALWAYS use plaintext IDs for functionality
+# Admin IDs are needed for:
+# - Sending notifications (new orders, errors, system events)
+# - Startup messages
+# - Admin-specific features
 ADMIN_ID_LIST = os.environ.get("ADMIN_ID_LIST").split(',')
 ADMIN_ID_LIST = [int(admin_id) for admin_id in ADMIN_ID_LIST]
+
+# Generate hashes for secure verification (computed at runtime)
+# These are used for permission checks without storing hashes in env
+from utils.admin_hash_generator import generate_admin_id_hash
+ADMIN_ID_HASHES = [generate_admin_id_hash(admin_id) for admin_id in ADMIN_ID_LIST]
+
+# Security Note: ADMIN_ID_LIST must be in .env for notifications to work.
+# The hashes provide defense-in-depth but don't eliminate the need for IDs.
+# Recommended security measures:
+# - Restrict .env file permissions (chmod 600)
+# - Use environment-specific secrets management (Vault, AWS Secrets Manager)
+# - Never commit .env to version control
+# - Rotate admin IDs if env file is compromised
+
 SUPPORT_LINK = os.environ.get("SUPPORT_LINK")
 DB_ENCRYPTION = os.environ.get("DB_ENCRYPTION", False) == 'true'
 DB_NAME = os.environ.get("DB_NAME")
@@ -68,3 +88,12 @@ SHIPPING_ADDRESS_SECRET = os.environ.get("ENCRYPTION_SECRET", "")
 MAX_STRIKES_BEFORE_BAN = int(os.environ.get("MAX_STRIKES_BEFORE_BAN", "3"))  # Default: 3 strikes = ban
 EXEMPT_ADMINS_FROM_BAN = os.environ.get("EXEMPT_ADMINS_FROM_BAN", "true") == "true"  # Default: admins exempt from bans
 UNBAN_TOP_UP_AMOUNT = float(os.environ.get("UNBAN_TOP_UP_AMOUNT", "50.0"))  # Minimum top-up amount to unban (EUR)
+
+# Logging Configuration
+LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+LOG_MASK_SECRETS = os.environ.get("LOG_MASK_SECRETS", "true") == "true"  # Mask sensitive data in logs
+LOG_ROTATION_DAYS = int(os.environ.get("LOG_ROTATION_DAYS", "7"))  # Keep logs for N days
+
+# Rate Limiting Configuration
+MAX_ORDERS_PER_USER_PER_HOUR = int(os.environ.get("MAX_ORDERS_PER_USER_PER_HOUR", "5"))  # Prevent order spam
+MAX_PAYMENT_CHECKS_PER_MINUTE = int(os.environ.get("MAX_PAYMENT_CHECKS_PER_MINUTE", "10"))  # Prevent payment status spam

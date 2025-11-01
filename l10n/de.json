@@ -185,6 +185,7 @@
     "purchases": "🧾 <b>Ihre Käufe (letzte {retention_days} Tage):</b>",
     "refresh_balance_button": "🔄 Guthaben aktualisieren",
     "refund_notification": "↩️ Sie haben eine Rückerstattung in Höhe von {currency_sym}{total_price} für den Kauf von {quantity} Stück {subcategory} erhalten",
+    "rate_limit_orders": "⏱️ <b>Ratenlimit überschritten</b>\n\nSie haben kürzlich zu viele Bestellungen erstellt ({current_count}/{max_count} pro Stunde).\n\nBitte warten Sie <b>{reset_minutes} Minuten</b>, bevor Sie eine weitere Bestellung aufgeben.\n\n<i>Dieses Limit verhindert Missbrauch und gewährleistet fairen Zugang für alle Nutzer.</i>",
     "select_quantity": "🛒 <b>Kategorie: {category_name}\nUnterkategorie: {subcategory_name}\nPreis: {currency_sym}{price:.2f}\nBeschreibung: {description}\nVerfügbare Menge: {quantity}</b>",
     "select_quantity_with_shipping": "🛒 <b>Kategorie: {category_name}\nUnterkategorie: {subcategory_name}\nPreis: {currency_sym}{price:.2f}\n📦 Versandkosten: {currency_sym}{shipping_cost:.2f}\nBeschreibung: {description}\nVerfügbare Menge: {quantity}</b>",
     "subcategory_button": "📦 {subcategory_name}| Preis: {currency_sym}{subcategory_price} | Menge: {available_quantity}",

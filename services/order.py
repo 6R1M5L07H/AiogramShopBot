@@ -561,6 +561,36 @@ class OrderService:
         Returns:
             Tuple of (message, keyboard)
         """
+        # 0. Rate limiting check
+        from middleware.rate_limit import RateLimiter
+        from bot import redis
+
+        limiter = RateLimiter(redis)
+        is_limited, current_count, remaining = await limiter.is_rate_limited(
+            "order_create",
+            callback.from_user.id,
+            max_count=config.MAX_ORDERS_PER_USER_PER_HOUR,
+            window_seconds=3600
+        )
+
+        if is_limited:
+            reset_time = await limiter.get_remaining_time("order_create", callback.from_user.id)
+            reset_minutes = reset_time // 60
+
+            kb_builder = InlineKeyboardBuilder()
+            kb_builder.button(
+                text=Localizator.get_text(BotEntity.COMMON, "back_button"),
+                callback_data=CartCallback.create(0)
+            )
+
+            message_text = Localizator.get_text(BotEntity.USER, "rate_limit_orders").format(
+                current_count=current_count,
+                max_count=config.MAX_ORDERS_PER_USER_PER_HOUR,
+                reset_minutes=reset_minutes
+            )
+            logging.warning(f"Rate limit: user={callback.from_user.id}, orders={current_count}/{config.MAX_ORDERS_PER_USER_PER_HOUR}")
+            return message_text, kb_builder
+
         # 1. Get cart items
         user = await UserRepository.get_by_tgid(callback.from_user.id, session)
         cart_items = await CartItemRepository.get_all_by_user_id(user.id, session)
@@ -1704,7 +1734,13 @@ class OrderService:
         user.strike_count = actual_strike_count
 
         # Check if ban threshold reached (unless admin is exempt)
-        is_admin = user.telegram_id in config.ADMIN_ID_LIST
+        is_admin = False
+        if config.ADMIN_ID_HASHES:
+            from utils.admin_hash_generator import verify_admin_id
+            is_admin = verify_admin_id(user.telegram_id, config.ADMIN_ID_HASHES)
+        else:
+            is_admin = user.telegram_id in config.ADMIN_ID_LIST
+
         admin_exempt = is_admin and config.EXEMPT_ADMINS_FROM_BAN
 
         if actual_strike_count >= config.MAX_STRIKES_BEFORE_BAN and not admin_exempt:

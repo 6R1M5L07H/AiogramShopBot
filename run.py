@@ -9,6 +9,11 @@ from sqlalchemy.orm import Session
 import config
 from config import SUPPORT_LINK
 import logging
+from utils.logging_config import setup_logging
+
+# Initialize centralized logging configuration
+setup_logging()
+
 from bot import dp, main, redis
 from enums.bot_entity import BotEntity
 from middleware.database import DBSessionMiddleware
@@ -27,7 +32,7 @@ from services.user import UserService
 from utils.custom_filters import IsUserExistFilter, IsUserExistFilterIncludingBanned
 from utils.localizator import Localizator
 
-logging.basicConfig(level=logging.INFO)
+# Logging is now configured via setup_logging() above
 main_router = Router()
 
 
@@ -46,7 +51,15 @@ async def start(message: types.Message, session: AsyncSession | Session):
     ), session)
     keyboard = [[all_categories_button, my_profile_button], [faq_button, help_button],
                 [cart_button]]
-    if telegram_id in config.ADMIN_ID_LIST:
+    # Check admin status using hash-based verification
+    is_admin = False
+    if config.ADMIN_ID_HASHES:
+        from utils.admin_hash_generator import verify_admin_id
+        is_admin = verify_admin_id(telegram_id, config.ADMIN_ID_HASHES)
+    else:
+        is_admin = telegram_id in config.ADMIN_ID_LIST
+
+    if is_admin:
         keyboard.append([admin_menu_button])
     start_markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2, keyboard=keyboard)
     await message.answer(Localizator.get_text(BotEntity.COMMON, "start_message"), reply_markup=start_markup)

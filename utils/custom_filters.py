@@ -9,8 +9,22 @@ from services.user import UserService
 
 
 class AdminIdFilter(BaseFilter):
+    """
+    Filter that checks if user is an admin using secure hash-based verification.
+
+    Security:
+    - Verifies admin status by hashing the user's Telegram ID and comparing with stored hashes
+    - Prevents admin identification if environment variables are compromised
+    - Backward compatible with legacy ADMIN_ID_LIST (with deprecation warning)
+    """
 
     async def __call__(self, message: types.Message):
+        # Hash-based verification (secure)
+        if config.ADMIN_ID_HASHES:
+            from utils.admin_hash_generator import verify_admin_id
+            return verify_admin_id(message.from_user.id, config.ADMIN_ID_HASHES)
+
+        # Legacy fallback (deprecated - will log warning on startup)
         return message.from_user.id in config.ADMIN_ID_LIST
 
 
@@ -31,7 +45,14 @@ class IsUserExistFilter(BaseFilter):
 
             # Check if user is banned (unless admin is exempt)
             if user.is_blocked:
-                is_admin = message.from_user.id in config.ADMIN_ID_LIST
+                # Check admin status using hash-based verification
+                is_admin = False
+                if config.ADMIN_ID_HASHES:
+                    from utils.admin_hash_generator import verify_admin_id
+                    is_admin = verify_admin_id(message.from_user.id, config.ADMIN_ID_HASHES)
+                else:
+                    is_admin = message.from_user.id in config.ADMIN_ID_LIST
+
                 admin_exempt = is_admin and config.EXEMPT_ADMINS_FROM_BAN
 
                 if not admin_exempt:
