@@ -97,3 +97,9 @@ LOG_ROTATION_DAYS = int(os.environ.get("LOG_ROTATION_DAYS", "7"))  # Keep logs f
 # Rate Limiting Configuration
 MAX_ORDERS_PER_USER_PER_HOUR = int(os.environ.get("MAX_ORDERS_PER_USER_PER_HOUR", "5"))  # Prevent order spam
 MAX_PAYMENT_CHECKS_PER_MINUTE = int(os.environ.get("MAX_PAYMENT_CHECKS_PER_MINUTE", "10"))  # Prevent payment status spam
+
+# Database Backup Configuration
+DB_BACKUP_ENABLED = os.environ.get("DB_BACKUP_ENABLED", "true") == "true"  # Enable automated backups
+DB_BACKUP_INTERVAL_HOURS = int(os.environ.get("DB_BACKUP_INTERVAL_HOURS", "6"))  # Backup every N hours
+DB_BACKUP_RETENTION_DAYS = int(os.environ.get("DB_BACKUP_RETENTION_DAYS", "7"))  # Keep backups for N days
+DB_BACKUP_PATH = os.environ.get("DB_BACKUP_PATH", "./backups")  # Backup directory path

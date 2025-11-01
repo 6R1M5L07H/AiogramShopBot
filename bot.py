@@ -15,6 +15,8 @@ from fastapi.responses import JSONResponse
 from processing.processing import processing_router
 from services.notification import NotificationService
 from jobs.payment_timeout_job import PaymentTimeoutJob
+from jobs.database_backup_job import backup_scheduler
+import asyncio
 
 redis = Redis(host=config.REDIS_HOST, password=config.REDIS_PASSWORD)
 bot = Bot(config.TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
@@ -24,6 +26,9 @@ app.include_router(processing_router)
 
 # Initialize payment timeout job
 payment_timeout_job = PaymentTimeoutJob(check_interval_seconds=60)
+
+# Background task for database backups
+backup_task = None
 
 
 @app.post(config.WEBHOOK_PATH)
@@ -43,6 +48,8 @@ async def webhook(request: Request):
 
 @app.on_event("startup")
 async def on_startup():
+    global backup_task
+
     await create_db_and_tables()
     await bot.set_webhook(
         url=config.WEBHOOK_URL,
@@ -51,6 +58,13 @@ async def on_startup():
 
     # Start payment timeout job
     await payment_timeout_job.start()
+
+    # Start database backup scheduler (if enabled)
+    if config.DB_BACKUP_ENABLED:
+        backup_task = asyncio.create_task(backup_scheduler())
+        logging.info("[Startup] Database backup scheduler started")
+    else:
+        logging.info("[Startup] Database backup scheduler disabled")
 
     # Notify admins on startup
     for admin in config.ADMIN_ID_LIST:
@@ -62,10 +76,20 @@ async def on_startup():
 
 @app.on_event("shutdown")
 async def on_shutdown():
+    global backup_task
+
     logging.warning('Shutting down..')
 
     # Stop payment timeout job
     await payment_timeout_job.stop()
+
+    # Stop database backup scheduler
+    if backup_task is not None:
+        backup_task.cancel()
+        try:
+            await backup_task
+        except asyncio.CancelledError:
+            logging.info("[Shutdown] Database backup scheduler stopped")
 
     await bot.delete_webhook()
     await dp.storage.close()

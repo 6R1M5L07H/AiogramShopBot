@@ -174,3 +174,9 @@ alembic/versions/*.pyc
 # Logs
 logs/
 *.log
+
+# Backups
+backups/*.db
+backups/*.db.gz
+backups/*.sha256
+!backups/.gitkeep
