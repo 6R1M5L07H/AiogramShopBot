@@ -168,9 +168,9 @@ LOGGING_CONFIG = {
 
 ---
 
-## Finding 4: Webhook Security Headers Missing ✅ IMPLEMENTED
+## Finding 4: Webhook Security Headers Missing ✅ IMPLEMENTED (DISABLED BY DEFAULT)
 
-**Status:** ✅ COMPLETED (2025-11-01)
+**Status:** ✅ COMPLETED (2025-11-01) - **Disabled by default**
 
 **Issue:**
 Webhook endpoints lack security headers:
@@ -181,9 +181,10 @@ Webhook endpoints lack security headers:
 
 **Required Variables:**
 ```env
-WEBHOOK_CSP_ENABLED=true
-WEBHOOK_CORS_ALLOWED_ORIGINS=https://kryptoexpress.pro
-WEBHOOK_SECURITY_HEADERS_ENABLED=true
+# Disabled by default for API-only bots
+WEBHOOK_CSP_ENABLED=false
+WEBHOOK_CORS_ALLOWED_ORIGINS=
+WEBHOOK_SECURITY_HEADERS_ENABLED=false
 WEBHOOK_HSTS_ENABLED=false
 ```
 
@@ -204,7 +205,7 @@ WEBHOOK_HSTS_ENABLED=false
 
 **Files Modified:**
 - `.env.template` - Added comprehensive webhook security documentation
-- `config.py` - Added security configuration variables
+- `config.py` - Added security configuration variables (defaults: false)
 - `bot.py` - Integrated security middleware (SecurityHeaders, CSP, CORS)
 
 **Features Implemented:**
@@ -214,6 +215,10 @@ WEBHOOK_HSTS_ENABLED=false
 - HSTS support (disabled by default, HTTPS only)
 - Permissions Policy to disable dangerous browser features
 - All middleware conditionally enabled via configuration
+- **Disabled by default** (not needed for pure API/webhook bots)
+
+**Design Decision:**
+Security headers are primarily relevant for browser-based applications. For pure API/webhook bots (no web UI), these headers provide minimal security benefit. Implementation kept for future use (admin dashboard, status pages) but disabled by default. More important security measures already implemented: Secret token validation, rate limiting, input validation, HTTPS/TLS, secret masking in logs.
 
 ---
 

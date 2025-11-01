@@ -25,14 +25,19 @@ bot = Bot(config.TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher(storage=RedisStorage(redis))
 app = FastAPI()
 
-# Add security middleware
+# Add security middleware (disabled by default for API-only bots)
+# Enable when adding web-based UI (admin dashboard, status pages, etc.)
 if config.WEBHOOK_SECURITY_HEADERS_ENABLED:
     app.add_middleware(SecurityHeadersMiddleware)
     logging.info("[Startup] Security headers middleware enabled")
+else:
+    logging.debug("[Startup] Security headers middleware disabled (not needed for API-only bot)")
 
 if config.WEBHOOK_CSP_ENABLED:
     app.add_middleware(CSPMiddleware)
     logging.info("[Startup] Content Security Policy middleware enabled")
+else:
+    logging.debug("[Startup] CSP middleware disabled (not needed for API-only bot)")
 
 if config.WEBHOOK_CORS_ALLOWED_ORIGINS:
     app.add_middleware(
@@ -43,6 +48,8 @@ if config.WEBHOOK_CORS_ALLOWED_ORIGINS:
         allow_headers=["Content-Type", "X-Telegram-Bot-Api-Secret-Token"],
     )
     logging.info(f"[Startup] CORS middleware enabled for origins: {config.WEBHOOK_CORS_ALLOWED_ORIGINS}")
+else:
+    logging.debug("[Startup] CORS middleware disabled (no allowed origins configured)")
 
 app.include_router(processing_router)
 

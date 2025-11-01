@@ -1,6 +1,16 @@
 """Security Headers Middleware
 
 Adds security headers to HTTP responses to protect against common web vulnerabilities.
+
+NOTE: These headers are primarily relevant for browser-based applications.
+For pure API/webhook bots, they provide minimal security benefit.
+
+Enable these headers when:
+- Adding web-based admin dashboard
+- Serving HTML pages
+- Implementing browser-accessible features
+
+Disabled by default for API-only bots.
 """
 
 from starlette.middleware.base import BaseHTTPMiddleware

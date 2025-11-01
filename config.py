@@ -105,7 +105,9 @@ DB_BACKUP_RETENTION_DAYS = int(os.environ.get("DB_BACKUP_RETENTION_DAYS", "7")) 
 DB_BACKUP_PATH = os.environ.get("DB_BACKUP_PATH", "./backups")  # Backup directory path
 
 # Webhook Security Configuration
-WEBHOOK_SECURITY_HEADERS_ENABLED = os.environ.get("WEBHOOK_SECURITY_HEADERS_ENABLED", "true") == "true"  # Enable security headers
-WEBHOOK_CSP_ENABLED = os.environ.get("WEBHOOK_CSP_ENABLED", "true") == "true"  # Enable Content Security Policy
+# Disabled by default for pure API/webhook bots (no browser UI)
+# Enable when adding web-based admin dashboard or public pages
+WEBHOOK_SECURITY_HEADERS_ENABLED = os.environ.get("WEBHOOK_SECURITY_HEADERS_ENABLED", "false") == "true"  # Enable security headers
+WEBHOOK_CSP_ENABLED = os.environ.get("WEBHOOK_CSP_ENABLED", "false") == "true"  # Enable Content Security Policy
 WEBHOOK_HSTS_ENABLED = os.environ.get("WEBHOOK_HSTS_ENABLED", "false") == "true"  # Enable HSTS (only for HTTPS)
 WEBHOOK_CORS_ALLOWED_ORIGINS = os.environ.get("WEBHOOK_CORS_ALLOWED_ORIGINS", "").split(",") if os.environ.get("WEBHOOK_CORS_ALLOWED_ORIGINS") else []  # CORS allowed origins
