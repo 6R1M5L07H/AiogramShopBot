@@ -16,12 +16,34 @@ from processing.processing import processing_router
 from services.notification import NotificationService
 from jobs.payment_timeout_job import PaymentTimeoutJob
 from jobs.database_backup_job import backup_scheduler
+from middleware.security_headers import SecurityHeadersMiddleware, CSPMiddleware
+from fastapi.middleware.cors import CORSMiddleware
 import asyncio
 
 redis = Redis(host=config.REDIS_HOST, password=config.REDIS_PASSWORD)
 bot = Bot(config.TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher(storage=RedisStorage(redis))
 app = FastAPI()
+
+# Add security middleware
+if config.WEBHOOK_SECURITY_HEADERS_ENABLED:
+    app.add_middleware(SecurityHeadersMiddleware)
+    logging.info("[Startup] Security headers middleware enabled")
+
+if config.WEBHOOK_CSP_ENABLED:
+    app.add_middleware(CSPMiddleware)
+    logging.info("[Startup] Content Security Policy middleware enabled")
+
+if config.WEBHOOK_CORS_ALLOWED_ORIGINS:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=config.WEBHOOK_CORS_ALLOWED_ORIGINS,
+        allow_credentials=False,
+        allow_methods=["POST"],  # Only allow POST for webhooks
+        allow_headers=["Content-Type", "X-Telegram-Bot-Api-Secret-Token"],
+    )
+    logging.info(f"[Startup] CORS middleware enabled for origins: {config.WEBHOOK_CORS_ALLOWED_ORIGINS}")
+
 app.include_router(processing_router)
 
 # Initialize payment timeout job

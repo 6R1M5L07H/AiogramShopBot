@@ -103,3 +103,9 @@ DB_BACKUP_ENABLED = os.environ.get("DB_BACKUP_ENABLED", "true") == "true"  # Ena
 DB_BACKUP_INTERVAL_HOURS = int(os.environ.get("DB_BACKUP_INTERVAL_HOURS", "6"))  # Backup every N hours
 DB_BACKUP_RETENTION_DAYS = int(os.environ.get("DB_BACKUP_RETENTION_DAYS", "7"))  # Keep backups for N days
 DB_BACKUP_PATH = os.environ.get("DB_BACKUP_PATH", "./backups")  # Backup directory path
+
+# Webhook Security Configuration
+WEBHOOK_SECURITY_HEADERS_ENABLED = os.environ.get("WEBHOOK_SECURITY_HEADERS_ENABLED", "true") == "true"  # Enable security headers
+WEBHOOK_CSP_ENABLED = os.environ.get("WEBHOOK_CSP_ENABLED", "true") == "true"  # Enable Content Security Policy
+WEBHOOK_HSTS_ENABLED = os.environ.get("WEBHOOK_HSTS_ENABLED", "false") == "true"  # Enable HSTS (only for HTTPS)
+WEBHOOK_CORS_ALLOWED_ORIGINS = os.environ.get("WEBHOOK_CORS_ALLOWED_ORIGINS", "").split(",") if os.environ.get("WEBHOOK_CORS_ALLOWED_ORIGINS") else []  # CORS allowed origins
