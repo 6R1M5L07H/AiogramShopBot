@@ -89,52 +89,20 @@ async def show_order_details(**kwargs):
     digital_items = details["digital_items"]
     physical_items = details["physical_items"]
 
-    # Build message header with invoice number and user info
-    message_text = Localizator.get_text(BotEntity.ADMIN, "order_details_header").format(
+    # Format order details using InvoiceFormatter
+    from services.invoice_formatter import InvoiceFormatter
+
+    message_text = InvoiceFormatter.format_admin_order_view(
         invoice_number=invoice_number,
         username=username,
-        user_id=user_id
+        user_id=user_id,
+        digital_items=digital_items if digital_items else None,
+        physical_items=physical_items if physical_items else None,
+        shipping_cost=order.shipping_cost,
+        total_price=order.total_price,
+        shipping_address=shipping_address,
+        currency_symbol=Localizator.get_currency_symbol()
     )
-
-    message_text += "\n\n"
-
-    # Digital items (delivered)
-    digital_total = 0.0
-    if digital_items:
-        message_text += "<b>Digital:</b>\n"
-        for (description, price), qty in digital_items.items():
-            line_total = qty * price
-            digital_total += line_total
-            if qty == 1:
-                message_text += f"{qty} Stk. {description} {price:.2f}\n"
-            else:
-                message_text += f"{qty} Stk. {description} {price:.2f} = {line_total:.2f}\n"
-        message_text += "\n"
-
-    # Physical items (to be shipped)
-    physical_total = 0.0
-    if physical_items:
-        message_text += "<b>Versandartikel:</b>\n"
-        for (description, price), qty in physical_items.items():
-            line_total = qty * price
-            physical_total += line_total
-            if qty == 1:
-                message_text += f"{qty} Stk. {description} {price:.2f}\n"
-            else:
-                message_text += f"{qty} Stk. {description} {price:.2f} = {line_total:.2f}\n"
-        message_text += "\n"
-
-    # Price breakdown
-    message_text += "═══════════════════════\n"
-    if order.shipping_cost > 0:
-        message_text += f"Versand {order.shipping_cost:.2f}\n\n"
-    message_text += f"<b>Total: {order.total_price:.2f} {Localizator.get_currency_symbol()}</b>\n"
-    message_text += "═══════════════════════\n"
-
-    # Shipping address
-    if shipping_address:
-        message_text += "\n<b>Adressdaten:</b>\n"
-        message_text += f"{shipping_address}"
 
     # Buttons
     kb_builder = InlineKeyboardBuilder()
