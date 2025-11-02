@@ -68,7 +68,7 @@ class UserService:
         unpacked_cb = MyProfileCallback.unpack(callback.data)
         kb_builder = InlineKeyboardBuilder()
 
-        # Generate crypto buttons from enum (now includes all payment options)
+        # Generate crypto buttons from enum (same 5 cryptos for payment and top-up)
         for crypto in Cryptocurrency.get_payment_options():
             entity, key = crypto.get_localization_key()
             kb_builder.button(

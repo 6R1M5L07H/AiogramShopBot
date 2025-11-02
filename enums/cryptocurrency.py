@@ -74,7 +74,9 @@ class Cryptocurrency(str, Enum):
     @staticmethod
     def get_payment_options() -> list['Cryptocurrency']:
         """
-        Returns list of cryptocurrencies available for payment.
+        Returns list of cryptocurrencies available for payments and wallet top-up.
+        Single source of truth for crypto selection across entire application.
+        Based on ilyarolf's original wallet top-up implementation.
         Order defines button display order.
 
         Returns:
@@ -82,11 +84,8 @@ class Cryptocurrency(str, Enum):
         """
         return [
             Cryptocurrency.BTC,
-            Cryptocurrency.ETH,
             Cryptocurrency.LTC,
             Cryptocurrency.SOL,
+            Cryptocurrency.ETH,
             Cryptocurrency.BNB,
-            Cryptocurrency.USDT_TRC20,
-            Cryptocurrency.USDT_ERC20,
-            Cryptocurrency.USDC_ERC20,
         ]
