@@ -2,6 +2,41 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2025-11-02
+
+### Shipping Management Service Layer Refactoring
+
+**Architecture Improvements**
+- Refactored shipping management from handler/repository pattern to handler/service/repository architecture
+- Extracted all business logic from handlers to dedicated ShippingService class
+- Eliminated 17 direct repository calls from shipping management handler
+- Improved separation of concerns: handlers now only manage UI and routing, business logic in service layer
+
+**Enhanced Error Handling**
+- Added graceful handling for non-existent orders in shipping management
+- Implemented proper error messages and fallback navigation for missing order scenarios
+- Prevents application crashes from database lookup failures
+
+**Testing Infrastructure**
+- Implemented automated testing using aiogram-tests framework
+- Added comprehensive test fixtures with in-memory database and Redis mocking
+- Created 4 integration tests for shipping management workflows
+- Added detailed manual test guide with 10 test scenarios
+
+**User Privacy**
+- Enhanced shipping address confirmation with data retention notice
+- Users now see clear information about encrypted storage and automatic deletion policy
+
+**Security Improvements**
+- Implemented comprehensive security audit covering SQL injection, XSS, and authentication vulnerabilities
+- Added optional webhook security headers middleware (disabled by default for API-only deployment)
+- Implemented automated database backup system with compression and retention policy
+
+**Documentation**
+- Created comprehensive software engineering audit TODO for technical debt tracking
+- Documented mixed order handling issues with delivery and refund logic
+- Added implementation plans for partial refund calculation in mixed orders
+
 ## 2025-11-01
 
 ### Admin Order Cancellation with Custom Reason

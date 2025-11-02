@@ -392,10 +392,11 @@ Standardize to Python conventions (snake_case).
 
 ---
 
-### 11. Handler/Service Layer Violation (Separation of Concerns)
+### 11. Handler/Service Layer Violation (Separation of Concerns) ✅ COMPLETED
 
 **Priority:** HIGH
 **Effort:** 4-6 hours
+**Status:** ✅ Completed (2025-11-02)
 
 **Issue:**
 Handlers directly calling Repositories instead of going through Services:
@@ -409,32 +410,29 @@ Handlers directly calling Repositories instead of going through Services:
 Handler → Service → Repository → Database
 ```
 
-**Current Problem:**
-```
-Handler → Repository (BAD!)
-```
+**Resolution:**
 
-**Example Problem (handlers/admin/shipping_management.py):**
-```python
-# Line 30: Handler directly calling Repository
-orders = await OrderRepository.get_orders_awaiting_shipment(session)
+✅ **handlers/admin/shipping_management.py** - REFACTORED
+- Created ShippingService with 6 new methods
+- Eliminated all 17 direct repository calls
+- Added proper error handling for missing orders
+- Added 4 automated tests with aiogram-tests framework
+- Commit: `02a5690 - feat: refactor shipping management with service layer separation`
 
-# Line 48-49: Multiple repository calls in handler
-invoice = await InvoiceRepository.get_by_order_id(order.id, session)
-user = await UserRepository.get_by_id(order.user_id, session)
+✅ **handlers/admin/user_management.py** - VERIFIED CLEAN
+- All calls through AdminService and BuyService
+- No violations found
 
-# Line 92-93: Same pattern repeated
-order = await OrderRepository.get_by_id_with_items(order_id, session)
-invoice = await InvoiceRepository.get_by_order_id(order_id, session)
-```
+✅ **handlers/admin/inventory_management.py** - VERIFIED CLEAN
+- All calls through AdminService and ItemService
+- No violations found
 
-**Locations:**
-```
-handlers/admin/shipping_management.py:30,48,49,92,93
-handlers/admin/user_management.py (check)
-handlers/admin/inventory_management.py (check)
-handlers/user/order.py (check)
-```
+✅ **handlers/user/order.py** - VERIFIED CLEAN
+- All calls through OrderService
+- No violations found
+
+**Outcome:**
+All handlers now follow proper service layer pattern. No handler/repository violations remain in codebase.
 
 **Solution:**
 Move logic to services:
