@@ -286,11 +286,14 @@ class OrderService:
         time_elapsed = (datetime.utcnow() - order.created_at).total_seconds() / 60  # Minutes
         within_grace_period = time_elapsed <= config.ORDER_CANCEL_GRACE_PERIOD_MINUTES
 
-        # Get invoice number for notification (before items are released)
+        # Get ALL invoices for notification (handles partial payments with multiple invoices)
         from repositories.invoice import InvoiceRepository
-        invoice = await InvoiceRepository.get_by_order_id(order_id, session)
-        if invoice:
-            invoice_number = invoice.invoice_number
+        invoices = await InvoiceRepository.get_all_by_order_id(order_id, session)
+        if invoices:
+            # Use first invoice number for notification, or concatenate all (if multiple)
+            invoice_number = invoices[0].invoice_number
+            if len(invoices) > 1:
+                invoice_number = " / ".join(inv.invoice_number for inv in invoices)
         else:
             # Fallback for orders without invoice
             from datetime import datetime
@@ -319,25 +322,35 @@ class OrderService:
         elif reason == OrderCancelReason.TIMEOUT:
             apply_penalty = True  # Timeout always has penalty (strike)
 
-        # Case 1: Wallet was already used in order (refund with/without penalty)
-        if refund_wallet and order.wallet_used > 0:
+        # Calculate total paid amount from all invoices (handles partial payments)
+        from enums.invoice_status import InvoiceStatus
+        total_paid_fiat = sum(
+            round(inv.fiat_amount, 2)
+            for inv in invoices
+            if inv.status in [InvoiceStatus.PAID, InvoiceStatus.PARTIALLY_PAID]
+        )
+        total_paid_fiat = round(total_paid_fiat, 2)
+
+        # Case 1: Payment was made (wallet or crypto) - refund with/without penalty
+        if refund_wallet and total_paid_fiat > 0:
             if apply_penalty:
                 # Apply penalty (configurable percentage)
                 # Use calculate_penalty() to ensure correct rounding (penalty rounded DOWN)
                 from services.payment_validator import PaymentValidator
                 penalty_percent = config.PAYMENT_LATE_PENALTY_PERCENT
                 penalty_amount, refund_amount = PaymentValidator.calculate_penalty(
-                    order.wallet_used,
+                    total_paid_fiat,  # Use total paid (wallet + crypto)
                     penalty_percent
                 )
 
                 user.top_up_amount = round(user.top_up_amount + refund_amount, 2)
                 await UserRepository.update(user, session)
 
-                logging.info(f"💰 Refunded {refund_amount} EUR to user {user.id} wallet ({reason.value} cancellation, {penalty_percent}% penalty applied)")
+                logging.info(f"💰 Refunded {refund_amount} EUR to user {user.id} wallet ({reason.value} cancellation, {penalty_percent}% penalty applied, total paid: {total_paid_fiat})")
 
                 wallet_refund_info = {
-                    'original_amount': order.wallet_used,
+                    'original_amount': total_paid_fiat,  # Total paid (wallet + crypto)
+                    'base_amount': total_paid_fiat,
                     'penalty_amount': penalty_amount,
                     'refund_amount': refund_amount,
                     'penalty_percent': penalty_percent,
@@ -352,15 +365,16 @@ class OrderService:
                 )
             else:
                 # Full refund for: ADMIN or USER within grace period (rounded to 2 decimals)
-                user.top_up_amount = round(user.top_up_amount + order.wallet_used, 2)
+                user.top_up_amount = round(user.top_up_amount + total_paid_fiat, 2)
                 await UserRepository.update(user, session)
 
-                logging.info(f"💰 Refunded {order.wallet_used} EUR to user {user.id} wallet ({reason.value} cancellation, no penalty)")
+                logging.info(f"💰 Refunded {total_paid_fiat} EUR to user {user.id} wallet ({reason.value} cancellation, no penalty)")
 
                 wallet_refund_info = {
-                    'original_amount': order.wallet_used,
+                    'original_amount': total_paid_fiat,  # Total paid (wallet + crypto)
+                    'base_amount': total_paid_fiat,
                     'penalty_amount': 0.0,
-                    'refund_amount': order.wallet_used,
+                    'refund_amount': total_paid_fiat,
                     'penalty_percent': 0,
                     'reason': reason.value
                 }
@@ -1445,17 +1459,22 @@ class OrderService:
         # Get order items
         order_items = await ItemRepository.get_by_order_id(order.id, session)
 
+        # Batch-load all subcategories (eliminates N+1 queries)
+        subcategory_ids = list({item.subcategory_id for item in order_items})
+        subcategories_dict = await SubcategoryRepository.get_by_ids(subcategory_ids, session)
+
         # Build unified items list
         items = []
         for item in order_items:
-            subcategory = await SubcategoryRepository.get_by_id(item.subcategory_id, session)
-            items.append({
-                'name': subcategory.name,
-                'price': item.price,
-                'quantity': 1,
-                'is_physical': item.is_physical,
-                'private_data': None
-            })
+            subcategory = subcategories_dict.get(item.subcategory_id)
+            if subcategory:
+                items.append({
+                    'name': subcategory.name,
+                    'price': item.price,
+                    'quantity': 1,
+                    'is_physical': item.is_physical,
+                    'private_data': None
+                })
 
         # Consolidate duplicate items
         consolidated_items = {}
@@ -1630,17 +1649,22 @@ class OrderService:
         # Check if order contains physical items
         has_physical_items = any(item.is_physical for item in order_items)
 
+        # Batch-load all subcategories (eliminates N+1 queries)
+        subcategory_ids = list({item.subcategory_id for item in order_items})
+        subcategories_dict = await SubcategoryRepository.get_by_ids(subcategory_ids, session)
+
         # Build unified items list WITH private_data (keys/codes for digital items)
         items = []
         for item in order_items:
-            subcategory = await SubcategoryRepository.get_by_id(item.subcategory_id, session)
-            items.append({
-                'name': subcategory.name,
-                'price': item.price,
-                'quantity': 1,
-                'is_physical': item.is_physical,
-                'private_data': item.private_data  # Include keys/codes for digital items
-            })
+            subcategory = subcategories_dict.get(item.subcategory_id)
+            if subcategory:
+                items.append({
+                    'name': subcategory.name,
+                    'price': item.price,
+                    'quantity': 1,
+                    'is_physical': item.is_physical,
+                    'private_data': item.private_data  # Include keys/codes for digital items
+                })
 
         # NO consolidation - each item unique (different private_data for digital items)
         items_list = items
