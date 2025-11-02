@@ -323,12 +323,18 @@ class OrderService:
             apply_penalty = True  # Timeout always has penalty (strike)
 
         # Calculate total paid amount from all invoices (handles partial payments)
-        from enums.invoice_status import InvoiceStatus
-        total_paid_fiat = sum(
-            round(inv.fiat_amount, 2)
-            for inv in invoices
-            if inv.status in [InvoiceStatus.PAID, InvoiceStatus.PARTIALLY_PAID]
-        )
+        # Check which invoices have payments via PaymentTransaction table
+        from repositories.payment_transaction import PaymentTransactionRepository
+
+        total_paid_fiat = 0.0
+        for inv in invoices:
+            # Check if this invoice has any payment transactions
+            transactions = await PaymentTransactionRepository.get_by_invoice_id(inv.id, session)
+            if transactions:
+                # Sum up all payments for this invoice
+                invoice_paid = sum(tx.fiat_amount for tx in transactions)
+                total_paid_fiat += round(invoice_paid, 2)
+
         total_paid_fiat = round(total_paid_fiat, 2)
 
         # Case 1: Payment was made (wallet or crypto) - refund with/without penalty
