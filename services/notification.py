@@ -292,10 +292,14 @@ class NotificationService:
             items = await ItemRepository.get_by_order_id(order_id, session)
 
             if order and items:
+                # Batch-load all subcategories (eliminates N+1 queries)
+                subcategory_ids = list({item.subcategory_id for item in items})
+                subcategories_dict = await SubcategoryRepository.get_by_ids(subcategory_ids, session)
+
                 # Build items list with private_data
                 items_list = []
                 for item in items:
-                    subcategory = await SubcategoryRepository.get_by_id(item.subcategory_id, session)
+                    subcategory = subcategories_dict.get(item.subcategory_id)
                     if subcategory:
                         items_list.append({
                             'name': subcategory.name,

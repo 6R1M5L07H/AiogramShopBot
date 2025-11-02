@@ -45,6 +45,24 @@ class SubcategoryRepository:
         return SubcategoryDTO.model_validate(subcategory.scalar(), from_attributes=True)
 
     @staticmethod
+    async def get_by_ids(subcategory_ids: list[int], session: Session | AsyncSession) -> dict[int, SubcategoryDTO]:
+        """
+        Batch-load multiple subcategories with a single query.
+        Eliminates N+1 queries when loading subcategories for multiple items.
+
+        Returns:
+            Dict mapping subcategory_id → SubcategoryDTO
+        """
+        stmt = select(Subcategory).where(Subcategory.id.in_(subcategory_ids))
+        result = await session_execute(stmt, session)
+        subcategories = result.scalars().all()
+
+        return {
+            sub.id: SubcategoryDTO.model_validate(sub, from_attributes=True)
+            for sub in subcategories
+        }
+
+    @staticmethod
     async def get_to_delete(page: int, session: Session | AsyncSession) -> list[SubcategoryDTO]:
         stmt = select(Subcategory).join(Item,
                                         Item.subcategory_id == Subcategory.id).where(
