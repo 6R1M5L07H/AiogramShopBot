@@ -289,6 +289,10 @@ class OrderService:
         # Get ALL invoices for notification (handles partial payments with multiple invoices)
         from repositories.invoice import InvoiceRepository
         invoices = await InvoiceRepository.get_all_by_order_id(order_id, session)
+
+        # For backward compatibility with notification methods that expect single invoice
+        invoice = invoices[0] if invoices else None
+
         if invoices:
             # Use first invoice number for notification, or concatenate all (if multiple)
             invoice_number = invoices[0].invoice_number
