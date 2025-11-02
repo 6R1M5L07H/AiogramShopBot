@@ -608,7 +608,6 @@ class OrderService:
             )
 
             message_text = Localizator.get_text(BotEntity.USER, "rate_limit_orders").format(
-                current_count=current_count,
                 max_count=config.MAX_ORDERS_PER_USER_PER_HOUR,
                 reset_minutes=reset_minutes
             )
