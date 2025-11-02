@@ -719,39 +719,13 @@ class CartService:
         message_text = Localizator.get_text(BotEntity.USER, "choose_payment_crypto")
         kb_builder = InlineKeyboardBuilder()
 
-        # Crypto buttons (uses existing localization)
-        kb_builder.button(
-            text=Localizator.get_text(BotEntity.COMMON, "btc_top_up"),
-            callback_data=CartCallback.create(4, cryptocurrency=Cryptocurrency.BTC)
-        )
-        kb_builder.button(
-            text=Localizator.get_text(BotEntity.COMMON, "eth_top_up"),
-            callback_data=CartCallback.create(4, cryptocurrency=Cryptocurrency.ETH)
-        )
-        kb_builder.button(
-            text=Localizator.get_text(BotEntity.COMMON, "ltc_top_up"),
-            callback_data=CartCallback.create(4, cryptocurrency=Cryptocurrency.LTC)
-        )
-        kb_builder.button(
-            text=Localizator.get_text(BotEntity.COMMON, "sol_top_up"),
-            callback_data=CartCallback.create(4, cryptocurrency=Cryptocurrency.SOL)
-        )
-        kb_builder.button(
-            text=Localizator.get_text(BotEntity.COMMON, "bnb_top_up"),
-            callback_data=CartCallback.create(4, cryptocurrency=Cryptocurrency.BNB)
-        )
-        kb_builder.button(
-            text=Localizator.get_text(BotEntity.USER, "usdt_trc20_top_up"),
-            callback_data=CartCallback.create(4, cryptocurrency=Cryptocurrency.USDT_TRC20)
-        )
-        kb_builder.button(
-            text=Localizator.get_text(BotEntity.USER, "usdt_erc20_top_up"),
-            callback_data=CartCallback.create(4, cryptocurrency=Cryptocurrency.USDT_ERC20)
-        )
-        kb_builder.button(
-            text=Localizator.get_text(BotEntity.USER, "usdc_erc20_top_up"),
-            callback_data=CartCallback.create(4, cryptocurrency=Cryptocurrency.USDC_ERC20)
-        )
+        # Generate crypto buttons from enum
+        for crypto in Cryptocurrency.get_payment_options():
+            entity, key = crypto.get_localization_key()
+            kb_builder.button(
+                text=Localizator.get_text(entity, key),
+                callback_data=CartCallback.create(4, cryptocurrency=crypto)
+            )
 
         kb_builder.adjust(2)
         kb_builder.row(CartCallback.create(0).get_back_button(0))

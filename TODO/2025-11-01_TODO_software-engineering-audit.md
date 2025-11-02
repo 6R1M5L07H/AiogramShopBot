@@ -2,7 +2,7 @@
 
 **Date:** 2025-11-01
 **Priority:** Medium-High
-**Status:** In Progress
+**Status:** In Progress (2/11 Issues Completed)
 **Estimated Effort:** 6-10 hours (incremental)
 **Branch:** `technical-debt`
 
@@ -46,32 +46,41 @@ Create `services/invoice_formatter.py` with centralized `InvoiceFormatter` class
 
 ---
 
-### 2. Duplicate Code: Crypto Button Generation ✅ TODO EXISTS
+### 2. Duplicate Code: Crypto Button Generation ✅ COMPLETED
 
 **Priority:** MEDIUM
 **Effort:** 30-45 minutes
-**Status:** TODO created (2025-10-24_TODO_refactor-crypto-button-generation.md)
+**Status:** ✅ Completed (2025-11-02)
+**Previous TODO:** 2025-10-24_TODO_refactor-crypto-button-generation.md
 
-**Locations (8x repetitive button calls):**
+**Resolution:**
+
+✅ **Added enum methods to Cryptocurrency:**
+- `get_localization_key()` - Returns (BotEntity, key) tuple for button text
+- `get_payment_options()` - Returns list of available cryptocurrencies in display order
+
+✅ **Refactored button generation** (2 locations):
+- `services/cart.py:_show_crypto_selection_screen()` - 32 lines → 7 lines (78% reduction)
+- `services/user.py:get_top_up_buttons()` - 20 lines → 8 lines (60% reduction)
+
+✅ **Benefits:**
+- Adding new crypto: Only update enum, buttons auto-generated
+- Consistent order across all screens
+- Wallet top-up now supports USDT/USDC (was missing before)
+
+**Before (32 lines):**
 ```python
-# services/order.py:_show_crypto_selection_screen()
-kb_builder.button(text=..., callback_data=...)  # BTC
-kb_builder.button(text=..., callback_data=...)  # ETH
-kb_builder.button(text=..., callback_data=...)  # LTC
-# ... 5 more identical blocks
-
-# Also duplicated in:
-services/order.py:show_crypto_selection_without_physical_check()
-handlers/user/my_profile.py:wallet_top_up()  # Similar pattern
+kb_builder.button(text=Localizator.get_text(BotEntity.COMMON, "btc_top_up"), ...)
+kb_builder.button(text=Localizator.get_text(BotEntity.COMMON, "eth_top_up"), ...)
+# ... 6 more identical blocks
 ```
 
-**Impact:**
-- Error-prone (easy to miss one crypto)
-- Hard to add/remove cryptocurrencies
-- Inconsistent button order
-
-**Solution:**
-Add `Cryptocurrency.get_payment_options()` and loop-based button generation.
+**After (5 lines):**
+```python
+for crypto in Cryptocurrency.get_payment_options():
+    entity, key = crypto.get_localization_key()
+    kb_builder.button(text=Localizator.get_text(entity, key), ...)
+```
 
 ---
 

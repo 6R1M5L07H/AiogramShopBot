@@ -49,3 +49,44 @@ class Cryptocurrency(str, Enum):
                 return "tether"
             case Cryptocurrency.USDC_ERC20:
                 return "usd-coin"
+
+    def get_localization_key(self) -> tuple:
+        """
+        Returns (BotEntity, localization_key) for payment button text.
+
+        Returns:
+            Tuple of (BotEntity enum value, localization key string)
+        """
+        from enums.bot_entity import BotEntity
+
+        mapping = {
+            Cryptocurrency.BTC: (BotEntity.COMMON, "btc_top_up"),
+            Cryptocurrency.ETH: (BotEntity.COMMON, "eth_top_up"),
+            Cryptocurrency.LTC: (BotEntity.COMMON, "ltc_top_up"),
+            Cryptocurrency.SOL: (BotEntity.COMMON, "sol_top_up"),
+            Cryptocurrency.BNB: (BotEntity.COMMON, "bnb_top_up"),
+            Cryptocurrency.USDT_TRC20: (BotEntity.USER, "usdt_trc20_top_up"),
+            Cryptocurrency.USDT_ERC20: (BotEntity.USER, "usdt_erc20_top_up"),
+            Cryptocurrency.USDC_ERC20: (BotEntity.USER, "usdc_erc20_top_up"),
+        }
+        return mapping[self]
+
+    @staticmethod
+    def get_payment_options() -> list['Cryptocurrency']:
+        """
+        Returns list of cryptocurrencies available for payment.
+        Order defines button display order.
+
+        Returns:
+            List of Cryptocurrency enum values in display order
+        """
+        return [
+            Cryptocurrency.BTC,
+            Cryptocurrency.ETH,
+            Cryptocurrency.LTC,
+            Cryptocurrency.SOL,
+            Cryptocurrency.BNB,
+            Cryptocurrency.USDT_TRC20,
+            Cryptocurrency.USDT_ERC20,
+            Cryptocurrency.USDC_ERC20,
+        ]
