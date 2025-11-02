@@ -97,7 +97,7 @@ async def notify_admins_backup_failure(error_message: str):
 
         for admin_id in config.ADMIN_ID_LIST:
             try:
-                await NotificationService.send_to_user(admin_id, notification_text)
+                await NotificationService.send_to_user(notification_text, admin_id)
             except Exception as e:
                 logger.error(f"Failed to notify admin {admin_id} about backup failure: {e}")
 

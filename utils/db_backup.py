@@ -294,6 +294,7 @@ def get_backup_handler() -> DatabaseBackup:
     Returns:
         DatabaseBackup instance configured from environment
     """
-    db_path = config.DB_PATH
+    # Construct DB path from data directory and DB_NAME
+    db_path = f"data/{config.DB_NAME}"
     backup_dir = config.DB_BACKUP_PATH
     return DatabaseBackup(db_path, backup_dir)
