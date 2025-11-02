@@ -280,15 +280,52 @@ class NotificationService:
         """
         # If order_id provided, use detailed invoice format with items
         if order_id and session:
-            from services.buy import BuyService
             from repositories.item import ItemRepository
+            from repositories.subcategory import SubcategoryRepository
+            from repositories.order import OrderRepository
+            from repositories.invoice import InvoiceRepository
+            from services.invoice_formatter import InvoiceFormatter
+            from enums.order_status import OrderStatus
 
-            # Get items for this order
+            # Get order and items
+            order = await OrderRepository.get_by_id(order_id, session)
             items = await ItemRepository.get_by_order_id(order_id, session)
 
-            if items:
-                # Use the same formatted message as Purchase History
-                msg, _ = await BuyService.generate_buy_message(items, session)
+            if order and items:
+                # Build items list with private_data
+                items_list = []
+                for item in items:
+                    subcategory = await SubcategoryRepository.get_by_id(item.subcategory_id, session)
+                    if subcategory:
+                        items_list.append({
+                            'name': subcategory.name,
+                            'price': item.price,
+                            'quantity': 1,
+                            'is_physical': item.is_physical,
+                            'private_data': item.private_data
+                        })
+
+                # Format message with InvoiceFormatter
+                header_text = "✅ " + Localizator.get_text(BotEntity.USER, "payment_success").format(
+                    invoice_number=invoice_number
+                )
+
+                msg = InvoiceFormatter.format_complete_order_view(
+                    header_type="purchase_history",
+                    invoice_number=invoice_number,
+                    order_status=order.status,
+                    created_at=order.created_at,
+                    paid_at=order.paid_at,
+                    items=items_list,
+                    shipping_cost=order.shipping_cost,
+                    total_price=order.total_price,
+                    show_numbered_items=True,
+                    show_private_data=True,
+                    show_retention_notice=any(item.get('private_data') for item in items_list),
+                    currency_symbol=Localizator.get_currency_symbol(),
+                    entity=BotEntity.USER
+                )
+
                 await NotificationService.send_to_user(msg, user.telegram_id)
                 return
 
