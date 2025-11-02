@@ -8,12 +8,7 @@ from sqlalchemy.orm import Session
 from callbacks import ShippingManagementCallback, AdminMenuCallback
 from db import session_commit
 from enums.bot_entity import BotEntity
-from enums.order_status import OrderStatus
 from handlers.admin.admin_states import AdminOrderCancellationStates
-from repositories.invoice import InvoiceRepository
-from repositories.order import OrderRepository
-from repositories.user import UserRepository
-from services.notification import NotificationService
 from services.shipping import ShippingService
 from utils.custom_filters import AdminIdFilter
 from utils.localizator import Localizator
@@ -26,8 +21,8 @@ async def show_awaiting_shipment_orders(**kwargs):
     callback = kwargs.get("callback")
     session = kwargs.get("session")
 
-    # Get all orders with PAID_AWAITING_SHIPMENT status
-    orders = await OrderRepository.get_orders_awaiting_shipment(session)
+    # Get all orders with PAID_AWAITING_SHIPMENT status (via Service)
+    orders = await ShippingService.get_pending_shipments(session)
 
     if not orders:
         # No orders awaiting shipment
@@ -44,27 +39,10 @@ async def show_awaiting_shipment_orders(**kwargs):
         kb_builder = InlineKeyboardBuilder()
 
         for order in orders:
-            # Get invoice number for display
-            invoice = await InvoiceRepository.get_by_order_id(order.id, session)
-            user = await UserRepository.get_by_id(order.user_id, session)
+            # Get formatted display data (via Service)
+            display_data = await ShippingService.get_order_display_data(order, session)
 
-            # Always show both username and ID
-            if user.telegram_username:
-                user_display = f"@{user.telegram_username} (ID:{user.telegram_id})"
-            else:
-                user_display = f"ID:{user.telegram_id}"
-
-            # Handle orders without invoice (e.g., PENDING_SELECTION status after stock adjustment)
-            if invoice:
-                invoice_display = invoice.invoice_number
-            else:
-                from datetime import datetime
-                invoice_display = f"ORDER-{datetime.now().year}-{order.id:06d}"
-
-            # Format creation timestamp
-            created_time = order.created_at.strftime("%d.%m %H:%M") if order.created_at else "N/A"
-
-            button_text = f"📦 {created_time} | {invoice_display} | {user_display} | {order.total_price:.2f}{Localizator.get_currency_symbol()}"
+            button_text = f"📦 {display_data['created_time']} | {display_data['invoice_display']} | {display_data['user_display']} | {order.total_price:.2f}{Localizator.get_currency_symbol()}"
             kb_builder.button(
                 text=button_text,
                 callback_data=ShippingManagementCallback.create(level=1, order_id=order.id).pack()
@@ -88,44 +66,43 @@ async def show_order_details(**kwargs):
 
     order_id = callback_data.order_id
 
-    # Get order details
-    order = await OrderRepository.get_by_id_with_items(order_id, session)
-    invoice = await InvoiceRepository.get_by_order_id(order_id, session)
-    user = await UserRepository.get_by_id(order.user_id, session)
-    shipping_address = await ShippingService.get_shipping_address(order_id, session)
+    # Get order details (via Service with error handling)
+    try:
+        details = await ShippingService.get_order_details_data(order_id, session)
+    except ValueError:
+        # Order not found - show error and return to list
+        error_text = Localizator.get_text(BotEntity.ADMIN, "error_order_not_found")
+        kb_builder = InlineKeyboardBuilder()
+        kb_builder.button(
+            text=Localizator.get_text(BotEntity.ADMIN, "back_to_menu"),
+            callback_data=ShippingManagementCallback.create(level=0).pack()
+        )
+        await callback.message.edit_text(error_text, reply_markup=kb_builder.as_markup())
+        return
 
-    username = f"@{user.telegram_username}" if user.telegram_username else str(user.telegram_id)
-
-    # Get invoice number with fallback
-    if invoice:
-        invoice_number = invoice.invoice_number
-    else:
-        from datetime import datetime
-        invoice_number = f"ORDER-{datetime.now().year}-{order_id:06d}"
+    # Extract data from service response
+    order = details["order"]
+    invoice_number = details["invoice_number"]
+    username = details["username"]
+    user_id = details["user_id"]
+    shipping_address = details["shipping_address"]
+    digital_items = details["digital_items"]
+    physical_items = details["physical_items"]
 
     # Build message header with invoice number and user info
     message_text = Localizator.get_text(BotEntity.ADMIN, "order_details_header").format(
         invoice_number=invoice_number,
         username=username,
-        user_id=user.telegram_id
+        user_id=user_id
     )
 
     message_text += "\n\n"
 
     # Digital items (delivered)
-    digital_items = [item for item in order.items if not item.is_physical]
     digital_total = 0.0
     if digital_items:
         message_text += "<b>Digital:</b>\n"
-        # Group by (description, price) and count quantities
-        digital_grouped = {}
-        for item in digital_items:
-            key = (item.description, item.price)
-            if key not in digital_grouped:
-                digital_grouped[key] = 0
-            digital_grouped[key] += 1
-
-        for (description, price), qty in digital_grouped.items():
+        for (description, price), qty in digital_items.items():
             line_total = qty * price
             digital_total += line_total
             if qty == 1:
@@ -135,19 +112,10 @@ async def show_order_details(**kwargs):
         message_text += "\n"
 
     # Physical items (to be shipped)
-    physical_items = [item for item in order.items if item.is_physical]
     physical_total = 0.0
     if physical_items:
         message_text += "<b>Versandartikel:</b>\n"
-        # Group by (description, price) and count quantities
-        physical_grouped = {}
-        for item in physical_items:
-            key = (item.description, item.price)
-            if key not in physical_grouped:
-                physical_grouped[key] = 0
-            physical_grouped[key] += 1
-
-        for (description, price), qty in physical_grouped.items():
+        for (description, price), qty in physical_items.items():
             line_total = qty * price
             physical_total += line_total
             if qty == 1:
@@ -195,13 +163,8 @@ async def mark_as_shipped_confirm(**kwargs):
 
     order_id = callback_data.order_id
 
-    # Get invoice number for display
-    invoice = await InvoiceRepository.get_by_order_id(order_id, session)
-    if invoice:
-        invoice_number = invoice.invoice_number
-    else:
-        from datetime import datetime
-        invoice_number = f"ORDER-{datetime.now().year}-{order_id:06d}"
+    # Get invoice number for display (via Service)
+    invoice_number = await ShippingService.get_invoice_number(order_id, session)
 
     message_text = Localizator.get_text(BotEntity.ADMIN, "confirm_mark_shipped").format(invoice_number=invoice_number)
 
@@ -226,20 +189,20 @@ async def mark_as_shipped_execute(**kwargs):
 
     order_id = callback_data.order_id
 
-    # Update order status to SHIPPED
-    await OrderRepository.update_status(order_id, OrderStatus.SHIPPED, session)
-    await session_commit(session)
-
-    # Send notification to user
-    order = await OrderRepository.get_by_id(order_id, session)
-    invoice = await InvoiceRepository.get_by_order_id(order_id, session)
-    if invoice:
-        invoice_number = invoice.invoice_number
-    else:
-        from datetime import datetime
-        invoice_number = f"ORDER-{datetime.now().year}-{order_id:06d}"
-
-    await NotificationService.order_shipped(order.user_id, invoice_number, session)
+    # Mark order as shipped (via Service - handles status update and notification)
+    try:
+        result = await ShippingService.mark_order_as_shipped(order_id, session)
+        invoice_number = result["invoice_number"]
+    except ValueError:
+        # Order not found
+        error_text = Localizator.get_text(BotEntity.ADMIN, "error_order_not_found")
+        kb_builder = InlineKeyboardBuilder()
+        kb_builder.button(
+            text=Localizator.get_text(BotEntity.ADMIN, "back_to_menu"),
+            callback_data=ShippingManagementCallback.create(level=0).pack()
+        )
+        await callback.message.edit_text(error_text, reply_markup=kb_builder.as_markup())
+        return
 
     # Success message
     message_text = Localizator.get_text(BotEntity.ADMIN, "order_marked_shipped").format(invoice_number=invoice_number)
@@ -261,13 +224,8 @@ async def cancel_order_admin_confirm(**kwargs):
 
     order_id = callback_data.order_id
 
-    # Get invoice number for display
-    invoice = await InvoiceRepository.get_by_order_id(order_id, session)
-    if invoice:
-        invoice_number = invoice.invoice_number
-    else:
-        from datetime import datetime
-        invoice_number = f"ORDER-{datetime.now().year}-{order_id:06d}"
+    # Get invoice number for display (via Service)
+    invoice_number = await ShippingService.get_invoice_number(order_id, session)
 
     message_text = Localizator.get_text(BotEntity.ADMIN, "choose_cancel_order_path").format(
         invoice_number=invoice_number
@@ -334,15 +292,8 @@ async def process_cancellation_reason(message: Message, state: FSMContext, sessi
     # Store reason in FSM for confirmation step
     await state.update_data(custom_reason=custom_reason)
 
-    # Get order and invoice for display
-    order = await OrderRepository.get_by_id(order_id, session)
-    invoice = await InvoiceRepository.get_by_order_id(order_id, session)
-
-    if invoice:
-        invoice_number = invoice.invoice_number
-    else:
-        from datetime import datetime
-        invoice_number = f"ORDER-{datetime.now().year}-{order_id:06d}"
+    # Get invoice number for display (via Service)
+    invoice_number = await ShippingService.get_invoice_number(order_id, session)
 
     # Show confirmation with order details and reason
     message_text = Localizator.get_text(BotEntity.ADMIN, "confirm_cancel_with_reason").format(
@@ -381,15 +332,8 @@ async def cancel_order_admin_execute(**kwargs):
         await state.clear()
         return
 
-    # Get order and invoice
-    order = await OrderRepository.get_by_id(order_id, session)
-    invoice = await InvoiceRepository.get_by_order_id(order_id, session)
-
-    if invoice:
-        invoice_number = invoice.invoice_number
-    else:
-        from datetime import datetime
-        invoice_number = f"ORDER-{datetime.now().year}-{order_id:06d}"
+    # Get invoice number for display (via Service)
+    invoice_number = await ShippingService.get_invoice_number(order_id, session)
 
     # Cancel order using OrderService with custom reason
     from services.order import OrderService
@@ -431,15 +375,8 @@ async def cancel_order_admin_without_reason(**kwargs):
 
     order_id = callback_data.order_id
 
-    # Get order and invoice
-    order = await OrderRepository.get_by_id(order_id, session)
-    invoice = await InvoiceRepository.get_by_order_id(order_id, session)
-
-    if invoice:
-        invoice_number = invoice.invoice_number
-    else:
-        from datetime import datetime
-        invoice_number = f"ORDER-{datetime.now().year}-{order_id:06d}"
+    # Get invoice number for display (via Service)
+    invoice_number = await ShippingService.get_invoice_number(order_id, session)
 
     # Cancel order using OrderService WITHOUT custom reason
     from services.order import OrderService

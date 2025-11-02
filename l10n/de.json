@@ -224,7 +224,7 @@
     "payment_success": "✅ <b>Zahlung erfolgreich</b>\n\nOrder-ID: {invoice_number}\n\nDeine Bestellung wurde erfolgreich bezahlt und wird nun bearbeitet.",
     "shipping_address_request": "📬 <b>Bitte geben Sie Ihre vollständige Versandadresse ein:</b>\n\nDie Adresse sollte enthalten:\n- Name\n- Straße und Hausnummer\n- PLZ und Ort\n- Land\n\n<i>🔒 Datenschutz: Ihre Adresse wird verschlüsselt gespeichert und automatisch nach {retention_days} Tagen endgültig gelöscht.</i>",
     "shipping_address_invalid": "⚠️ <b>Die Adresse ist zu kurz!</b>\n\nBitte geben Sie eine vollständige Versandadresse ein (mindestens 10 Zeichen).",
-    "shipping_address_confirm": "📬 <b>Bitte bestätigen Sie Ihre Versandadresse:</b>\n\n{address}\n\n<i>Ist diese Adresse korrekt?</i>",
+    "shipping_address_confirm": "📬 <b>Bitte bestätigen Sie Ihre Versandadresse:</b>\n\n{address}\n\n<i>Ist diese Adresse korrekt?</i>\n\n<i>🔒 Datenschutz: Ihre Adresse wird verschlüsselt gespeichert und automatisch nach {retention_days} Tagen endgültig gelöscht.</i>",
     "change_address": "✏️ Adresse ändern",
     "shipping_address_missing": "⚠️ <b>Versandadresse fehlt noch!</b>\n\n📬 <b>Bitte geben Sie Ihre vollständige Versandadresse ein:</b>\n\nDie Adresse sollte enthalten:\n- Name\n- Straße und Hausnummer\n- PLZ und Ort\n- Land\n\n<i>🔒 Datenschutz: Ihre Adresse wird verschlüsselt gespeichert und automatisch nach {retention_days} Tagen endgültig gelöscht.</i>",
     "shipping_address_confirmed": "✅ <b>Versandadresse gespeichert!</b>\n\n<b>Bestellnummer:</b> #{order_id}\n<b>Läuft ab:</b> {expires_at} Uhr\n\nKlicke auf 'Weiter' um die Zahlung abzuschließen.",

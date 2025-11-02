@@ -3,6 +3,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
+import config
 from callbacks import MyProfileCallback
 from db import session_commit
 from enums.bot_entity import BotEntity

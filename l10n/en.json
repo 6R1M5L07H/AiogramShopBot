@@ -245,7 +245,7 @@
     "payment_success": "✅ <b>Payment Successful</b>\n\nOrder-ID: {invoice_number}\n\nYour order was successfully paid and is now being processed.",
     "shipping_address_request": "📬 <b>Please enter your complete shipping address:</b>\n\nThe address should include:\n- Name\n- Street and house number\n- Postal code and city\n- Country\n\n<i>🔒 Privacy: Your address will be stored encrypted and automatically deleted after {retention_days} days.</i>",
     "shipping_address_invalid": "⚠️ <b>The address is too short!</b>\n\nPlease enter a complete shipping address (at least 10 characters).",
-    "shipping_address_confirm": "📬 <b>Please confirm your shipping address:</b>\n\n{address}\n\n<i>Is this address correct?</i>",
+    "shipping_address_confirm": "📬 <b>Please confirm your shipping address:</b>\n\n{address}\n\n<i>Is this address correct?</i>\n\n<i>🔒 Privacy: Your address will be stored encrypted and automatically deleted after {retention_days} days.</i>",
     "change_address": "✏️ Change Address",
     "shipping_address_missing": "⚠️ <b>Shipping address is still missing!</b>\n\n📬 <b>Please enter your complete shipping address:</b>\n\nThe address should include:\n- Name\n- Street and house number\n- Postal code and city\n- Country\n\n<i>🔒 Privacy: Your address will be stored encrypted and automatically deleted after {retention_days} days.</i>",
     "shipping_address_confirmed": "✅ <b>Shipping address saved!</b>\n\n<b>Order number:</b> #{order_id}\n<b>Expires at:</b> {expires_at}\n\nClick 'Continue' to complete payment.",
