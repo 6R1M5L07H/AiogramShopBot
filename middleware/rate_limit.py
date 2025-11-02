@@ -9,6 +9,7 @@ Features:
 - Configurable limits via environment variables
 - Automatic expiry using Redis TTL
 - User-friendly error messages
+- Type-safe operation names via enum
 
 Configuration:
 - MAX_ORDERS_PER_USER_PER_HOUR: Maximum orders per user per hour
@@ -24,6 +25,7 @@ from aiogram.types import TelegramObject, Message, CallbackQuery
 from redis.asyncio import Redis
 
 import config
+from enums.rate_limit_operation import RateLimitOperation
 
 
 class RateLimitMiddleware(BaseMiddleware):
@@ -101,7 +103,7 @@ class RateLimiter:
 
     async def is_rate_limited(
         self,
-        operation: str,
+        operation: RateLimitOperation,
         user_id: int,
         max_count: int,
         window_seconds: int
@@ -110,7 +112,7 @@ class RateLimiter:
         Check if user has exceeded rate limit for an operation.
 
         Args:
-            operation: Operation name (e.g., "order_create", "payment_check")
+            operation: Operation type (RateLimitOperation enum)
             user_id: User's Telegram ID
             max_count: Maximum allowed operations in time window
             window_seconds: Time window in seconds
@@ -123,13 +125,13 @@ class RateLimiter:
 
         Example:
             >>> is_limited, current, remaining = await limiter.is_rate_limited(
-            ...     "order_create", 12345, max_count=5, window_seconds=3600
+            ...     RateLimitOperation.ORDER_CREATE, 12345, max_count=5, window_seconds=3600
             ... )
             >>> if is_limited:
             ...     print(f"Rate limited! {current}/{max_count} orders in last hour")
         """
         # Redis key: rate_limit:{operation}:{user_id}
-        key = f"rate_limit:{operation}:{user_id}"
+        key = f"rate_limit:{operation.value}:{user_id}"
 
         try:
             # Increment counter (creates key if doesn't exist)
@@ -158,34 +160,34 @@ class RateLimiter:
             logging.error(f"Rate limiter error: {e}")
             return False, 0, max_count
 
-    async def reset_limit(self, operation: str, user_id: int):
+    async def reset_limit(self, operation: RateLimitOperation, user_id: int):
         """
         Reset rate limit counter for a user.
 
         Args:
-            operation: Operation name
+            operation: Operation type (RateLimitOperation enum)
             user_id: User's Telegram ID
 
         Usage:
             # Admin manually resets a user's rate limit
-            await limiter.reset_limit("order_create", 12345)
+            await limiter.reset_limit(RateLimitOperation.ORDER_CREATE, 12345)
         """
-        key = f"rate_limit:{operation}:{user_id}"
+        key = f"rate_limit:{operation.value}:{user_id}"
         await self.redis.delete(key)
-        logging.info(f"Rate limit reset: user={user_id}, operation={operation}")
+        logging.info(f"Rate limit reset: user={user_id}, operation={operation.value}")
 
-    async def get_remaining_time(self, operation: str, user_id: int) -> int:
+    async def get_remaining_time(self, operation: RateLimitOperation, user_id: int) -> int:
         """
         Get remaining time until rate limit resets.
 
         Args:
-            operation: Operation name
+            operation: Operation type (RateLimitOperation enum)
             user_id: User's Telegram ID
 
         Returns:
             Remaining seconds until reset (0 if not rate limited)
         """
-        key = f"rate_limit:{operation}:{user_id}"
+        key = f"rate_limit:{operation.value}:{user_id}"
         ttl = await self.redis.ttl(key)
         return max(0, ttl) if ttl > 0 else 0
 
@@ -193,6 +195,7 @@ class RateLimiter:
 # Example usage in services:
 """
 from middleware.rate_limit import RateLimiter
+from enums.rate_limit_operation import RateLimitOperation
 
 class OrderService:
     @staticmethod
@@ -201,14 +204,14 @@ class OrderService:
 
         # Check rate limit
         is_limited, current, remaining = await limiter.is_rate_limited(
-            "order_create",
+            RateLimitOperation.ORDER_CREATE,
             user_id,
             max_count=config.MAX_ORDERS_PER_USER_PER_HOUR,
             window_seconds=3600
         )
 
         if is_limited:
-            reset_time = await limiter.get_remaining_time("order_create", user_id)
+            reset_time = await limiter.get_remaining_time(RateLimitOperation.ORDER_CREATE, user_id)
             raise ValueError(f"Rate limit exceeded. Try again in {reset_time // 60} minutes.")
 
         # Continue with order creation...

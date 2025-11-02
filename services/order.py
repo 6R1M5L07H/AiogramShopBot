@@ -587,18 +587,19 @@ class OrderService:
         """
         # 0. Rate limiting check
         from middleware.rate_limit import RateLimiter
+        from enums.rate_limit_operation import RateLimitOperation
         from bot import redis
 
         limiter = RateLimiter(redis)
         is_limited, current_count, remaining = await limiter.is_rate_limited(
-            "order_create",
+            RateLimitOperation.ORDER_CREATE,
             callback.from_user.id,
             max_count=config.MAX_ORDERS_PER_USER_PER_HOUR,
             window_seconds=3600
         )
 
         if is_limited:
-            reset_time = await limiter.get_remaining_time("order_create", callback.from_user.id)
+            reset_time = await limiter.get_remaining_time(RateLimitOperation.ORDER_CREATE, callback.from_user.id)
             reset_minutes = reset_time // 60
 
             kb_builder = InlineKeyboardBuilder()
