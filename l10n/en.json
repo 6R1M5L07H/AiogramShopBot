@@ -232,6 +232,8 @@
     "grace_period_active": "✅ <b>Free cancellation available for the next {grace_remaining} minutes (until {grace_expires_time})</b>",
     "grace_period_expired": "⚠️ <i>Free cancellation no longer available</i>",
     "cancel_order_confirm_free": "❓ <b>Cancel order?</b>\n\n✅ You are within the grace period ({grace_period} minutes).\n\nYour order can be cancelled without consequences. The reserved items will be released and you can place a new order.\n\n<b>Do you want to cancel this order?</b>",
+    "order_cancelled_title": "Order Cancelled",
+    "order_number_label": "Order Number",
     "cancel_order_confirm_penalty_with_fee": "❓ <b>Cancel order?</b>\n\n⚠️ <b>Please note:</b> The grace period ({grace_period} minutes) has expired.\n\nCancelling this order will result in:\n• A <b>strike</b> on your account\n• A processing fee of <b>{penalty_percent}%</b> of the wallet balance used\n\nThe remaining wallet balance will be refunded to your account.\n\n<b>Do you really want to cancel this order?</b>",
     "cancel_order_confirm_penalty_no_fee": "❓ <b>Cancel order?</b>\n\n⚠️ <b>Please note:</b> The grace period ({grace_period} minutes) has expired.\n\nCancelling this order will result in a <b>strike</b> on your account.\n\n<b>Do you really want to cancel this order?</b>",
     "grace_period_expired_warning_with_fee": "⚠️ <b>Notice:</b> The free cancellation period ({grace_period} minutes) has expired. Cancellation is still possible, but will result in a warning (strike) on your account and a processing fee. For more information, please see our FAQ/Terms & Conditions.",

@@ -211,6 +211,8 @@
     "grace_period_active": "✅ <b>Kostenfrei stornierbar in den nächsten {grace_remaining} Minuten (bis {grace_expires_time} Uhr)</b>",
     "grace_period_expired": "⚠️ <i>Kostenfreie Stornierung nicht mehr möglich</i>",
     "cancel_order_confirm_free": "❓ <b>Bestellung stornieren?</b>\n\n✅ Sie befinden sich innerhalb der Kulanzfrist ({grace_period} Minuten).\n\nIhre Bestellung kann ohne Konsequenzen storniert werden. Die reservierten Artikel werden wieder freigegeben und Sie können eine neue Bestellung aufgeben.\n\n<b>Möchten Sie diese Bestellung stornieren?</b>",
+    "order_cancelled_title": "Bestellung storniert",
+    "order_number_label": "Bestellnummer",
     "cancel_order_confirm_penalty_with_fee": "❓ <b>Bestellung stornieren?</b>\n\n⚠️ <b>Bitte beachten Sie:</b> Die Kulanzfrist ({grace_period} Minuten) ist abgelaufen.\n\nDie Stornierung dieser Bestellung führt zu:\n• Einem <b>Strike</b> auf Ihrem Konto\n• Einer Bearbeitungsgebühr von <b>{penalty_percent}%</b> des verwendeten Guthabens\n\nDas verbleibende Guthaben wird Ihrem Konto zurückerstattet.\n\n<b>Möchten Sie diese Bestellung wirklich stornieren?</b>",
     "cancel_order_confirm_penalty_no_fee": "❓ <b>Bestellung stornieren?</b>\n\n⚠️ <b>Bitte beachten Sie:</b> Die Kulanzfrist ({grace_period} Minuten) ist abgelaufen.\n\nDie Stornierung dieser Bestellung führt zu einem <b>Strike</b> auf Ihrem Konto.\n\n<b>Möchten Sie diese Bestellung wirklich stornieren?</b>",
     "grace_period_expired_warning_with_fee": "⚠️ <b>Hinweis:</b> Die kostenlose Stornierungsfrist ({grace_period} Minuten) ist abgelaufen. Eine Stornierung ist weiterhin möglich, führt jedoch zu einer Verwarnung (Strike) in Ihrem Konto und einer Bearbeitungsgebühr. Weitere Informationen finden Sie in unseren FAQ/AGB.",

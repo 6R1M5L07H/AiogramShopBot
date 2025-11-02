@@ -330,8 +330,8 @@ class InvoiceFormatter:
 
         elif header_type == "cancellation_refund":
             # Cancellation with refund header
-            message += f"❌ <b>Bestellung storniert</b>\n\n"
-            message += f"📋 Bestellnummer: {invoice_number}\n\n"
+            message += f"❌ <b>{Localizator.get_text(entity, 'order_cancelled_title')}</b>\n\n"
+            message += f"📋 {Localizator.get_text(entity, 'order_number_label')}: {invoice_number}\n\n"
 
         elif header_type == "admin_cancellation":
             # Admin cancellation header
