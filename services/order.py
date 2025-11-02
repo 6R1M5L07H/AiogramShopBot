@@ -1630,7 +1630,7 @@ class OrderService:
         # Check if order contains physical items
         has_physical_items = any(item.is_physical for item in order_items)
 
-        # Build unified items list
+        # Build unified items list WITH private_data (keys/codes for digital items)
         items = []
         for item in order_items:
             subcategory = await SubcategoryRepository.get_by_id(item.subcategory_id, session)
@@ -1639,19 +1639,11 @@ class OrderService:
                 'price': item.price,
                 'quantity': 1,
                 'is_physical': item.is_physical,
-                'private_data': None
+                'private_data': item.private_data  # Include keys/codes for digital items
             })
 
-        # Consolidate duplicate items
-        consolidated_items = {}
-        for item in items:
-            key = (item['name'], item['price'], item['is_physical'])
-            if key in consolidated_items:
-                consolidated_items[key]['quantity'] += 1
-            else:
-                consolidated_items[key] = item
-
-        items_list = list(consolidated_items.values())
+        # NO consolidation - each item unique (different private_data for digital items)
+        items_list = items
 
         # Choose footer based on item type
         if has_physical_items:
@@ -1667,6 +1659,9 @@ class OrderService:
             total_price=order.total_price,
             wallet_used=invoice.fiat_amount,
             use_spacing_alignment=True,
+            show_numbered_items=True,  # Show as numbered list like purchase history
+            show_private_data=True,  # Show private_data (keys/codes) indented
+            show_retention_notice=True,  # Show data retention notice
             currency_symbol=Localizator.get_currency_symbol(),
             footer_text=footer_text,
             entity=BotEntity.USER
