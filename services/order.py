@@ -1720,6 +1720,12 @@ class OrderService:
         from models.user_strike import UserStrikeDTO
         from repositories.user_strike import UserStrikeRepository
 
+        # Check if strike for this order already exists (prevent duplicates)
+        existing_strikes = await UserStrikeRepository.get_by_order_id(order_id, session)
+        if existing_strikes:
+            logging.warning(f"⚠️ Strike for order {order_id} already exists - skipping duplicate")
+            return
+
         # Create strike record
         strike_dto = UserStrikeDTO(
             user_id=user_id,
