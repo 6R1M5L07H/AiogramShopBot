@@ -6,10 +6,13 @@ Used across:
 - Admin order views
 - User payment screens
 - Cancellation notifications
+- Purchase history
 """
 
 from typing import Optional
+from datetime import datetime
 from enums.bot_entity import BotEntity
+from enums.order_status import OrderStatus
 from utils.localizator import Localizator
 
 
@@ -192,5 +195,384 @@ class InvoiceFormatter:
         if shipping_address:
             message += "\n<b>Adressdaten:</b>\n"
             message += f"{shipping_address}"
+
+        return message
+
+    @staticmethod
+    def format_complete_order_view(
+        # === HEADER SECTION ===
+        header_type: str,
+        invoice_number: str,
+        date: Optional[str] = None,
+
+        # === USER INFO (Admin only) ===
+        username: Optional[str] = None,
+        user_id: Optional[int] = None,
+
+        # === STATUS & TIMESTAMPS ===
+        order_status: Optional[OrderStatus] = None,
+        created_at: Optional[datetime] = None,
+        paid_at: Optional[datetime] = None,
+        shipped_at: Optional[datetime] = None,
+        expires_at: Optional[datetime] = None,
+
+        # === ITEMS (unified structure) ===
+        items: Optional[list[dict]] = None,
+
+        # === PRICING ===
+        subtotal: Optional[float] = None,
+        shipping_cost: float = 0.0,
+        total_price: Optional[float] = None,
+
+        # === WALLET & PAYMENT ===
+        wallet_used: float = 0.0,
+        crypto_payment_needed: float = 0.0,
+        payment_address: Optional[str] = None,
+        payment_amount_crypto: Optional[str] = None,
+
+        # === REFUND & CANCELLATION ===
+        refund_amount: Optional[float] = None,
+        penalty_amount: Optional[float] = None,
+        penalty_percent: Optional[int] = None,
+        cancellation_reason: Optional[str] = None,
+        show_strike_warning: bool = False,
+
+        # === SHIPPING ADDRESS ===
+        shipping_address: Optional[str] = None,
+
+        # === FORMATTING OPTIONS ===
+        currency_symbol: str = "€",
+        use_spacing_alignment: bool = False,
+        show_numbered_items: bool = False,
+        show_private_data: bool = False,
+        separate_digital_physical: bool = False,
+        entity: BotEntity = BotEntity.USER,
+
+        # === FOOTER ===
+        footer_text: Optional[str] = None,
+        show_retention_notice: bool = False,
+    ) -> str:
+        """
+        Master template for all invoice/order formatting scenarios.
+
+        Supports:
+        - Admin order views (shipping management)
+        - Payment screens (crypto + wallet)
+        - Cancellation notifications (with/without penalty)
+        - Purchase history (with status, timestamps, private data)
+
+        Args:
+            header_type: Type of view - "admin_order" | "payment_screen" | "wallet_payment" |
+                        "cancellation_refund" | "admin_cancellation" | "purchase_history"
+            invoice_number: Invoice reference number(s)
+            date: Date string (auto-generated if None)
+            username: User's Telegram username (admin views only)
+            user_id: User's Telegram ID (admin views only)
+            order_status: Order status enum (purchase history only)
+            created_at: Order creation timestamp
+            paid_at: Payment timestamp
+            shipped_at: Shipping timestamp
+            expires_at: Payment expiry timestamp (payment screen only)
+            items: Unified items list [{'name', 'price', 'quantity', 'is_physical', 'private_data'}]
+            subtotal: Order subtotal (auto-calculated if None)
+            shipping_cost: Shipping cost
+            total_price: Total order price
+            wallet_used: Amount paid from wallet
+            crypto_payment_needed: Amount to pay with crypto
+            payment_address: Crypto payment address (payment screen only)
+            payment_amount_crypto: Crypto amount to pay (payment screen only)
+            refund_amount: Refund amount (cancellation only)
+            penalty_amount: Penalty fee (cancellation only)
+            penalty_percent: Penalty percentage (cancellation only)
+            cancellation_reason: Reason for cancellation
+            show_strike_warning: Show strike warning (cancellation only)
+            shipping_address: Shipping address (admin view only)
+            currency_symbol: Currency symbol
+            use_spacing_alignment: Use spacing for right-aligned amounts
+            show_numbered_items: Show numbered item list (purchase history)
+            show_private_data: Render private_data for items (purchase history)
+            separate_digital_physical: Separate digital/physical sections (admin view)
+            entity: BotEntity for localization
+            footer_text: Custom footer text
+            show_retention_notice: Show data retention notice (purchase history)
+
+        Returns:
+            Formatted invoice/order view string
+        """
+        message = ""
+
+        # Auto-generate date if not provided
+        if date is None:
+            date = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+        # === HEADER SECTION ===
+        if header_type == "admin_order":
+            # Admin order view header
+            header = Localizator.get_text(BotEntity.ADMIN, "order_details_header").format(
+                invoice_number=invoice_number,
+                username=username or "Unknown",
+                user_id=user_id or 0
+            )
+            message += f"{header}\n\n"
+            message += f"<b>Invoice #{invoice_number}</b>\n\n"
+
+        elif header_type == "payment_screen":
+            # Payment screen header with timer
+            time_remaining = (expires_at - datetime.now()).total_seconds() / 60 if expires_at else 0
+            expires_time = expires_at.strftime("%H:%M") if expires_at else "N/A"
+            message += f"<b>Invoice #{invoice_number}</b>\n"
+            message += f"{date}\n\n"
+
+        elif header_type == "wallet_payment":
+            # Wallet payment completion header
+            message += f"<b>Invoice #{invoice_number}</b>\n"
+            message += f"{date}\n\n"
+
+        elif header_type == "cancellation_refund":
+            # Cancellation with refund header
+            message += f"❌ <b>Bestellung storniert</b>\n\n"
+            message += f"📋 Bestellnummer: {invoice_number}\n\n"
+
+        elif header_type == "admin_cancellation":
+            # Admin cancellation header
+            message += f"<b>{Localizator.get_text(entity, 'admin_cancel_invoice_header')}{invoice_number}</b>\n"
+            message += f"{Localizator.get_text(entity, 'admin_cancel_invoice_date')} {date}\n"
+            message += f"{Localizator.get_text(entity, 'admin_cancel_invoice_status')}\n\n"
+
+        elif header_type == "purchase_history":
+            # Purchase history header with status
+            if order_status:
+                if order_status == OrderStatus.SHIPPED:
+                    status = Localizator.get_text(entity, "order_status_shipped")
+                elif order_status == OrderStatus.PAID_AWAITING_SHIPMENT:
+                    status = Localizator.get_text(entity, "order_status_awaiting_shipment")
+                else:
+                    status = Localizator.get_text(entity, "order_status_paid")
+
+                created_str = created_at.strftime("%d.%m.%Y %H:%M") if created_at else "N/A"
+                message += f"<b>📋 Bestellung #{invoice_number}</b>\n\n"
+                message += f"<b>Erstellt am:</b> {created_str}\n"
+                message += f"<b>Status:</b> {status}\n"
+
+                # Add paid timestamp if available
+                if paid_at:
+                    paid_str = paid_at.strftime("%d.%m.%Y %H:%M")
+                    paid_info = Localizator.get_text(entity, "order_paid_on").format(paid_at=paid_str)
+                    message += f"{paid_info}\n"
+
+                # Add shipped timestamp if available
+                if shipped_at:
+                    shipped_str = shipped_at.strftime("%d.%m.%Y %H:%M")
+                    shipped_info = Localizator.get_text(entity, "order_shipped_on").format(shipped_at=shipped_str)
+                    message += f"{shipped_info}\n"
+
+                message += "\n"
+
+        # === ITEMS SECTION ===
+        if items:
+            # Auto-calculate subtotal if not provided
+            if subtotal is None:
+                subtotal = sum(item['price'] * item['quantity'] for item in items)
+
+            if separate_digital_physical:
+                # Separate digital and physical items (admin view)
+                digital_items = [item for item in items if not item.get('is_physical', False)]
+                physical_items = [item for item in items if item.get('is_physical', False)]
+
+                if digital_items:
+                    message += "<b>Digital:</b>\n"
+                    for item in digital_items:
+                        line_total = item['price'] * item['quantity']
+                        if item['quantity'] == 1:
+                            message += f"{item['quantity']} Stk. {item['name']} {currency_symbol}{item['price']:.2f}\n"
+                        else:
+                            message += f"{item['quantity']} Stk. {item['name']} {currency_symbol}{item['price']:.2f} = {currency_symbol}{line_total:.2f}\n"
+                    message += "\n"
+
+                if physical_items:
+                    message += "<b>Versandartikel:</b>\n"
+                    for item in physical_items:
+                        line_total = item['price'] * item['quantity']
+                        if item['quantity'] == 1:
+                            message += f"{item['quantity']} Stk. {item['name']} {currency_symbol}{item['price']:.2f}\n"
+                        else:
+                            message += f"{item['quantity']} Stk. {item['name']} {currency_symbol}{item['price']:.2f} = {currency_symbol}{line_total:.2f}\n"
+                    message += "\n"
+
+            elif show_numbered_items:
+                # Numbered items list (purchase history)
+                message += "<b>Artikel:</b>\n"
+                for idx, item in enumerate(items, 1):
+                    message += f"{idx}. {item['name']}\n"
+                    # Show private data indented
+                    if show_private_data and item.get('private_data'):
+                        message += f"   <code>{item['private_data']}</code>\n"
+                message += "\n"
+
+            else:
+                # Unified items list with optional spacing alignment (payment screens)
+                if header_type in ["admin_cancellation"]:
+                    message += f"<b>{Localizator.get_text(entity, 'admin_cancel_invoice_items')}</b>\n"
+                    message += "─────────────────────────────\n"
+
+                for item in items:
+                    line_total = item['price'] * item['quantity']
+                    if use_spacing_alignment:
+                        # Payment screen format with spacing
+                        spacing = ' ' * (20 - len(item['name']))
+                        message += f"{item['quantity']}x {item['name']}\n"
+                        message += f"  {currency_symbol}{item['price']:.2f} × {item['quantity']}{spacing}{currency_symbol}{line_total:.2f}\n"
+                    else:
+                        # Simple format
+                        message += f"{item['quantity']}x {item['name']} {currency_symbol}{item['price']:.2f}\n"
+
+                if header_type in ["admin_cancellation"]:
+                    message += "─────────────────────────────\n"
+                else:
+                    message += "\n"
+
+        # === PRICE BREAKDOWN ===
+        if header_type not in ["cancellation_refund"]:
+            # Subtotal line
+            if subtotal is not None and use_spacing_alignment:
+                subtotal_label = Localizator.get_text(entity, "admin_cancel_invoice_subtotal") if header_type == "admin_cancellation" else "Subtotal"
+                subtotal_spacing = " " * (29 - len(subtotal_label)) if header_type == "admin_cancellation" else " " * 18
+                message += f"{subtotal_label}{subtotal_spacing}{currency_symbol}{subtotal:.2f}\n"
+
+            # Shipping line
+            if shipping_cost > 0:
+                if use_spacing_alignment:
+                    if header_type == "admin_cancellation":
+                        shipping_label = Localizator.get_text(entity, "admin_cancel_invoice_shipping")
+                        shipping_spacing = " " * (29 - len(shipping_label))
+                        message += f"{shipping_label}{shipping_spacing}{currency_symbol}{shipping_cost:.2f}\n"
+                    else:
+                        message += f"Shipping{' ' * 18}{currency_symbol}{shipping_cost:.2f}\n"
+                else:
+                    message += f"Versand {currency_symbol}{shipping_cost:.2f}\n"
+
+            # Wallet line
+            if wallet_used > 0:
+                if use_spacing_alignment:
+                    wallet_spacing = " " * 11 if header_type == "payment_screen" else " " * 20
+                    wallet_line = Localizator.get_text(entity, "payment_wallet_line").format(
+                        wallet_used=wallet_used,
+                        wallet_spacing=wallet_spacing,
+                        currency_sym=currency_symbol
+                    )
+                    message += wallet_line
+                else:
+                    message += f"Wallet-Guthaben -{currency_symbol}{wallet_used:.2f}\n"
+
+            # Separator
+            if use_spacing_alignment and header_type == "admin_cancellation":
+                message += "─────────────────────────────\n"
+            elif not show_numbered_items:
+                message += "═══════════════════════\n"
+
+            # Total line
+            if total_price is not None:
+                if use_spacing_alignment:
+                    if header_type == "admin_cancellation":
+                        total_label = Localizator.get_text(entity, "admin_cancel_invoice_total")
+                        total_spacing = " " * (29 - len(total_label))
+                        message += f"<b>{total_label}{total_spacing}{currency_symbol}{total_price:.2f}</b>\n"
+                    else:
+                        total_spacing = " " * 23
+                        if crypto_payment_needed > 0:
+                            message += f"<b>Zu zahlen:{total_spacing}{currency_symbol}{crypto_payment_needed:.2f}</b>\n"
+                        else:
+                            message += f"<b>Total:{total_spacing}{currency_symbol}{total_price:.2f}</b>\n"
+                else:
+                    if crypto_payment_needed > 0:
+                        message += f"<b>Zu zahlen: {currency_symbol}{crypto_payment_needed:.2f}</b>\n"
+                    else:
+                        message += f"<b>Total: {currency_symbol}{total_price:.2f}</b>\n"
+
+            # Closing separator
+            if not use_spacing_alignment or header_type not in ["admin_cancellation"]:
+                message += "═══════════════════════\n"
+
+        # === PAYMENT DETAILS (Payment Screen) ===
+        if header_type == "payment_screen" and payment_address:
+            expires_time = expires_at.strftime("%H:%M") if expires_at else "N/A"
+            time_remaining = (expires_at - datetime.now()).total_seconds() / 60 if expires_at else 0
+
+            message += f"\n<b>Zahlungsadresse:</b>\n"
+            message += f"<code>{payment_address}</code>\n\n"
+            message += f"<b>Betrag:</b> {payment_amount_crypto}\n\n"
+            message += f"⏰ <b>Zahlung erforderlich bis {expires_time} Uhr</b>\n"
+            message += f"({int(time_remaining)} Minuten verbleibend)\n"
+
+        # === CANCELLATION DETAILS ===
+        if header_type == "cancellation_refund":
+            # Build reason-specific explanation
+            if penalty_amount and penalty_amount > 0:
+                if cancellation_reason and 'TIMEOUT' in cancellation_reason.upper():
+                    reason_text = (
+                        f"⏱️ <b>Grund:</b> Ihre Reservierungszeit ist abgelaufen.\n\n"
+                        f"Während der Reservierungszeit konnten andere Kunden diese Artikel nicht kaufen. "
+                        f"Daher wird eine Bearbeitungsgebühr fällig."
+                    )
+                elif cancellation_reason and 'reservation_fee' in cancellation_reason.lower():
+                    reason_text = (
+                        f"⏱️ <b>Grund:</b> Stornierung nach Ablauf der Kulanzfrist.\n\n"
+                        f"Ihre Artikel waren reserviert und konnten von anderen Kunden nicht gekauft werden. "
+                        f"Daher wird eine Reservierungsgebühr fällig."
+                    )
+                else:
+                    reason_text = (
+                        f"⚠️ <b>Grund:</b> Stornierung nach Ablauf der Kulanzfrist.\n\n"
+                        f"Eine Bearbeitungsgebühr wird fällig, da die kostenlose Stornierungsfrist bereits abgelaufen war."
+                    )
+
+                message += f"{reason_text}\n\n"
+
+                # Wallet details section
+                if wallet_used > 0:
+                    wallet_section = (
+                        f"💰 <b>Guthaben-Rückerstattung:</b>\n"
+                        f"• Verwendetes Guthaben: {wallet_used:.2f} {currency_symbol}\n"
+                        f"• Bearbeitungsgebühr ({penalty_percent}%): -{penalty_amount:.2f} {currency_symbol}\n"
+                        f"• <b>Zurückerstattet: {refund_amount:.2f} {currency_symbol}</b>"
+                    )
+                else:
+                    base_amount = total_price or 0.0
+                    wallet_section = (
+                        f"💸 <b>Reservierungsgebühr:</b>\n"
+                        f"• Bestellwert: {base_amount:.2f} {currency_symbol}\n"
+                        f"• Gebühr ({penalty_percent}%): -{penalty_amount:.2f} {currency_symbol}\n"
+                        f"• <b>Von Ihrem Guthaben abgezogen</b>"
+                    )
+
+                message += f"{wallet_section}\n\n"
+
+                if show_strike_warning:
+                    message += f"⚠️ <b>Strike erhalten</b> - Diese Stornierung führte zu einem Strike auf Ihrem Konto.\n\n"
+            else:
+                # Full refund (no penalty)
+                message += f"💰 <b>Volle Rückerstattung:</b> {refund_amount:.2f} {currency_symbol}\n\n"
+
+        # === CUSTOM REASON (Admin Cancellation) ===
+        if header_type == "admin_cancellation" and cancellation_reason:
+            message += f"\n<b>{Localizator.get_text(entity, 'admin_cancel_reason_label')}</b>\n"
+            message += f"{cancellation_reason}\n\n"
+
+        # === SHIPPING ADDRESS (Admin View) ===
+        if shipping_address:
+            message += "\n<b>Adressdaten:</b>\n"
+            message += f"{shipping_address}\n"
+
+        # === FOOTER ===
+        if footer_text:
+            message += f"\n{footer_text}\n"
+
+        if header_type == "admin_cancellation":
+            message += f"{Localizator.get_text(entity, 'admin_cancel_notice')}\n\n"
+            message += f"{Localizator.get_text(entity, 'admin_cancel_contact_support')}"
+
+        if show_retention_notice:
+            import config
+            message += f"\n{Localizator.get_text(entity, 'purchased_items_retention_notice').format(retention_days=config.DATA_RETENTION_DAYS)}"
 
         return message

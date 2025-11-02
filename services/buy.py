@@ -72,70 +72,43 @@ class BuyService:
 
         # Build detailed message if order exists
         if order:
-            # Format status
-            if order.status == OrderStatus.SHIPPED:
-                status = Localizator.get_text(BotEntity.USER, "order_status_shipped")
-            elif order.status == OrderStatus.PAID_AWAITING_SHIPMENT:
-                status = Localizator.get_text(BotEntity.USER, "order_status_awaiting_shipment")
-            else:
-                status = Localizator.get_text(BotEntity.USER, "order_status_paid")
+            from services.invoice_formatter import InvoiceFormatter
 
-            # Format created_at (order placement time)
-            created_at_str = order.created_at.strftime("%d.%m.%Y %H:%M") if order.created_at else "N/A"
-
-            # Format paid_at_info - only show if payment timestamp exists
-            paid_at_info = ""
-            if order.paid_at:
-                paid_at_str = order.paid_at.strftime("%d.%m.%Y %H:%M")
-                paid_at_info = Localizator.get_text(BotEntity.USER, "order_paid_on").format(
-                    paid_at=paid_at_str
-                )
-
-            # Format shipped_info
-            shipped_info = ""
-            if order.shipped_at:
-                shipped_at_str = order.shipped_at.strftime("%d.%m.%Y %H:%M")
-                shipped_info = Localizator.get_text(BotEntity.USER, "order_shipped_on").format(
-                    shipped_at=shipped_at_str
-                )
-
-            # Build items list with descriptions and optionally private_data
-            items_list = ""
-            for idx, item in enumerate(items, 1):
-                items_list += f"{idx}. {item.description}\n"
-                # Add private_data if available (for payment confirmation)
-                if item.private_data:
-                    items_list += f"   <code>{item.private_data}</code>\n"
+            # Build unified items list with private_data
+            items_list = []
+            for item in items:
+                items_list.append({
+                    'name': item.description,
+                    'price': item.price,
+                    'quantity': 1,  # Each item is already individual
+                    'is_physical': item.is_physical,
+                    'private_data': item.private_data
+                })
 
             # Calculate subtotal (total - shipping)
             subtotal = order.total_price - order.shipping_cost
 
-            # Build shipping line
-            shipping_line = ""
-            if order.shipping_cost > 0:
-                shipping_line = f"<b>Versandkosten:</b> {Localizator.get_currency_symbol()}{order.shipping_cost:.2f}\n"
-
             # Format invoice numbers (one per line for multiple invoices)
             invoice_numbers_formatted = "\n".join(invoice_numbers)
 
-            msg = Localizator.get_text(BotEntity.USER, "order_details").format(
+            # Use InvoiceFormatter for consistent formatting
+            msg = InvoiceFormatter.format_complete_order_view(
+                header_type="purchase_history",
                 invoice_number=invoice_numbers_formatted,
-                created_at=created_at_str,
-                status=status,
-                paid_at_info=paid_at_info,
-                shipped_info=shipped_info,
-                items_list=items_list,
-                currency_sym=Localizator.get_currency_symbol(),
+                order_status=order.status,
+                created_at=order.created_at,
+                paid_at=order.paid_at,
+                shipped_at=order.shipped_at,
+                items=items_list,
                 subtotal=subtotal,
-                shipping_line=shipping_line,
-                total=order.total_price
+                shipping_cost=order.shipping_cost,
+                total_price=order.total_price,
+                show_numbered_items=True,
+                show_private_data=True,
+                show_retention_notice=any(item.private_data for item in items),
+                currency_symbol=Localizator.get_currency_symbol(),
+                entity=BotEntity.USER
             )
-
-            # Add retention notice if private_data is included
-            if any(item.private_data for item in items):
-                msg += Localizator.get_text(BotEntity.USER, "purchased_items_retention_notice").format(
-                    retention_days=config.DATA_RETENTION_DAYS
-                )
         else:
             # Fallback to old message format if no order found
             msg = MessageService.create_message_with_bought_items(items)

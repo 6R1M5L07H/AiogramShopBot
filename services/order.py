@@ -1438,74 +1438,54 @@ class OrderService:
         Returns:
             Formatted message string
         """
-        from datetime import datetime
         from repositories.item import ItemRepository
         from repositories.subcategory import SubcategoryRepository
+        from services.invoice_formatter import InvoiceFormatter
 
-        # Calculate time remaining
-        time_remaining = (order.expires_at - datetime.now()).total_seconds() / 60
-
-        # Get order items and build items list
+        # Get order items
         order_items = await ItemRepository.get_by_order_id(order.id, session)
-        items_dict = {}
+
+        # Build unified items list
+        items = []
         for item in order_items:
             subcategory = await SubcategoryRepository.get_by_id(item.subcategory_id, session)
-            key = (subcategory.name, item.price)
-            items_dict[key] = items_dict.get(key, 0) + 1
+            items.append({
+                'name': subcategory.name,
+                'price': item.price,
+                'quantity': 1,
+                'is_physical': item.is_physical,
+                'private_data': None
+            })
 
-        items_list = ""
-        subtotal = 0.0
-        for (name, price), qty in items_dict.items():
-            line_total = price * qty
-            items_list += f"{qty}x {name}\n  {Localizator.get_currency_symbol()}{price:.2f} × {qty}{' ' * (20 - len(name))}{Localizator.get_currency_symbol()}{line_total:.2f}\n"
-            subtotal += line_total
+        # Consolidate duplicate items
+        consolidated_items = {}
+        for item in items:
+            key = (item['name'], item['price'], item['is_physical'])
+            if key in consolidated_items:
+                consolidated_items[key]['quantity'] += 1
+            else:
+                consolidated_items[key] = item
 
-        # Shipping line
-        shipping_line = ""
-        if order.shipping_cost > 0:
-            shipping_line = f"Shipping{' ' * 18}{Localizator.get_currency_symbol()}{order.shipping_cost:.2f}\n"
+        items_list = list(consolidated_items.values())
 
-        # Format wallet used (if any)
-        wallet_line = ""
-        wallet_spacing = ""
-        if order.wallet_used > 0:
-            wallet_spacing = " " * 11
-            wallet_line = Localizator.get_text(BotEntity.USER, "payment_wallet_line").format(
-                wallet_used=order.wallet_used,
-                wallet_spacing=wallet_spacing,
-                currency_sym=Localizator.get_currency_symbol()
-            )
+        # Format crypto amount with currency
+        crypto_amount_display = f"{invoice.payment_amount_crypto} {invoice.payment_crypto_currency.value}"
 
-        # Calculate spacing for alignment
-        subtotal_spacing = " " * 18
-        total_spacing = " " * 23
-        crypto_spacing = " " * 11
-
-        # Format date and time
-        date_str = datetime.now().strftime("%Y-%m-%d %H:%M")
-        expires_time = order.expires_at.strftime("%H:%M")
-
-        message_text = Localizator.get_text(BotEntity.USER, "payment_required_screen").format(
+        return InvoiceFormatter.format_complete_order_view(
+            header_type="payment_screen",
             invoice_number=invoice.invoice_number,
-            date=date_str,
-            items_list=items_list,
-            subtotal=subtotal,
-            subtotal_spacing=subtotal_spacing,
-            shipping_line=shipping_line,
-            total=order.total_price,
-            total_spacing=total_spacing,
-            currency_sym=Localizator.get_currency_symbol(),
-            wallet_line=wallet_line,
-            crypto_spacing=crypto_spacing,
+            expires_at=order.expires_at,
+            items=items_list,
+            shipping_cost=order.shipping_cost,
+            total_price=order.total_price,
+            wallet_used=order.wallet_used,
+            crypto_payment_needed=invoice.fiat_amount,
             payment_address=invoice.payment_address,
-            crypto_amount=invoice.payment_amount_crypto,
-            crypto_currency=invoice.payment_crypto_currency.value,
-            crypto_amount_fiat=invoice.fiat_amount,
-            time_remaining=int(time_remaining),
-            expires_time=expires_time
+            payment_amount_crypto=crypto_amount_display,
+            use_spacing_alignment=True,
+            currency_symbol=Localizator.get_currency_symbol(),
+            entity=BotEntity.USER
         )
-
-        return message_text
 
     @staticmethod
     async def _calculate_order_totals(
@@ -1642,7 +1622,7 @@ class OrderService:
         """
         from repositories.item import ItemRepository
         from repositories.subcategory import SubcategoryRepository
-        from datetime import datetime
+        from services.invoice_formatter import InvoiceFormatter
 
         # Get order items
         order_items = await ItemRepository.get_by_order_id(order.id, session)
@@ -1650,51 +1630,46 @@ class OrderService:
         # Check if order contains physical items
         has_physical_items = any(item.is_physical for item in order_items)
 
-        # Build items list
-        items_dict = {}
+        # Build unified items list
+        items = []
         for item in order_items:
             subcategory = await SubcategoryRepository.get_by_id(item.subcategory_id, session)
-            key = (subcategory.name, item.price)
-            items_dict[key] = items_dict.get(key, 0) + 1
+            items.append({
+                'name': subcategory.name,
+                'price': item.price,
+                'quantity': 1,
+                'is_physical': item.is_physical,
+                'private_data': None
+            })
 
-        items_list = ""
-        subtotal = 0.0
-        for (name, price), qty in items_dict.items():
-            line_total = price * qty
-            items_list += f"{qty}x {name}\n  {Localizator.get_currency_symbol()}{price:.2f} × {qty}{' ' * (20 - len(name))}{Localizator.get_currency_symbol()}{line_total:.2f}\n"
-            subtotal += line_total
+        # Consolidate duplicate items
+        consolidated_items = {}
+        for item in items:
+            key = (item['name'], item['price'], item['is_physical'])
+            if key in consolidated_items:
+                consolidated_items[key]['quantity'] += 1
+            else:
+                consolidated_items[key] = item
 
-        # Shipping line
-        shipping_line = ""
-        if order.shipping_cost > 0:
-            shipping_line = f"Shipping{' ' * 18}{Localizator.get_currency_symbol()}{order.shipping_cost:.2f}\n"
+        items_list = list(consolidated_items.values())
 
-        # Calculate spacing for alignment
-        subtotal_spacing = " " * 18
-        total_spacing = " " * 23
-        wallet_spacing = " " * 20
-
-        # Format date
-        date_str = datetime.now().strftime("%Y-%m-%d %H:%M")
-
-        # Choose localization key based on item type
+        # Choose footer based on item type
         if has_physical_items:
-            localization_key = "order_completed_wallet_only_physical"
+            footer_text = Localizator.get_text(BotEntity.USER, "order_completed_wallet_only_physical_footer")
         else:
-            localization_key = "order_completed_wallet_only_digital"
+            footer_text = Localizator.get_text(BotEntity.USER, "order_completed_wallet_only_digital_footer")
 
-        return Localizator.get_text(BotEntity.USER, localization_key).format(
+        return InvoiceFormatter.format_complete_order_view(
+            header_type="wallet_payment",
             invoice_number=invoice.invoice_number,
-            date=date_str,
-            items_list=items_list,
-            subtotal=subtotal,
-            subtotal_spacing=subtotal_spacing,
-            shipping_line=shipping_line,
-            total=order.total_price,
-            total_spacing=total_spacing,
+            items=items_list,
+            shipping_cost=order.shipping_cost,
+            total_price=order.total_price,
             wallet_used=invoice.fiat_amount,
-            wallet_spacing=wallet_spacing,
-            currency_sym=Localizator.get_currency_symbol()
+            use_spacing_alignment=True,
+            currency_symbol=Localizator.get_currency_symbol(),
+            footer_text=footer_text,
+            entity=BotEntity.USER
         )
 
     @staticmethod
