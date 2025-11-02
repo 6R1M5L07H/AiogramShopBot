@@ -1747,13 +1747,15 @@ class OrderService:
 
         admin_exempt = is_admin and config.EXEMPT_ADMINS_FROM_BAN
 
-        if actual_strike_count >= config.MAX_STRIKES_BEFORE_BAN and not admin_exempt:
+        # Check if user should be banned (only if not already banned)
+        if actual_strike_count >= config.MAX_STRIKES_BEFORE_BAN and not admin_exempt and not user.is_blocked:
+            # User just crossed ban threshold - ban and notify
             user.is_blocked = True
             user.blocked_at = datetime.utcnow()
             user.blocked_reason = f"Automatic ban: {actual_strike_count} strikes (threshold: {config.MAX_STRIKES_BEFORE_BAN})"
             logging.warning(f"🚫 User {user_id} BANNED: {actual_strike_count} strikes reached")
 
-            # Send ban notifications
+            # Send ban notifications (only once when ban happens)
             from services.notification import NotificationService
             await NotificationService.notify_user_banned(user, actual_strike_count)
             await NotificationService.notify_admin_user_banned(user, actual_strike_count)
