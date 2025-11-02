@@ -1,8 +1,9 @@
 # Software Engineering Audit & Code Quality Improvements
 
 **Date:** 2025-11-01
+**Updated:** 2025-11-02
 **Priority:** Medium-High
-**Status:** In Progress (2/11 Issues Completed)
+**Status:** In Progress (3/11 Issues Completed, 2 Skipped)
 **Estimated Effort:** 6-10 hours (incremental)
 **Branch:** `technical-debt`
 
@@ -21,28 +22,33 @@ Comprehensive code quality audit focusing on:
 
 ## Identified Issues
 
-### 1. Duplicate Code: Invoice/Order Formatting ✅ TODO EXISTS
+### 1. Duplicate Code: Invoice/Order Formatting ✅ COMPLETED
 
 **Priority:** HIGH
-**Effort:** 2-3 hours
-**Status:** TODO created (2025-11-01_TODO_invoice-formatter-refactoring.md)
+**Effort:** 2-3 hours → Actual: 4 hours
+**Status:** ✅ Completed (2025-11-02)
+**Commit:** 33c0f43 - refactor: complete invoice formatter refactoring with master template
 
-**Locations (4-5x duplicated):**
-```
-handlers/admin/shipping_management.py:show_order_details()
-services/order.py:_format_payment_screen()
-services/order.py:_format_wallet_payment_invoice()
-services/notification.py:build_order_cancelled_wallet_refund_message()
-services/notification.py:build_order_cancelled_by_admin_message()
-```
+**Resolution:**
 
-**Impact:**
-- ~200+ lines of duplicate code
-- Inconsistent formatting across views
-- Bug fixes need 5x changes
+✅ **Created Master Template** (`services/invoice_formatter.py`)
+- `format_complete_order_view()` - 380 lines master template
+- Supports 6 view types: admin_order, payment_screen, wallet_payment, cancellation_refund, admin_cancellation, purchase_history
+- Unified items structure with private_data support
 
-**Solution:**
-Create `services/invoice_formatter.py` with centralized `InvoiceFormatter` class.
+✅ **Refactored 6 Locations:**
+1. `services/order.py::_format_payment_screen` (80→28 lines, 65% reduction)
+2. `services/order.py::_format_wallet_payment_invoice` (70→26 lines, 63% reduction)
+3. `services/notification.py::build_order_cancelled_wallet_refund_message` (165→24 lines, 85% reduction)
+4. `services/notification.py::build_order_cancelled_by_admin_message` (95→59 lines, 38% reduction)
+5. `services/buy.py::get_purchase` (95→45 lines, 53% reduction)
+6. `handlers/admin/shipping_management.py::show_order_details` (already done in earlier commit)
+
+**Results:**
+- Total code reduction: 546→194 lines (64% less caller code)
+- Eliminated 352 lines of duplicate formatting logic
+- Bug fixes now require changes in 1 location instead of 6
+- Single source of truth for invoice formatting
 
 ---
 
@@ -84,45 +90,28 @@ for crypto in Cryptocurrency.get_payment_options():
 
 ---
 
-### 3. Duplicate Code: Keyboard Builder Patterns
+### 3. Duplicate Code: Keyboard Builder Patterns ⏭️ SKIPPED
 
 **Priority:** MEDIUM
 **Effort:** 2-3 hours
+**Status:** ⏭️ Skipped (2025-11-02) - Low ROI
 
-**Issue:**
-Repetitive InlineKeyboardBuilder patterns across handlers:
-- Create builder
-- Add buttons
-- Adjust layout
-- Add back button
-- Return markup
+**Analysis:**
+- Found 88 InlineKeyboardBuilder() instances (16 handlers + 72 services)
+- Most keyboards are highly specific with different:
+  - Button counts and texts
+  - Callback factories and parameters
+  - Layouts (1/2/mixed columns)
+  - Dynamic generation (DB loops)
 
-**Locations:**
-```
-handlers/admin/admin.py
-handlers/admin/shipping_management.py
-handlers/admin/user_management.py
-handlers/user/cart.py
-handlers/user/order.py
-handlers/user/my_profile.py
-handlers/user/all_categories.py
-```
+**Decision:** SKIP
+- Keyboards too specific for generic utils
+- ROI too low (~20-30 lines savings / 88 locations = 0.3 lines/location)
+- Would reduce readability (abstraction without benefit)
+- Better to leave inline for clarity
 
-**Solution:**
-Create `utils/keyboard_builder_utils.py` with helper functions:
-```python
-def create_menu_keyboard(buttons: list[ButtonConfig], columns: int = 2, back_button: bool = True):
-    """Generic menu keyboard builder."""
-    pass
-
-def create_pagination_keyboard(current_page: int, total_pages: int, callback_factory):
-    """Pagination keyboard with prev/next/page buttons."""
-    pass
-
-def create_confirmation_keyboard(confirm_callback, cancel_callback, confirm_text: str = None):
-    """Yes/No confirmation keyboard."""
-    pass
-```
+**Recommendation:**
+Leave keyboard building as-is. The pattern is simple enough and varies too much for useful abstraction.
 
 ---
 
@@ -311,39 +300,25 @@ def create_order(...):  # 30 lines
 
 ---
 
-### 8. Magic Numbers and Strings
+### 8. Magic Numbers and Strings ⏭️ SKIPPED
 
 **Priority:** LOW
 **Effort:** 1-2 hours
+**Status:** ⏭️ Skipped (2025-11-02) - Low Impact
 
-**Issue:**
-Hardcoded values scattered throughout code:
-```python
-# Callback levels (what does 2 mean?)
-CartCallback.create(level=2)
-OrderCallback.create(level=5)
-AdminMenuCallback.create(level=99)
+**Analysis:**
+- Callback levels already have inline comments explaining meaning
+- Status codes use OrderStatus enum (not string comparison)
+- Config limits already documented
 
-# Status codes
-if order.status == "PENDING_PAYMENT":  # String comparison
+**Decision:** SKIP
+- Comments already provide clarity: `# Level 4 = Cancel Order`
+- Creating callback level enums would add complexity without benefit
+- No actual bugs or maintainability issues found
+- Time better spent on higher-impact issues
 
-# Limits
-if len(cart_items) > 50:  # Why 50?
-```
-
-**Solution:**
-Create constants:
-```python
-# enums/callback_level.py
-class CartCallbackLevel(IntEnum):
-    MAIN = 0
-    ITEM_DETAILS = 1
-    CHECKOUT_CONFIRMATION = 2
-    ORDER_CREATION = 3
-
-# config.py
-MAX_CART_ITEMS = int(os.environ.get("MAX_CART_ITEMS", "50"))
-```
+**Recommendation:**
+Keep current approach. Inline comments are sufficient for callback level documentation.
 
 ---
 
