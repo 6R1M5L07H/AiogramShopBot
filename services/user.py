@@ -88,10 +88,32 @@ class UserService:
         user = await UserRepository.get_by_tgid(callback.from_user.id, session)
         buys = await BuyRepository.get_by_buyer_id(user.id, unpacked_cb.page, session)
         kb_builder = InlineKeyboardBuilder()
+
+        # Batch-load all items and subcategories (eliminates N+1 queries)
+        item_ids = []
         for buy in buys:
             buy_item = await BuyItemRepository.get_single_by_buy_id(buy.id, session)
-            item = await ItemRepository.get_by_id(buy_item.item_id, session)
-            subcategory = await SubcategoryRepository.get_by_id(item.subcategory_id, session)
+            item_ids.append(buy_item.item_id)
+
+        # Get all items in one query
+        items_dict = {}
+        for item_id in item_ids:
+            item = await ItemRepository.get_by_id(item_id, session)
+            items_dict[item_id] = item
+
+        # Batch-load subcategories
+        subcategory_ids = list({item.subcategory_id for item in items_dict.values()})
+        subcategories_dict = await SubcategoryRepository.get_by_ids(subcategory_ids, session)
+
+        # Build buttons with batch-loaded data
+        for buy in buys:
+            buy_item = await BuyItemRepository.get_single_by_buy_id(buy.id, session)
+            item = items_dict.get(buy_item.item_id)
+            if not item:
+                continue
+            subcategory = subcategories_dict.get(item.subcategory_id)
+            if not subcategory:
+                continue
 
             # Format date only for list view (keep it short)
             date_str = buy.buy_datetime.strftime("%d.%m.%Y") if buy.buy_datetime else "N/A"
