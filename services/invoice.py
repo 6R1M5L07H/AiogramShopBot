@@ -27,6 +27,7 @@ class InvoiceService:
         Returns:
             InvoiceDTO mit payment_address, payment_amount_crypto, etc.
         """
+        from services.cart import normalize_crypto_amount
 
         # Check if API keys are configured (not placeholders)
         use_mock = (
@@ -63,6 +64,13 @@ class InvoiceService:
 
             payment_response = ProcessingPaymentDTO.model_validate(response_data)
 
+        # Normalize crypto amount to prevent floating-point precision errors
+        # This ensures payment validation uses the same precision as display/storage
+        normalized_crypto_amount = normalize_crypto_amount(
+            payment_response.cryptoAmount,
+            crypto_currency
+        )
+
         # Generiere Invoice-Nummer
         invoice_number = await InvoiceRepository.get_next_invoice_number(session)
 
@@ -71,7 +79,7 @@ class InvoiceService:
             order_id=order_id,
             invoice_number=invoice_number,
             payment_address=payment_response.address,
-            payment_amount_crypto=payment_response.cryptoAmount,
+            payment_amount_crypto=normalized_crypto_amount,
             payment_crypto_currency=crypto_currency,
             payment_processing_id=payment_response.id,
             fiat_amount=fiat_amount,
@@ -194,10 +202,13 @@ class InvoiceService:
         Called after first underpayment to create a new invoice for
         the remaining amount.
 
+        IMPORTANT: Uses KryptoExpress's calculated crypto amount (not ours)
+        to ensure consistency with the actual payment address requirements.
+
         Args:
             order_id: Order ID
             parent_invoice_id: ID of original invoice
-            remaining_crypto_amount: Remaining amount in crypto
+            remaining_crypto_amount: Remaining amount in crypto (used for logging only)
             remaining_fiat_amount: Remaining amount in fiat
             crypto_currency: Cryptocurrency
             fiat_currency: Fiat currency
@@ -208,9 +219,10 @@ class InvoiceService:
             InvoiceDTO with new payment address for remaining amount
         """
         import logging
+        from services.cart import normalize_crypto_amount
 
         logging.info(f"📋 Creating partial payment invoice for order {order_id}")
-        logging.info(f"   Remaining: {remaining_crypto_amount} {crypto_currency.value} (€{remaining_fiat_amount:.2f})")
+        logging.info(f"   Remaining (estimated): {remaining_crypto_amount} {crypto_currency.value} (€{remaining_fiat_amount:.2f})")
         logging.info(f"   Payment attempt: {payment_attempt}")
 
         # Check if API keys are configured
@@ -248,6 +260,14 @@ class InvoiceService:
 
             payment_response = ProcessingPaymentDTO.model_validate(response_data)
 
+        # CRITICAL: Use KryptoExpress's calculated crypto amount (normalized)
+        # This ensures our validation uses the EXACT amount that KryptoExpress expects
+        # at the payment address, preventing false underpayment detection
+        actual_crypto_amount = normalize_crypto_amount(
+            payment_response.cryptoAmount,
+            crypto_currency
+        )
+
         # Generate new invoice number
         invoice_number = await InvoiceRepository.get_next_invoice_number(session)
 
@@ -256,7 +276,7 @@ class InvoiceService:
             order_id=order_id,
             invoice_number=invoice_number,
             payment_address=payment_response.address,
-            payment_amount_crypto=remaining_crypto_amount,  # Use calculated remaining amount
+            payment_amount_crypto=actual_crypto_amount,  # Use KryptoExpress's amount!
             payment_crypto_currency=crypto_currency,
             payment_processing_id=payment_response.id,
             fiat_amount=remaining_fiat_amount,
@@ -270,5 +290,6 @@ class InvoiceService:
 
         logging.info(f"✅ Created partial invoice {invoice_number} (Payment ID: {payment_response.id})")
         logging.info(f"   New payment address: {payment_response.address}")
+        logging.info(f"   Actual crypto amount (from KryptoExpress): {actual_crypto_amount} {crypto_currency.value}")
 
         return invoice_dto

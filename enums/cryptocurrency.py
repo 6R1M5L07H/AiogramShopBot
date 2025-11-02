@@ -15,23 +15,20 @@ class Cryptocurrency(str, Enum):
     PENDING_SELECTION = "PENDING_SELECTION"  # Placeholder when order created before crypto selected
 
     def get_divider(self):
-        match self:
-            case Cryptocurrency.BTC:
-                return 8
-            case Cryptocurrency.LTC:
-                return 8
-            case Cryptocurrency.ETH:
-                return 18
-            case Cryptocurrency.SOL:
-                return 9
-            case Cryptocurrency.BNB:
-                return 18
-            case Cryptocurrency.USDT_TRC20:
-                return 6
-            case Cryptocurrency.USDT_ERC20:
-                return 6
-            case Cryptocurrency.USDC_ERC20:
-                return 6
+        """
+        Returns the number of decimal places for this cryptocurrency.
+
+        Values are read from config.CRYPTO_DECIMAL_PLACES, which can be
+        overridden via environment variables (CRYPTO_DECIMALS_BTC, etc.)
+
+        Returns:
+            int: Number of decimal places (e.g., 8 for BTC = satoshi precision)
+        """
+        # Import here to avoid circular dependency
+        import config
+
+        # Use config value, with fallback to historical defaults
+        return config.CRYPTO_DECIMAL_PLACES.get(self.value, 8)
 
     def get_coingecko_name(self) -> str:
         match self:

@@ -46,6 +46,33 @@ def format_crypto_amount(amount: float) -> str:
     return formatted
 
 
+def normalize_crypto_amount(amount: float, crypto_currency: Cryptocurrency) -> float:
+    """
+    Normalizes crypto amount to the currency's smallest unit to prevent rounding errors.
+
+    This ensures that calculations, displays, and validations all use the same
+    precision, preventing floating-point errors that could cause underpayment
+    detection on valid payments.
+
+    Examples:
+        BTC: 0.000012345678901 → 0.00001234 (8 decimals = satoshi)
+        ETH: 0.123456789012345678901 → 0.123456789012345678 (18 decimals = wei)
+        USDT: 123.4567891 → 123.456789 (6 decimals)
+
+    Args:
+        amount: Raw floating point amount
+        crypto_currency: Cryptocurrency enum
+
+    Returns:
+        Normalized amount rounded to currency's precision
+    """
+    decimals = crypto_currency.get_divider()
+
+    # Round to the currency's precision using standard rounding
+    # This eliminates floating point errors beyond the currency's smallest unit
+    return round(amount, decimals)
+
+
 class CartService:
 
     @staticmethod

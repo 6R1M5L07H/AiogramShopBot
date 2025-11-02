@@ -77,6 +77,25 @@ PAYMENT_UNDERPAYMENT_RETRY_TIMEOUT_MINUTES = int(os.environ.get("PAYMENT_UNDERPA
 PAYMENT_UNDERPAYMENT_PENALTY_PERCENT = float(os.environ.get("PAYMENT_UNDERPAYMENT_PENALTY_PERCENT", "5"))
 PAYMENT_LATE_PENALTY_PERCENT = float(os.environ.get("PAYMENT_LATE_PENALTY_PERCENT", "5"))
 
+# Cryptocurrency Decimal Precision Configuration
+# Defines the number of decimal places for each cryptocurrency (smallest unit precision)
+# BTC: 8 decimals = satoshi (1 BTC = 100,000,000 satoshi)
+# ETH: 18 decimals = wei (1 ETH = 1,000,000,000,000,000,000 wei)
+# LTC: 8 decimals = litoshi (1 LTC = 100,000,000 litoshi)
+# SOL: 9 decimals = lamport (1 SOL = 1,000,000,000 lamport)
+# BNB: 18 decimals (1 BNB = 1,000,000,000,000,000,000 smallest units)
+# USDT/USDC: 6 decimals (1 USDT = 1,000,000 smallest units)
+CRYPTO_DECIMAL_PLACES = {
+    "BTC": int(os.environ.get("CRYPTO_DECIMALS_BTC", "8")),
+    "LTC": int(os.environ.get("CRYPTO_DECIMALS_LTC", "8")),
+    "ETH": int(os.environ.get("CRYPTO_DECIMALS_ETH", "18")),
+    "SOL": int(os.environ.get("CRYPTO_DECIMALS_SOL", "9")),
+    "BNB": int(os.environ.get("CRYPTO_DECIMALS_BNB", "18")),
+    "USDT_TRC20": int(os.environ.get("CRYPTO_DECIMALS_USDT_TRC20", "6")),
+    "USDT_ERC20": int(os.environ.get("CRYPTO_DECIMALS_USDT_ERC20", "6")),
+    "USDC_ERC20": int(os.environ.get("CRYPTO_DECIMALS_USDC_ERC20", "6")),
+}
+
 # Data Retention Configuration
 DATA_RETENTION_DAYS = int(os.environ.get("DATA_RETENTION_DAYS", "30"))
 REFERRAL_DATA_RETENTION_DAYS = int(os.environ.get("REFERRAL_DATA_RETENTION_DAYS", "365"))
