@@ -565,8 +565,11 @@ class NotificationService:
             user: User object
             strike_count: Number of strikes that caused the ban
         """
+        from utils.localizator import Localizator
         msg = Localizator.get_text(BotEntity.USER, "user_banned_notification").format(
-            strike_count=strike_count
+            strike_count=strike_count,
+            unban_amount=config.UNBAN_TOP_UP_AMOUNT,
+            currency_sym=Localizator.get_currency_symbol()
         )
         await NotificationService.send_to_user(msg, user.telegram_id)
 
