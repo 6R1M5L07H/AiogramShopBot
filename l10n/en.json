@@ -192,7 +192,7 @@
     "purchases": "🧾 <b>Your purchases (last {retention_days} days):</b>",
     "refresh_balance_button": "🔄 Refresh balance",
     "refund_notification": "↩️ You have been refunded {currency_sym}{total_price:.2f} for the purchase of {quantity} pieces of {subcategory}",
-    "rate_limit_orders": "⏱️ <b>Rate Limit Exceeded</b>\n\nYou have created too many orders recently ({current_count}/{max_count} per hour).\n\nPlease wait <b>{reset_minutes} minutes</b> before creating another order.\n\n<i>This limit prevents abuse and ensures fair access for all users.</i>",
+    "rate_limit_orders": "⏱️ <b>Rate Limit Exceeded</b>\n\nYou have created too many orders recently.\nMaximum: <b>{max_count} orders per hour</b>\n\nPlease wait <b>{reset_minutes} minutes</b> before creating another order.\n\n<i>This limit prevents abuse and ensures fair access for all users.</i>",
     "select_quantity": "🛒 <b>Category: {category_name}\nSubcategory: {subcategory_name}\nPrice: {currency_sym}{price:.2f}\nDescription: {description}\nQuantity available: {quantity}</b>",
     "select_quantity_with_shipping": "🛒 <b>Category: {category_name}\nSubcategory: {subcategory_name}\nPrice: {currency_sym}{price:.2f}\n📦 Shipping: {currency_sym}{shipping_cost:.2f}\nDescription: {description}\nQuantity available: {quantity}</b>",
     "subcategory_button": "📦 {subcategory_name}| Price: {currency_sym}{subcategory_price:.2f} | Qty: {available_quantity}",
