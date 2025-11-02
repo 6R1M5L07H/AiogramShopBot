@@ -114,10 +114,17 @@ class CartService:
         page = 0 if isinstance(message, Message) else CartCallback.unpack(message.data).page
         cart_items = await CartItemRepository.get_by_user_id(user.id, 0, session)
         kb_builder = InlineKeyboardBuilder()
+
+        # Batch-load all subcategories (eliminates N+1 queries)
+        subcategory_ids = list({cart_item.subcategory_id for cart_item in cart_items})
+        subcategories_dict = await SubcategoryRepository.get_by_ids(subcategory_ids, session)
+
         for cart_item in cart_items:
             item_dto = ItemDTO(category_id=cart_item.category_id, subcategory_id=cart_item.subcategory_id)
             price = await ItemRepository.get_price(item_dto, session)
-            subcategory = await SubcategoryRepository.get_by_id(cart_item.subcategory_id, session)
+            subcategory = subcategories_dict.get(cart_item.subcategory_id)
+            if not subcategory:
+                continue
             kb_builder.button(text=Localizator.get_text(BotEntity.USER, "cart_item_button").format(
                 subcategory_name=subcategory.name,
                 qty=cart_item.quantity,
@@ -178,11 +185,17 @@ class CartService:
                 if item.subcategory_id not in subcategory_prices:
                     subcategory_prices[item.subcategory_id] = item.price
 
+            # Batch-load all subcategories (eliminates N+1 queries)
+            subcategory_ids_set = set(items_by_subcategory.keys())
+            subcategories_dict = await SubcategoryRepository.get_by_ids(list(subcategory_ids_set), session)
+
             # Format items list
             items_list = ""
             subtotal = 0.0
             for subcategory_id, qty in items_by_subcategory.items():
-                subcategory = await SubcategoryRepository.get_by_id(subcategory_id, session)
+                subcategory = subcategories_dict.get(subcategory_id)
+                if not subcategory:
+                    continue
                 price = subcategory_prices[subcategory_id]
                 line_total = price * qty
                 subtotal += line_total
@@ -385,10 +398,16 @@ class CartService:
         max_shipping_cost = 0.0
         has_physical_items = False
 
+        # Batch-load all subcategories (eliminates N+1 queries)
+        subcategory_ids = list({cart_item.subcategory_id for cart_item in cart_items})
+        subcategories_dict = await SubcategoryRepository.get_by_ids(subcategory_ids, session)
+
         for cart_item in cart_items:
             item_dto = ItemDTO(category_id=cart_item.category_id, subcategory_id=cart_item.subcategory_id)
             price = await ItemRepository.get_price(item_dto, session)
-            subcategory = await SubcategoryRepository.get_by_id(cart_item.subcategory_id, session)
+            subcategory = subcategories_dict.get(cart_item.subcategory_id)
+            if not subcategory:
+                continue
             line_item_total = price * cart_item.quantity
             cart_line_item = Localizator.get_text(BotEntity.USER, "cart_line_item_checkout").format(
                 qty=cart_item.quantity,
@@ -552,9 +571,15 @@ class CartService:
         elif len(out_of_stock) > 0:
             kb_builder.row(unpacked_cb.get_back_button(0))
             msg = Localizator.get_text(BotEntity.USER, "out_of_stock")
+
+            # Batch-load all subcategories (eliminates N+1 queries)
+            subcategory_ids = list({item.subcategory_id for item in out_of_stock})
+            subcategories_dict = await SubcategoryRepository.get_by_ids(subcategory_ids, session)
+
             for item in out_of_stock:
-                subcategory = await SubcategoryRepository.get_by_id(item.subcategory_id, session)
-                msg += subcategory.name + "\n"
+                subcategory = subcategories_dict.get(item.subcategory_id)
+                if subcategory:
+                    msg += subcategory.name + "\n"
             return msg, kb_builder
 
     # ========================================
