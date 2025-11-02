@@ -223,7 +223,7 @@
     "payment_cancelled_underpayment": "❌ <b>Bestellung storniert (2. Unterzahlung)</b>\n\nOrder-ID: {invoice_number}\nBezahlt gesamt: {total_paid_fiat} {currency_sym}\nStrafgebühr (5%): {penalty_amount} {currency_sym}\nGuthaben gutgeschrieben: {net_wallet_credit} {currency_sym}\n\nDie Bestellung wurde storniert, da der vollständige Betrag nach 2 Versuchen nicht eingegangen ist. Das Guthaben steht dir für zukünftige Bestellungen zur Verfügung.",
     "payment_late": "⏰ <b>Verspätete Zahlung</b>\n\nOrder-ID: {invoice_number}\nBezahlt: {paid_fiat} {currency_sym}\nStrafgebühr (5%): {penalty_amount} {currency_sym}\nGuthaben gutgeschrieben: {net_wallet_credit} {currency_sym}\n\nDie Zahlung ist nach Ablauf der Frist eingegangen. Die Bestellung wurde storniert. Das Guthaben steht dir für zukünftige Bestellungen zur Verfügung.",
     "payment_overpayment_wallet_credit": "✅ <b>Bestellung bezahlt</b>\n\nOrder-ID: {invoice_number}\n\n💰 Du hast {overpayment_amount} {currency_sym} zu viel bezahlt.\nDer Überschuss wurde deinem Wallet gutgeschrieben.\n\nDein Guthaben steht dir für zukünftige Bestellungen zur Verfügung.",
-    "payment_success": "✅ <b>Zahlung erfolgreich</b>\n\nOrder-ID: {invoice_number}\n\nDeine Bestellung wurde erfolgreich bezahlt und wird nun bearbeitet.",
+    "payment_success": "Zahlung erfolgreich - Rechnung {invoice_number}",
     "shipping_address_request": "📬 <b>Bitte geben Sie Ihre vollständige Versandadresse ein:</b>\n\nDie Adresse sollte enthalten:\n- Name\n- Straße und Hausnummer\n- PLZ und Ort\n- Land\n\n<i>🔒 Datenschutz: Ihre Adresse wird verschlüsselt gespeichert und automatisch nach {retention_days} Tagen endgültig gelöscht.</i>",
     "shipping_address_invalid": "⚠️ <b>Die Adresse ist zu kurz!</b>\n\nBitte geben Sie eine vollständige Versandadresse ein (mindestens 10 Zeichen).",
     "shipping_address_confirm": "📬 <b>Bitte bestätigen Sie Ihre Versandadresse:</b>\n\n{address}\n\n<i>Ist diese Adresse korrekt?</i>\n\n<i>🔒 Datenschutz: Ihre Adresse wird verschlüsselt gespeichert und automatisch nach {retention_days} Tagen endgültig gelöscht.</i>",
@@ -276,12 +276,11 @@
     "admin_cancel_refund_notice": "Der Betrag wurde vollständig erstattet und steht für weitere Einkäufe zur Verfügung. Sie erhalten keinen Strike.",
     "admin_cancel_contact_support": "ℹ️ Bei Fragen kontaktieren Sie bitte den Support.",
     "order_cancelled_by_admin_title": "Bestellung vom Administrator storniert",
-    "order_number": "Bestellnummer"
-  },
-  "invoice_number_label": "Rechnungsnummer",
-  "order_label": "Bestellung",
-  "created_on_label": "Erstellt am",
-  "status_label": "Status",
-  "items_label": "Artikel",
-  "payment_success": "Zahlung erfolgreich - Rechnung {invoice_number}"
+    "order_number": "Bestellnummer",
+    "invoice_number_label": "Rechnungsnummer",
+    "order_label": "Bestellung",
+    "created_on_label": "Erstellt am",
+    "status_label": "Status",
+    "items_label": "Artikel"
+  }
 }

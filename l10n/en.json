@@ -243,7 +243,7 @@
     "payment_cancelled_underpayment": "❌ <b>Order Cancelled (2nd Underpayment)</b>\n\nOrder-ID: {invoice_number}\nTotal paid: {total_paid_fiat} {currency_sym}\nPenalty fee (5%): {penalty_amount} {currency_sym}\nWallet credited: {net_wallet_credit} {currency_sym}\n\nThe order was cancelled as the full amount was not received after 2 attempts. The balance is available for future orders.",
     "payment_late": "⏰ <b>Late Payment</b>\n\nOrder-ID: {invoice_number}\nPaid: {paid_fiat} {currency_sym}\nPenalty fee (5%): {penalty_amount} {currency_sym}\nWallet credited: {net_wallet_credit} {currency_sym}\n\nThe payment was received after the deadline. The order was cancelled. The balance is available for future orders.",
     "payment_overpayment_wallet_credit": "✅ <b>Order Paid</b>\n\nOrder-ID: {invoice_number}\n\n💰 You overpaid by {overpayment_amount} {currency_sym}.\nThe excess was credited to your wallet.\n\nYour balance is available for future orders.",
-    "payment_success": "✅ <b>Payment Successful</b>\n\nOrder-ID: {invoice_number}\n\nYour order was successfully paid and is now being processed.",
+    "payment_success": "Payment Successful - Invoice {invoice_number}",
     "shipping_address_request": "📬 <b>Please enter your complete shipping address:</b>\n\nThe address should include:\n- Name\n- Street and house number\n- Postal code and city\n- Country\n\n<i>🔒 Privacy: Your address will be stored encrypted and automatically deleted after {retention_days} days.</i>",
     "shipping_address_invalid": "⚠️ <b>The address is too short!</b>\n\nPlease enter a complete shipping address (at least 10 characters).",
     "shipping_address_confirm": "📬 <b>Please confirm your shipping address:</b>\n\n{address}\n\n<i>Is this address correct?</i>\n\n<i>🔒 Privacy: Your address will be stored encrypted and automatically deleted after {retention_days} days.</i>",
@@ -291,12 +291,11 @@
     "admin_cancel_refund_notice": "The amount has been fully refunded and is available for future purchases. You will not receive a strike.",
     "admin_cancel_contact_support": "ℹ️ If you have any questions, please contact support.",
     "order_cancelled_by_admin_title": "Order Cancelled by Administrator",
-    "order_number": "Order Number"
-  },
-  "invoice_number_label": "Invoice Number",
-  "order_label": "Order",
-  "created_on_label": "Created on",
-  "status_label": "Status",
-  "items_label": "Items",
-  "payment_success": "Payment Successful - Invoice {invoice_number}"
+    "order_number": "Order Number",
+    "invoice_number_label": "Invoice Number",
+    "order_label": "Order",
+    "created_on_label": "Created on",
+    "status_label": "Status",
+    "items_label": "Items"
+  }
 }
