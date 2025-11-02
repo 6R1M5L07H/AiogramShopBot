@@ -339,6 +339,12 @@ class InvoiceFormatter:
             message += f"{Localizator.get_text(entity, 'admin_cancel_invoice_date')} {date}\n"
             message += f"{Localizator.get_text(entity, 'admin_cancel_invoice_status')}\n\n"
 
+        elif header_type == "payment_success":
+            # Payment success notification header
+            success_header = Localizator.get_text(entity, "payment_success").format(invoice_number=invoice_number)
+            message += f"✅ <b>{success_header}</b>\n\n"
+            message += f"📋 <b>{Localizator.get_text(entity, 'invoice_number_label')}: {invoice_number}</b>\n\n"
+
         elif header_type == "purchase_history":
             # Purchase history header with status
             if order_status:
@@ -350,9 +356,12 @@ class InvoiceFormatter:
                     status = Localizator.get_text(entity, "order_status_paid")
 
                 created_str = created_at.strftime("%d.%m.%Y %H:%M") if created_at else "N/A"
-                message += f"<b>📋 Bestellung #{invoice_number}</b>\n\n"
-                message += f"<b>Erstellt am:</b> {created_str}\n"
-                message += f"<b>Status:</b> {status}\n"
+                order_label = Localizator.get_text(entity, "order_label")
+                message += f"<b>📋 {order_label} #{invoice_number}</b>\n\n"
+                created_label = Localizator.get_text(entity, "created_on_label")
+                status_label = Localizator.get_text(entity, "status_label")
+                message += f"<b>{created_label}:</b> {created_str}\n"
+                message += f"<b>{status_label}:</b> {status}\n"
 
                 # Add paid timestamp if available
                 if paid_at:
@@ -400,10 +409,15 @@ class InvoiceFormatter:
                     message += "\n"
 
             elif show_numbered_items:
-                # Numbered items list (purchase history)
-                message += "<b>Artikel:</b>\n"
+                # Numbered items list (purchase history) with quantity
+                items_label = Localizator.get_text(entity, "items_label")
+                message += f"<b>{items_label}:</b>\n"
                 for idx, item in enumerate(items, 1):
-                    message += f"{idx}. {item['name']}\n"
+                    qty = item.get('quantity', 1)
+                    if qty > 1:
+                        message += f"{idx}. {item['name']} (x{qty})\n"
+                    else:
+                        message += f"{idx}. {item['name']}\n"
                     # Show private data indented
                     if show_private_data and item.get('private_data'):
                         message += f"   <code>{item['private_data']}</code>\n"

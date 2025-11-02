@@ -310,12 +310,8 @@ class NotificationService:
                         })
 
                 # Format message with InvoiceFormatter
-                header_text = "✅ " + Localizator.get_text(BotEntity.USER, "payment_success").format(
-                    invoice_number=invoice_number
-                )
-
                 msg = InvoiceFormatter.format_complete_order_view(
-                    header_type="purchase_history",
+                    header_type="payment_success",
                     invoice_number=invoice_number,
                     order_status=order.status,
                     created_at=order.created_at,
