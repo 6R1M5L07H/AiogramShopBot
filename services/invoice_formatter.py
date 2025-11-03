@@ -14,6 +14,7 @@ from datetime import datetime
 from enums.bot_entity import BotEntity
 from enums.order_status import OrderStatus
 from utils.localizator import Localizator
+from utils.html_escape import safe_html
 
 
 class InvoiceFormatter:
@@ -191,10 +192,10 @@ class InvoiceFormatter:
             entity=BotEntity.ADMIN
         )
 
-        # Add shipping address
+        # Add shipping address (escape HTML to prevent injection)
         if shipping_address:
             message += "\n<b>Adressdaten:</b>\n"
-            message += f"{shipping_address}"
+            message += f"{safe_html(shipping_address)}"
 
         return message
 
