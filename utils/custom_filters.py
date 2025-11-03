@@ -6,12 +6,21 @@ import config
 from db import get_db_session
 from models.user import UserDTO
 from services.user import UserService
+from utils.permission_utils import is_admin_user, is_banned_user
 
 
 class AdminIdFilter(BaseFilter):
+    """
+    Filter that checks if user is an admin using secure hash-based verification.
+
+    Security:
+    - Verifies admin status by hashing the user's Telegram ID and comparing with stored hashes
+    - Prevents admin identification if environment variables are compromised
+    - Backward compatible with legacy ADMIN_ID_LIST (with deprecation warning)
+    """
 
     async def __call__(self, message: types.Message):
-        return message.from_user.id in config.ADMIN_ID_LIST
+        return is_admin_user(message.from_user.id)
 
 
 class IsUserExistFilter(BaseFilter):
@@ -29,29 +38,25 @@ class IsUserExistFilter(BaseFilter):
             if user is None:
                 return False
 
-            # Check if user is banned (unless admin is exempt)
-            if user.is_blocked:
-                is_admin = message.from_user.id in config.ADMIN_ID_LIST
-                admin_exempt = is_admin and config.EXEMPT_ADMINS_FROM_BAN
+            # Check if user is banned using centralized function
+            if await is_banned_user(message.from_user.id, session):
+                # User is banned - show informative message
+                from utils.localizator import Localizator
+                from enums.bot_entity import BotEntity
+                from repositories.user_strike import UserStrikeRepository
 
-                if not admin_exempt:
-                    # User is banned - show informative message
-                    from utils.localizator import Localizator
-                    from enums.bot_entity import BotEntity
-                    from repositories.user_strike import UserStrikeRepository
+                # Get actual strike count from DB
+                strikes = await UserStrikeRepository.get_by_user_id(user.id, session)
+                strike_count = len(strikes)
 
-                    # Get actual strike count from DB
-                    strikes = await UserStrikeRepository.get_by_user_id(user.id, session)
-                    strike_count = len(strikes)
+                ban_message = Localizator.get_text(BotEntity.USER, "account_banned_access_denied").format(
+                    strike_count=strike_count,
+                    unban_amount=config.UNBAN_TOP_UP_AMOUNT,
+                    currency_sym=Localizator.get_currency_symbol()
+                )
 
-                    ban_message = Localizator.get_text(BotEntity.USER, "account_banned_access_denied").format(
-                        strike_count=strike_count,
-                        unban_amount=config.UNBAN_TOP_UP_AMOUNT,
-                        currency_sym=Localizator.get_currency_symbol()
-                    )
-
-                    await message.answer(ban_message)
-                    return False
+                await message.answer(ban_message)
+                return False
 
             return True
 

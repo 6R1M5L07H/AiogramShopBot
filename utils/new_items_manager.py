@@ -27,10 +27,24 @@ class NewItemsManager:
 
     @staticmethod
     async def create_text_of_items_msg(items: List[ItemDTO], is_update: bool, session: AsyncSession | Session) -> str:
+        # Batch-load all categories and subcategories (eliminates N+1 queries)
+        category_ids = list({item.category_id for item in items})
+        subcategory_ids = list({item.subcategory_id for item in items})
+
+        categories_dict = {}
+        for cat_id in category_ids:
+            category = await CategoryRepository.get_by_id(cat_id, session)
+            categories_dict[cat_id] = category
+
+        subcategories_dict = await SubcategoryRepository.get_by_ids(subcategory_ids, session)
+
+        # Build filtered items structure with batch-loaded data
         filtered_items = {}
         for item in items:
-            category = await CategoryRepository.get_by_id(item.category_id, session)
-            subcategory = await SubcategoryRepository.get_by_id(item.subcategory_id, session)
+            category = categories_dict.get(item.category_id)
+            subcategory = subcategories_dict.get(item.subcategory_id)
+            if not category or not subcategory:
+                continue
             if category.name not in filtered_items:
                 filtered_items[category.name] = {}
             if subcategory.name not in filtered_items[category.name]:

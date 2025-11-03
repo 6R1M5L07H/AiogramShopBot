@@ -94,9 +94,11 @@ class PaymentService:
         from services.order import OrderService
 
         # 1. Get order details
+        from exceptions.order import OrderNotFoundException
+
         order = await OrderRepository.get_by_id(order_id, session)
         if not order:
-            raise ValueError(f"Order {order_id} not found")
+            raise OrderNotFoundException(order_id)
 
         order_total = order.total_price
         logging.info(f"💳 Processing payment for order {order_id}: Total={order_total:.2f} EUR")
@@ -125,11 +127,10 @@ class PaymentService:
         # 6. Create invoice
         if remaining_amount > 0:
             # Crypto payment needed - create invoice with KryptoExpress
+            from exceptions.payment import CryptocurrencyNotSelectedException
+
             if crypto_currency == Cryptocurrency.PENDING_SELECTION:
-                raise ValueError(
-                    f"Cannot create invoice for order {order_id}: cryptocurrency not selected yet. "
-                    "User must select payment method first."
-                )
+                raise CryptocurrencyNotSelectedException(order_id)
 
             invoice = await InvoiceService.create_invoice_with_kryptoexpress(
                 order_id=order_id,

@@ -1,0 +1,113 @@
+# ============================================================================
+# Production Docker Compose Configuration
+# ============================================================================
+#
+# PRODUCTION DEPLOYMENT with:
+# - Caddy reverse proxy with automatic TLS/HTTPS
+# - Production-optimized bot configuration
+# - Redis with authentication
+# - Automated restarts
+# - Volume persistence for data and backups
+#
+# PREREQUISITES:
+# 1. Copy environment template: cp .env.prod.template .env
+# 2. Fill in all required values in .env
+# 3. Set your domain in the caddy label below (line 50)
+# 4. Ensure ports 80 and 443 are available
+#
+# USAGE:
+# Start:  docker-compose -f docker-compose.prod.yml up -d
+# Logs:   docker-compose -f docker-compose.prod.yml logs -f
+# Stop:   docker-compose -f docker-compose.prod.yml down
+#
+# ============================================================================
+
+services:
+  caddy:
+    image: lucaslorentz/caddy-docker-proxy:2.9.1-alpine
+    container_name: shopbot-caddy-prod
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - CADDY_INGRESS_NETWORKS=shopbot_network
+    networks:
+      - shopbot_network
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: always
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: shopbot-prod
+    env_file:
+      - .env
+    labels:
+      # IMPORTANT: Replace with your actual domain or use sslip.io
+      # Examples:
+      #   - bot.yourdomain.com
+      #   - 203.0.113.42.sslip.io (replace with your IP)
+      caddy: YOUR-DOMAIN-GOES-HERE
+      caddy.reverse_proxy: "{{upstreams 5000}}"
+    depends_on:
+      - caddy
+      - redis
+    networks:
+      - shopbot_network
+    ports:
+      - "5000:5000"
+    expose:
+      - 5000
+    volumes:
+      # Database and data directory
+      - ./data:/bot/data
+      # Backup directory
+      - ./backups:/bot/backups
+    command: ["python", "-u", "run.py"]
+    restart: always
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:5000/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  redis:
+    image: redis:7-alpine
+    container_name: shopbot-redis-prod
+    command:
+      - /bin/sh
+      - -c
+      - redis-server --requirepass "$${REDIS_PASSWORD:?REDIS_PASSWORD variable is not set}"
+    ports:
+      - "6379:6379"
+    env_file:
+      - .env
+    volumes:
+      - redis_data:/data
+    restart: always
+    networks:
+      - shopbot_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+volumes:
+  caddy_data:
+    driver: local
+  caddy_config:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  shopbot_network:
+    driver: bridge
