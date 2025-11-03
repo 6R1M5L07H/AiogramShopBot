@@ -6,7 +6,7 @@
 
 ---
 
-## 📋 Prerequisites
+##   Prerequisites
 
 ### 1. Environment Setup
 ```bash
@@ -23,7 +23,7 @@ The new shipping fields will be auto-created by SQLAlchemy when you start the bo
 - `orders` table: `shipping_cost`, `shipped_at` columns
 - `shipping_addresses` table: Complete new table with encryption
 
-**⚠️ Backup your database before testing!**
+**  Backup your database before testing!**
 ```bash
 cp database.db database.db.backup
 ```
@@ -31,7 +31,7 @@ cp database.db database.db.backup
 ### 3. Import Test Data
 ```bash
 # Start bot in admin mode
-# Navigate to: Admin Menu → Lagerverwaltung → Artikel hinzufügen → JSON
+# Navigate to: Admin Menu → Inventory Management → Add Items → JSON
 
 # Upload the file: test_physical_items.json
 ```
@@ -51,7 +51,7 @@ cp database.db database.db.backup
    ```
    Windows 10 Pro Lizenz (1) = 9.99€
 
-   Gesamtpreis: 9.99€
+   Total: 9.99€
    ```
    (No shipping line!)
 5. Click "Bestätigen"
@@ -59,7 +59,7 @@ cp database.db database.db.backup
 7. Select crypto → Pay
 8. **Expected:** Order status = PAID immediately (not PAID_AWAITING_SHIPMENT)
 
-**✅ Pass Criteria:**
+**  Pass Criteria:**
 - No shipping cost shown
 - No address collection triggered
 - Order goes directly to PAID status
@@ -78,21 +78,21 @@ cp database.db database.db.backup
    ```
    SanDisk 32GB... (1) = 15.99€
 
-   Gesamtpreis: 18.49€
+   Total: 18.49€
    ```
    (Total includes shipping: 15.99 + 2.50 = 18.49)
 5. Click "Bestätigen"
 6. **Expected:** Address request appears:
    ```
-   📬 Bitte geben Sie Ihre vollständige Versandadresse ein:
+   📬 Please enter your complete shipping address:
 
-   Die Adresse sollte enthalten:
+   The address should include:
    - Name
-   - Straße und Hausnummer
-   - PLZ und Ort
+   - Street and house number
+   - Postal code and city
    - Land
 
-   Ihre Adresse wird verschlüsselt gespeichert.
+   Your address will be stored encrypted.
    ```
 7. Enter address (free text):
    ```
@@ -107,7 +107,7 @@ cp database.db database.db.backup
 11. Select crypto → Pay
 12. **Expected:** Order status = PAID_AWAITING_SHIPMENT (not PAID)
 
-**✅ Pass Criteria:**
+**  Pass Criteria:**
 - Shipping cost calculated correctly (2.50€)
 - Address collection triggered
 - Address stored encrypted in database
@@ -129,7 +129,7 @@ cp database.db database.db.backup
    USB-Stick (1) = 15.99€
    Windows License (1) = 9.99€
 
-   Gesamtpreis: 28.48€
+   Total: 28.48€
    ```
    (Items: 25.98€ + Shipping: 2.50€ = 28.48€)
 4. Complete checkout with address
@@ -137,7 +137,7 @@ cp database.db database.db.backup
 6. **Expected:** User receives Windows license immediately (digital)
 7. **Expected:** USB-Stick awaits shipment (physical)
 
-**✅ Pass Criteria:**
+**  Pass Criteria:**
 - Shipping = MAX(all physical shipping costs)
 - Address required because cart has physical items
 - Digital items delivered immediately after payment
@@ -158,12 +158,12 @@ cp database.db database.db.backup
    USB-Stick (2) = 31.98€
    T-Shirt (1) = 24.99€
 
-   Gesamtpreis: 60.96€
+   Total: 60.96€
    ```
    **Calculation:** Items: 56.97€ + Shipping: 3.99€ (MAX, not 2.50+3.99!)
 4. Complete checkout
 
-**✅ Pass Criteria:**
+**  Pass Criteria:**
 - Shipping = MAX(2.50, 3.99) = 3.99€
 - NOT SUM = 2.50+3.99 = 6.49€
 - This is the correct behavior!
@@ -178,16 +178,16 @@ cp database.db database.db.backup
 2. Go to cart → Checkout → Bestätigen
 3. **Expected:** Address request shows additional warning:
    ```
-   ⚠️ Hinweis: Ihre Bestellung enthält Artikel, die NICHT an
-   eine Packstation geliefert werden können. Bitte geben Sie
+     Hinweis: Ihre Bestellung enthält Artikel, die NICHT an
+   be delivered to a Packstation. Please enter
    eine vollständige Hausadresse an.
    ```
 
-**✅ Pass Criteria:**
+**  Pass Criteria:**
 - Warning appears for Packstation-restricted items
 - No warning for Packstation-allowed items (USB, Stickers, T-Shirt)
 
-**⚠️ Status:** Not yet implemented in v2 - planned enhancement
+**  Status:** Not yet implemented in v2 - planned enhancement
 
 ---
 
@@ -196,10 +196,10 @@ cp database.db database.db.backup
 
 **Steps:**
 1. Complete Test 2 or Test 3 (create order with PAID_AWAITING_SHIPMENT status)
-2. As Admin: Navigate to "Admin Menu" → "📦 Versandverwaltung"
+2. As Admin: Navigate to "Admin Menu" → "  Versandverwaltung"
 3. **Expected:** List shows pending orders:
    ```
-   📦 Order #2025-abc123 | @username | 18.49€
+     Order #2025-abc123 | @username | 18.49€
    ```
 4. Click on order
 5. **Expected:** Order details screen shows:
@@ -211,7 +211,7 @@ cp database.db database.db.backup
      - Versand: 2.50€
      - Gesamtsumme: 18.49€
    - Physical items list only
-6. Click "✅ Als versendet markieren"
+6. Click "  Als versendet markieren"
 7. **Expected:** Confirmation screen:
    ```
    ❓ Möchten Sie die Bestellung #2025-abc123 wirklich als versendet markieren?
@@ -219,22 +219,22 @@ cp database.db database.db.backup
 8. Confirm
 9. **Expected:** Success message:
    ```
-   ✅ Bestellung #2025-abc123 wurde als versendet markiert!
+     Bestellung #2025-abc123 wurde als versendet markiert!
 
    Der Kunde wurde benachrichtigt.
    ```
 10. **Expected:** User receives Telegram notification:
     ```
-    📦 Ihre Bestellung wurde versendet!
+      Ihre Bestellung wurde versendet!
 
-    📋 Bestellcode: 2025-abc123
+      Bestellcode: 2025-abc123
 
     Ihre Bestellung ist unterwegs. Vielen Dank für Ihren Einkauf!
     ```
 11. Check order status
 12. **Expected:** Order status = SHIPPED, shipped_at timestamp set
 
-**✅ Pass Criteria:**
+**  Pass Criteria:**
 - Admin sees decrypted address
 - Only physical items shown in admin view
 - User receives "Order shipped" notification
@@ -267,7 +267,7 @@ cp database.db database.db.backup
    Deutschland
    ```
 
-**✅ Pass Criteria:**
+**  Pass Criteria:**
 - Database stores encrypted bytes (BLOB)
 - Admin UI shows decrypted plaintext
 - Decryption only possible with ENCRYPTION_SECRET
@@ -282,15 +282,15 @@ cp database.db database.db.backup
 2. Enter very short address: "Test"
 3. **Expected:** Error message:
    ```
-   ⚠️ Die Adresse ist zu kurz!
+     Die Adresse ist zu kurz!
 
-   Bitte geben Sie eine vollständige Versandadresse ein (mindestens 10 Zeichen).
+   Please enter a complete shipping address (at least 10 characters).
    ```
 4. Bot stays in FSM state, waiting for new address
 5. Enter address with 10+ characters
 6. **Expected:** Confirmation screen appears
 
-**✅ Pass Criteria:**
+**  Pass Criteria:**
 - Addresses < 10 chars rejected
 - Addresses ≥ 10 chars accepted
 - User can retry without restarting checkout
@@ -316,10 +316,10 @@ cp database.db database.db.backup
    ```
    **Expected:** Address record still exists (tied to order)
 
-**⚠️ Note:** Addresses are kept with cancelled orders for admin records.
+**  Note:** Addresses are kept with cancelled orders for admin records.
 GDPR cleanup happens after retention period (90 days).
 
-**✅ Pass Criteria:**
+**  Pass Criteria:**
 - Order cancellation works normally
 - Address is kept in database
 - Address encrypted at rest
@@ -376,14 +376,14 @@ GDPR cleanup happens after retention period (90 days).
    ```
 4. **Expected:** All fields populated correctly
 
-**✅ Pass Criteria:**
+**  Pass Criteria:**
 - Valid JSON imports successfully
 - All shipping fields stored correctly
 - Items appear in shop catalog
 
 ---
 
-## 🔍 Database Verification Queries
+##   Database Verification Queries
 
 ```sql
 -- Check items have shipping fields
@@ -421,7 +421,7 @@ GROUP BY o.id;
 
 ---
 
-## 🐛 Common Issues & Solutions
+##   Common Issues & Solutions
 
 ### Issue: "Encryption key not found"
 **Solution:** Set `ENCRYPTION_SECRET` in .env (exactly 32 bytes hex)
@@ -465,7 +465,7 @@ openssl rand -hex 32
 
 ---
 
-## ✅ Final Checklist
+##   Final Checklist
 
 Before marking shipping feature as complete:
 
@@ -483,7 +483,7 @@ Before marking shipping feature as complete:
 
 ---
 
-## 📊 Expected Test Results Summary
+##   Expected Test Results Summary
 
 | Test | Scenario | Expected Result |
 |------|----------|----------------|
@@ -491,7 +491,7 @@ Before marking shipping feature as complete:
 | 2 | Physical-only | Address collected, PAID_AWAITING_SHIPMENT |
 | 3 | Mixed cart | MAX shipping, address required, digitals delivered |
 | 4 | Multi-physical | MAX shipping (not SUM!) |
-| 5 | Packstation warning | ⏳ Not implemented yet |
+| 5 | Packstation warning |   Not implemented yet |
 | 6 | Admin mark shipped | Status→SHIPPED, user notified |
 | 7 | Encryption | DB encrypted (BLOB), Admin decrypted (text) |
 | 8 | Address validation | Short addresses rejected, retry possible |
@@ -500,9 +500,9 @@ Before marking shipping feature as complete:
 
 ---
 
-## 🎯 Success Criteria
+##   Success Criteria
 
-✅ **Feature is production-ready when:**
+  **Feature is production-ready when:**
 1. All core tests (1-4, 6-10) pass without errors
 2. Database migration completes successfully
 3. Encryption/decryption works correctly (AES-256-GCM)
@@ -514,24 +514,24 @@ Before marking shipping feature as complete:
 
 ---
 
-## 🚀 Branch Comparison
+##   Branch Comparison
 
 | Feature | `feature/shipping-management-system` | `feature/shipping-management-v2` |
 |---------|-------------------------------------|----------------------------------|
-| Shipping cost logic | ✅ MAX | ✅ MAX |
-| Address encryption | ✅ AES-256-GCM | ✅ AES-256-GCM |
-| Admin management | ✅ Complete | ✅ Complete |
-| User notifications | ✅ Complete | ✅ Complete |
-| Packstation warning | ✅ Implemented | ⏳ Planned |
-| Order detail view | ✅ Implemented | ⏳ Planned |
-| Product shipping info | ✅ Implemented | ⏳ Planned |
-| Test structure | ✅ Separated | ✅ Docs created |
-| Payment validation | ❌ Broken | ✅ Preserved |
+| Shipping cost logic |   MAX |   MAX |
+| Address encryption |   AES-256-GCM |   AES-256-GCM |
+| Admin management |   Complete |   Complete |
+| User notifications |   Complete |   Complete |
+| Packstation warning |   Implemented |   Planned |
+| Order detail view |   Implemented |   Planned |
+| Product shipping info |   Implemented |   Planned |
+| Test structure |   Separated |   Docs created |
+| Payment validation |   Broken |   Preserved |
 
 **Current Status:** v2 has core features + working payment system. Missing UX enhancements.
 
 ---
 
-**Good luck with testing! 🚀**
+**Good luck with testing!  **
 
 For requirements and implementation details, see: `docs/SHIPPING_REQUIREMENTS.md`
