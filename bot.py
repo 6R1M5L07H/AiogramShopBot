@@ -6,6 +6,11 @@ from aiogram.fsm.storage.redis import RedisStorage
 from aiogram.types import BufferedInputFile
 from redis.asyncio import Redis
 import config
+
+# Validate critical configuration before bot initialization
+from utils.config_validator import validate_or_exit
+validate_or_exit(config)
+
 from aiogram import Bot, Dispatcher
 from aiogram.enums import ParseMode
 from fastapi import FastAPI, Request, status, HTTPException
@@ -84,6 +89,7 @@ async def on_startup():
         url=config.WEBHOOK_URL,
         secret_token=config.WEBHOOK_SECRET_TOKEN
     )
+    logging.info(f"[Startup] Webhook URL set to: {config.WEBHOOK_URL}")
 
     # Start payment timeout job
     await payment_timeout_job.start()
