@@ -28,6 +28,7 @@ from repositories.item import ItemRepository
 from repositories.subcategory import SubcategoryRepository
 from repositories.user import UserRepository
 from utils.localizator import Localizator
+from utils.html_escape import safe_html
 
 
 class AdminService:
@@ -251,7 +252,7 @@ class AdminService:
 
                 # Format username display
                 if user.telegram_username:
-                    user_display = f"@{user.telegram_username}"
+                    user_display = f"@{safe_html(user.telegram_username)}"
                 else:
                     user_display = f"ID: {user.telegram_id}"
 
@@ -264,7 +265,7 @@ class AdminService:
                     telegram_id=user.telegram_id,
                     strike_count=strike_count,
                     ban_date=ban_date,
-                    ban_reason=user.blocked_reason or "Unknown"
+                    ban_reason=safe_html(user.blocked_reason) if user.blocked_reason else "Unknown"
                 )
                 message += user_info
 
@@ -307,7 +308,7 @@ class AdminService:
 
         if not user.is_blocked:
             return Localizator.get_text(BotEntity.ADMIN, "user_not_banned").format(
-                user_display=user.telegram_username or user.telegram_id
+                user_display=safe_html(user.telegram_username) if user.telegram_username else user.telegram_id
             )
 
         # Unban user
@@ -321,7 +322,7 @@ class AdminService:
 
         # Format user display
         if user.telegram_username:
-            user_display = f"@{user.telegram_username}"
+            user_display = f"@{safe_html(user.telegram_username)}"
         else:
             user_display = f"ID: {user.telegram_id}"
 
@@ -411,7 +412,7 @@ class AdminService:
                 buy_id=refund_item.buy_id)
             if refund_item.telegram_username:
                 kb_builder.button(text=Localizator.get_text(BotEntity.ADMIN, "refund_by_username").format(
-                    telegram_username=refund_item.telegram_username,
+                    telegram_username=safe_html(refund_item.telegram_username),
                     total_price=refund_item.total_price,
                     subcategory=refund_item.subcategory_name,
                     currency_sym=Localizator.get_currency_symbol()),
@@ -441,7 +442,7 @@ class AdminService:
         refund_data = await BuyRepository.get_refund_data_single(unpacked_cb.buy_id, session)
         if refund_data.telegram_username:
             return Localizator.get_text(BotEntity.ADMIN, "refund_confirmation_by_username").format(
-                telegram_username=refund_data.telegram_username,
+                telegram_username=safe_html(refund_data.telegram_username),
                 quantity=refund_data.quantity,
                 subcategory=refund_data.subcategory_name,
                 total_price=refund_data.total_price,
