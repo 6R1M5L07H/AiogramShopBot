@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
+import logging
 
 from sqlalchemy import event, Engine, text, create_engine, Result, CursorResult
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
@@ -34,17 +35,28 @@ from models.user_strike import UserStrike
 from models.referral_usage import ReferralUsage
 from models.referral_discount import ReferralDiscount
 
+# SQLAlchemy logging configuration
+# Echo SQL queries only if log level is DEBUG
+# This prevents logs from being cluttered with SQL statements in production
+sql_echo = getattr(config, "LOG_LEVEL", "INFO").upper() == "DEBUG"
+
 url = ""
 engine = None
 session_maker = None
 if config.DB_ENCRYPTION:
     url += f"sqlite+pysqlcipher://:{config.DB_PASS}@/data/{DB_NAME}"
-    engine = create_engine(url, echo=True, module=sqlcipher)
+    engine = create_engine(url, echo=sql_echo, module=sqlcipher)
     session_maker = sessionmaker(engine, expire_on_commit=False)
 else:
     url += f"sqlite+aiosqlite:///data/{DB_NAME}"
-    engine = create_async_engine(url, echo=True)
+    engine = create_async_engine(url, echo=sql_echo)
     session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+# Configure SQLAlchemy logger to respect application log level
+# This prevents SQL queries from appearing even if echo=False but sqlalchemy logger is too verbose
+if not sql_echo:
+    logging.getLogger('sqlalchemy.engine').setLevel(logging.WARNING)
+    logging.getLogger('sqlalchemy.pool').setLevel(logging.WARNING)
 
 data_folder = Path("data")
 if data_folder.exists() is False:

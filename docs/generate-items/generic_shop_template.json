@@ -1,0 +1,49 @@
+{
+  "template": {
+    "license_key_pattern": "LICENSE-{{YEAR}}-{{RANDOM_8}}",
+    "admin_telegram_username": "YOUR_ADMIN_USERNAME"
+  },
+  "categories": [
+    {"name": "Digital Products"},
+    {"name": "Hardware Products"}
+  ],
+  "subcategories": [
+    {"name": "Software Licenses", "category": "Digital Products"},
+    {"name": "USB Storage Devices", "category": "Hardware Products"}
+  ],
+  "items": [
+    {
+      "quantity": 100,
+      "category": "Digital Products",
+      "subcategory": "Software Licenses",
+      "private_data": "License Key: {{LICENSE_KEY}}\n\nActivation Instructions:\n1. Download software from official website\n2. Enter license key during installation\n3. Activate within 30 days\n\nFor support contact: https://t.me/{{ADMIN_USERNAME}}",
+      "price": 49.99,
+      "description": "Premium Software License - 1 Year",
+      "is_physical": false,
+      "shipping_cost": 0.0,
+      "allows_packstation": false
+    },
+    {
+      "quantity": 50,
+      "category": "Hardware Products",
+      "subcategory": "USB Storage Devices",
+      "private_data": "",
+      "price": 29.99,
+      "description": "USB 3.0 Flash Drive - 64GB",
+      "is_physical": true,
+      "shipping_cost": 5.00,
+      "allows_packstation": true
+    },
+    {
+      "quantity": 50,
+      "category": "Hardware Products",
+      "subcategory": "USB Storage Devices",
+      "private_data": "",
+      "price": 49.99,
+      "description": "USB 3.0 Flash Drive - 128GB",
+      "is_physical": true,
+      "shipping_cost": 5.00,
+      "allows_packstation": true
+    }
+  ]
+}

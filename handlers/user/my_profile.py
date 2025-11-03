@@ -60,10 +60,25 @@ async def strike_statistics(**kwargs):
 
 
 async def get_order_from_history(**kwargs):
+    from exceptions import OrderNotFoundException, ShopBotException
+    import logging
+
     callback = kwargs.get("callback")
     session = kwargs.get("session")
-    msg, kb_builder = await BuyService.get_purchase(callback, session)
-    await callback.message.edit_text(text=msg, reply_markup=kb_builder.as_markup())
+
+    try:
+        msg, kb_builder = await BuyService.get_purchase(callback, session)
+        await callback.message.edit_text(text=msg, reply_markup=kb_builder.as_markup())
+
+    except OrderNotFoundException:
+        await callback.answer("❌ Order not found", show_alert=True)
+
+    except ShopBotException as e:
+        await callback.answer(f"❌ Error: {str(e)}", show_alert=True)
+
+    except Exception as e:
+        logging.exception(f"Unexpected error getting order from history: {e}")
+        await callback.answer("❌ An unexpected error occurred", show_alert=True)
 
 
 async def create_payment(**kwargs):

@@ -1,3 +1,16 @@
+# ============================================================================
+# Docker Compose Configuration (Universal)
+# ============================================================================
+#
+# NOTICE: For optimized configurations, use environment-specific files:
+#
+#   Production:  docker-compose -f docker-compose.prod.yml up -d
+#   Development: docker-compose -f docker-compose.dev.yml up -d (Redis only)
+#
+# This file is kept for backward compatibility and general use.
+#
+# ============================================================================
+
 services:
   caddy:
     image: lucaslorentz/caddy-docker-proxy:2.9.1-alpine
