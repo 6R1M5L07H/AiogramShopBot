@@ -150,9 +150,9 @@
 **Test Callback Usage:**
 1. [ ] From Cart Level 0: Click "Checkout" → Goes to Cart Level 2
 2. [ ] From Cart Level 2: Click "Confirm" → Goes to Cart Level 3
-3. [ ] From Cart Level 3: Automatically redirects to **OrderCallback Level 0** ✅
-4. [ ] From Order domain: Click "Back to Cart" → Goes to **CartCallback Level 0** ✅
-5. [ ] From Order domain: Click "Cancel" → Goes to OrderCallback Level 4 ✅
+3. [ ] From Cart Level 3: Automatically redirects to **OrderCallback Level 0**  
+4. [ ] From Order domain: Click "Back to Cart" → Goes to **CartCallback Level 0**  
+5. [ ] From Order domain: Click "Cancel" → Goes to OrderCallback Level 4  
 
 **Expected Results:**
 - Cart domain uses CartCallback

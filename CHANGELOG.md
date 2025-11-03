@@ -2,6 +2,76 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2025-11-03
+
+### Environment-Specific Configuration Templates
+
+**New Templates**
+- .env.dev.template: Development config with relaxed limits, DEBUG logging, ngrok
+- .env.prod.template: Production config with strict security, encryption, automated backups
+- docker-compose.prod.yml: Production deployment with Caddy reverse proxy and TLS
+
+**Benefits**
+- Quick setup: `cp .env.dev.template .env` or `cp .env.prod.template .env`
+- Reduced configuration errors with environment-specific defaults
+- Clear separation of development and production settings
+
+### Centralized Error Handling System
+
+**Implementation**
+- New utils/error_handler.py with centralized exception handling
+- Maps 20+ custom exception types to localized user messages
+- Added 13 new error messages to l10n/en.json and l10n/de.json
+- Comprehensive test suite with full coverage
+
+### SQL Query Logging Improvements
+
+**Changes**
+- SQL echo now conditional based on LOG_LEVEL environment variable
+- Queries only logged when LOG_LEVEL=DEBUG
+- Clean production logs without SQL noise
+
+### Architecture Improvements
+
+**Handler/Service Layer Separation**
+- Moved handler logic from services/order.py to handlers/user/order.py
+- Clear separation: handlers manage UI/routing, services contain business logic
+
+## 2025-11-02
+
+### Shipping Management Service Layer Refactoring
+
+**Architecture Improvements**
+- Refactored shipping management from handler/repository pattern to handler/service/repository architecture
+- Extracted all business logic from handlers to dedicated ShippingService class
+- Eliminated 17 direct repository calls from shipping management handler
+- Improved separation of concerns: handlers now only manage UI and routing, business logic in service layer
+
+**Enhanced Error Handling**
+- Added graceful handling for non-existent orders in shipping management
+- Implemented proper error messages and fallback navigation for missing order scenarios
+- Prevents application crashes from database lookup failures
+
+**Testing Infrastructure**
+- Implemented automated testing using aiogram-tests framework
+- Added comprehensive test fixtures with in-memory database and Redis mocking
+- Created 4 integration tests for shipping management workflows
+- Added detailed manual test guide with 10 test scenarios
+
+**User Privacy**
+- Enhanced shipping address confirmation with data retention notice
+- Users now see clear information about encrypted storage and automatic deletion policy
+
+**Security Improvements**
+- Implemented comprehensive security audit covering SQL injection, XSS, and authentication vulnerabilities
+- Added optional webhook security headers middleware (disabled by default for API-only deployment)
+- Implemented automated database backup system with compression and retention policy
+
+**Documentation**
+- Created comprehensive software engineering audit TODO for technical debt tracking
+- Documented mixed order handling issues with delivery and refund logic
+- Added implementation plans for partial refund calculation in mixed orders
+
 ## 2025-11-01
 
 ### Admin Order Cancellation with Custom Reason

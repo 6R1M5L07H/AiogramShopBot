@@ -18,8 +18,12 @@ class InvoiceRepository:
 
     @staticmethod
     async def get_by_order_id(order_id: int, session: Session | AsyncSession) -> InvoiceDTO | None:
-        """Holt erste Invoice einer Order (für Backward-Compatibility)"""
-        stmt = select(Invoice).where(Invoice.order_id == order_id)
+        """
+        Holt erste Invoice einer Order (für Backward-Compatibility).
+        Bei partial payments gibt es mehrere Invoices - gibt erste zurück.
+        Für Refund-Logik use get_all_by_order_id() instead.
+        """
+        stmt = select(Invoice).where(Invoice.order_id == order_id).order_by(Invoice.id).limit(1)
         result = await session_execute(stmt, session)
         invoice = result.scalar_one_or_none()
 

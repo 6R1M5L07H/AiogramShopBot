@@ -67,21 +67,14 @@ class UserService:
     async def get_top_up_buttons(callback: CallbackQuery) -> tuple[str, InlineKeyboardBuilder]:
         unpacked_cb = MyProfileCallback.unpack(callback.data)
         kb_builder = InlineKeyboardBuilder()
-        kb_builder.button(text=Localizator.get_text(BotEntity.COMMON, "btc_top_up"),
-                          callback_data=MyProfileCallback.create(unpacked_cb.level + 1,
-                                                                 args_for_action=Cryptocurrency.BTC.value))
-        kb_builder.button(text=Localizator.get_text(BotEntity.COMMON, "ltc_top_up"),
-                          callback_data=MyProfileCallback.create(unpacked_cb.level + 1,
-                                                                 args_for_action=Cryptocurrency.LTC.value))
-        kb_builder.button(text=Localizator.get_text(BotEntity.COMMON, "sol_top_up"),
-                          callback_data=MyProfileCallback.create(unpacked_cb.level + 1,
-                                                                 args_for_action=Cryptocurrency.SOL.value))
-        kb_builder.button(text=Localizator.get_text(BotEntity.COMMON, "eth_top_up"),
-                          callback_data=MyProfileCallback.create(unpacked_cb.level + 1,
-                                                                 args_for_action=Cryptocurrency.ETH.value))
-        kb_builder.button(text=Localizator.get_text(BotEntity.COMMON, "bnb_top_up"),
-                          callback_data=MyProfileCallback.create(unpacked_cb.level + 1,
-                                                                 args_for_action=Cryptocurrency.BNB.value))
+
+        # Generate crypto buttons from enum (same 5 cryptos for payment and top-up)
+        for crypto in Cryptocurrency.get_payment_options():
+            entity, key = crypto.get_localization_key()
+            kb_builder.button(
+                text=Localizator.get_text(entity, key),
+                callback_data=MyProfileCallback.create(unpacked_cb.level + 1, args_for_action=crypto.value)
+            )
 
         kb_builder.adjust(1)
         kb_builder.row(unpacked_cb.get_back_button())
@@ -95,10 +88,32 @@ class UserService:
         user = await UserRepository.get_by_tgid(callback.from_user.id, session)
         buys = await BuyRepository.get_by_buyer_id(user.id, unpacked_cb.page, session)
         kb_builder = InlineKeyboardBuilder()
+
+        # Batch-load all items and subcategories (eliminates N+1 queries)
+        item_ids = []
         for buy in buys:
             buy_item = await BuyItemRepository.get_single_by_buy_id(buy.id, session)
-            item = await ItemRepository.get_by_id(buy_item.item_id, session)
-            subcategory = await SubcategoryRepository.get_by_id(item.subcategory_id, session)
+            item_ids.append(buy_item.item_id)
+
+        # Get all items in one query
+        items_dict = {}
+        for item_id in item_ids:
+            item = await ItemRepository.get_by_id(item_id, session)
+            items_dict[item_id] = item
+
+        # Batch-load subcategories
+        subcategory_ids = list({item.subcategory_id for item in items_dict.values()})
+        subcategories_dict = await SubcategoryRepository.get_by_ids(subcategory_ids, session)
+
+        # Build buttons with batch-loaded data
+        for buy in buys:
+            buy_item = await BuyItemRepository.get_single_by_buy_id(buy.id, session)
+            item = items_dict.get(buy_item.item_id)
+            if not item:
+                continue
+            subcategory = subcategories_dict.get(item.subcategory_id)
+            if not subcategory:
+                continue
 
             # Format date only for list view (keep it short)
             date_str = buy.buy_datetime.strftime("%d.%m.%Y") if buy.buy_datetime else "N/A"

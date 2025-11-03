@@ -185,9 +185,14 @@ async def _handle_order_payment(payment_dto: ProcessingPaymentDTO, invoice, sess
 
         return
 
+    # Normalize incoming payment amount to prevent floating-point comparison errors
+    # This ensures the same precision as the invoice amount (e.g., satoshi for BTC)
+    from services.cart import normalize_crypto_amount
+    paid_normalized = normalize_crypto_amount(payment_dto.cryptoAmount, payment_dto.cryptoCurrency)
+
     # Validate payment amount
     validation_result = PaymentValidator.validate_payment(
-        paid=payment_dto.cryptoAmount,
+        paid=paid_normalized,
         required=invoice.payment_amount_crypto,
         currency_paid=payment_dto.cryptoCurrency,
         currency_required=invoice.payment_crypto_currency,

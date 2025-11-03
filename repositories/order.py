@@ -135,12 +135,26 @@ class OrderRepository:
 
     @staticmethod
     async def get_orders_awaiting_shipment(session: Session | AsyncSession) -> list[Order]:
-        """Gets all orders awaiting shipment (for admin shipping management)"""
+        """
+        Gets all orders awaiting shipment (for admin shipping management).
+
+        Eager loads:
+        - items: For order display
+        - user: To avoid N+1 query when displaying user info in list
+        - invoices: To avoid N+1 query when displaying invoice numbers in list
+
+        Performance: Reduces N+1 queries from 1 + N*3 to 1 + 3 queries
+        (1 order query + 3 batch loads for items/users/invoices)
+        """
         stmt = (
             select(Order)
             .where(Order.status == OrderStatus.PAID_AWAITING_SHIPMENT)
             .order_by(Order.paid_at.desc())
-            .options(selectinload(Order.items))
+            .options(
+                selectinload(Order.items),
+                selectinload(Order.user),
+                selectinload(Order.invoices)
+            )
         )
         result = await session_execute(stmt, session)
         return result.scalars().all()

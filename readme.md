@@ -26,7 +26,7 @@ Litecoin, Solana, Ethereum and Binance-Coin, which allows you to sell digital go
 * [🤝 Commercial offers](#commercial-offers)
     + [➤ Telegram. ](#-for-commercial-offers-contact-me-on-telegram)
     + [🤖 AiogramShopBotDemo](#-you-can-test-the-functionality-in-aiogramshopbotdemo).
-* [✨ Donate](#donate-)
+* [  Donate](#donate-)
 * [1.Launch the bot](#1starting-the-bot)
     + [1.0 Description of required environment variables. ](#10-description-of-required-environment-variables)
     + [1.1 Launch AiogramShopBot with Docker-compose.](#11-starting-aiogramshopbot-with-docker-compose)
@@ -37,13 +37,13 @@ Litecoin, Solana, Ethereum and Binance-Coin, which allows you to sell digital go
     + [2.2 ➕ Top Up Balance](#22--top-up-balance)
     + [2.3 👜 Purchase of goods](#23-purchase-of-goods)
     + [2.4 🧾 Purchase History](#24--purchase-history)
-* [3. 🔑 AiogramShopBot Admin Manual](#3aiogramshopbot-admin-manual)
-    + [3.1 🔑 Adding a new admin](#31-adding-a-new-admin)
+* [3.   AiogramShopBot Admin Manual](#3aiogramshopbot-admin-manual)
+    + [3.1   Adding a new admin](#31-adding-a-new-admin)
     + [3.2 📢 Announcements](#32--announcements)
         - [3.2.1 📢 Send to Everyone](#321--send-to-everyone)
-        - [3.2.2 🔄 Restocking Message](#322--restocking-message)
+        - [3.2.2   Restocking Message](#322--restocking-message)
         - [3.2.3 🗂️ Current Stock](#323--current-stock)
-    + [3.3 📦 Inventory Management](#33--inventory-management)
+    + [3.3   Inventory Management](#33--inventory-management)
         - [3.3.1 ➕ Add Items](#331--add-items)
             - [3.3.1.1 JSON](#3311-json)
             - [3.3.1.2 TXT](#3312-txt)
@@ -52,9 +52,9 @@ Litecoin, Solana, Ethereum and Binance-Coin, which allows you to sell digital go
             - [3.4.1.1 ➕ Add balance](#3411--add-balance)
             - [3.4.1.2 ➖ Reduce balance](#3412--reduce-balance)
         - [3.4.2 ↩️ Make Refund](#342--make-refund)
-    + [3.5 📊 Analytics & Reports](#35--analytics--reports)
-        - [3.5.1 📊 Statistics](#351--statistics)
-        - [3.5.2 💾 Get database file](#352--get-database-file)
+    + [3.5   Analytics & Reports](#35--analytics--reports)
+        - [3.5.1   Statistics](#351--statistics)
+        - [3.5.2   Get database file](#352--get-database-file)
     + [3.6 🔔 Admin notifications](#36--admin-notifications)
         - [3.6.1 Notification to admin about new deposit](#361-notification-to-admin-about-new-deposit)
         - [3.6.2 Notification to admin about new buy](#362-notification-to-admin-about-new-buy)
@@ -62,7 +62,7 @@ Litecoin, Solana, Ethereum and Binance-Coin, which allows you to sell digital go
         - [3.8.1 Cryptocurrency withdrawal](#381-cryptocurrency-withdrawal-functionality)
 * [4.0 Multibot (Experimental functionality)](#40-multibot-experimental-functionality)
     + [4.1 Starting the multibot](#41-starting-the-multibot)
-* [📋 Todo List](#-todo-list)
+* [  Todo List](#-todo-list)
 * [MIT License](LICENSE)
 
 ## 📌Commercial offers
@@ -71,7 +71,7 @@ Litecoin, Solana, Ethereum and Binance-Coin, which allows you to sell digital go
 
 ### 🤖 You can test the functionality in [AiogramShopBotDemo](https://t.me/demo_aiogramshopbot).
 
-## Donate ✨
+## Donate  
 
 * BTC - bc1q2kv89q8yvf068xxw3x65gzfag98l9wnrda3x56
 * LTC - ltc1q0tuvm5vqn9le5zmhvhtp7z9p2eu6yvv24ey686
@@ -87,6 +87,43 @@ Litecoin, Solana, Ethereum and Binance-Coin, which allows you to sell digital go
 
 ### 1.0 Description of required environment variables
 
+#### Environment-Specific Configuration Templates
+
+For easier setup, use the appropriate template for your environment:
+
+**Development (Local Testing):**
+```bash
+cp .env.dev.template .env
+```
+Optimized for local development with:
+- Ngrok tunnel for webhooks
+- Relaxed rate limits (100 orders/hour)
+- DEBUG logging with SQL queries
+- Disabled database encryption (faster)
+- Shorter timeouts for faster testing
+
+**Production (Live Deployment):**
+```bash
+cp .env.prod.template .env
+```
+Optimized for production with:
+- External IP/domain (no ngrok)
+- Strict rate limits (5 orders/hour)
+- INFO logging (clean logs, no SQL)
+- Database encryption enabled
+- Automated backups enabled
+- All security features enabled
+
+**Universal Template:**
+```bash
+cp .env.template .env
+```
+General-purpose template with detailed documentation for all settings.
+
+After copying the appropriate template, fill in all empty values and customize as needed.
+
+#### Environment Variables Reference
+
 | Environment Variable Name | Description                                                                                                                                                                                                                                                                                                                 | Recommend Value                                                     |
 |---------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------|
 | WEBHOOK_PATH              | The path to the webhook where Telegram servers send requests for bot updates. It is not recommended to change it if only one bot will be deployed. In case several bots will be deployed on the same server, it will be necessary to change it, because there will be path collision (Does not apply to the multibot case). | "" (empty string)                                                   |
@@ -94,7 +131,7 @@ Litecoin, Solana, Ethereum and Binance-Coin, which allows you to sell digital go
 | WEBAPP_PORT               | Port for Telegram bot, if you plan to deploy several bots on the same server, you will need to assign a different port to each one (Not relevant to the multibot case).                                                                                                                                                     | No recommended value                                                |
 | TOKEN                     | Token from your Telegram bot, you can get it for free in Telegram from the bot of all bots with the username @botfather.                                                                                                                                                                                                    | No recommended value                                                |
 | ADMIN_ID_LIST             | List of Telegram id of all admins of your bot. This list is used to check for access to the admin menu.                                                                                                                                                                                                                     | No recommended value                                                |
-| SUPPORT_LINK              | A link to the Telegram profile that will be sent by the bot to the user when the “Help” button is pressed.                                                                                                                                                                                                                  | https://t.me/${YOUR_USERNAME_TG}                                    |
+| SUPPORT_LINK              | A link to the Telegram profile that will be sent by the bot to the user when the “Help” button is pressed.                                                                                                                                                                                                                  | https://t.me/YOUR_USERNAME                                    |
 | DB_NAME                   | The name of the SQLite database file.                                                                                                                                                                                                                                                                                       | database.db                                                         |
 | DB_ENCRYPTION             | Boolean variable that enables database encryption.                                                                                                                                                                                                                                                                          | "true" of "false"                                                   |
 | DB_PASS                   | Needs only if DB_ENCRYPTION=='true'. The password that will be used to encrypt your SQLite database with SQLCipher.                                                                                                                                                                                                         | Any string less than 31 characters                                  |
@@ -111,24 +148,74 @@ Litecoin, Solana, Ethereum and Binance-Coin, which allows you to sell digital go
 | REDIS_PASSWORD            | Required variable, needed to make the throttling mechanism work.                                                                                                                                                                                                                                                            | Any string you want                                                 |   
 | REDIS_HOST                | Required variable, needed to make the throttling mechanism work.                                                                                                                                                                                                                                                            | "redis" for docker-compose.yml                                      |   
 
-### 1.1 Starting AiogramShopBot with Docker-compose.
+### 1.1 Starting AiogramShopBot with Docker-compose
 
-* Clone the project.<br>``git clone https://github.com/ilyarolf/AiogramShopBot.git``
-* Set environment variables in .env file.
-* Set your domain in the docker-compose.yml file to the bot service in the labels caddy section. {YOUR_IP_ADDRESS}.sslip.io
-* Run the ``docker-compose up`` command.
+#### Production Deployment (Recommended)
+
+For production deployment with Caddy reverse proxy and automatic TLS:
+
+```bash
+# Clone the project
+git clone https://github.com/ilyarolf/AiogramShopBot.git
+cd AiogramShopBot
+
+# Set up production environment
+cp .env.prod.template .env
+# Edit .env and fill in all required values
+
+# Set your domain in docker-compose.prod.yml (line 50)
+# Replace YOUR-DOMAIN-GOES-HERE with:
+#   - Your domain: bot.yourdomain.com
+#   - Or sslip.io: 203.0.113.42.sslip.io (replace with your server IP)
+
+# Start all services
+docker-compose -f docker-compose.prod.yml up -d
+
+# Check logs
+docker-compose -f docker-compose.prod.yml logs -f bot
+
+# Stop services
+docker-compose -f docker-compose.prod.yml down
+```
+
+Features:
+- Caddy reverse proxy with automatic HTTPS/TLS
+- Redis with authentication
+- Automated restarts
+- Health checks
+- Volume persistence for data and backups
 
 #### Local Development - Redis only
 
-For local development, you can run only Redis in Docker while running the bot directly on your machine:
+For local development, run only Redis in Docker while running the bot directly on your machine:
 
-* Start Redis: `docker-compose -f docker-compose.dev.yml up -d`
-* Verify Redis is running: `docker ps | grep redis`
-* Run the bot locally: `python run.py`
-* Stop Redis when done: `docker-compose -f docker-compose.dev.yml down`
+```bash
+# Start Redis
+docker-compose -f docker-compose.dev.yml up -d
+
+# Verify Redis is running
+docker ps | grep redis
+
+# Run the bot locally (in another terminal)
+python run.py
+
+# Stop Redis when done
+docker-compose -f docker-compose.dev.yml down
+```
 
 > **Note**
-> The `docker-compose.dev.yml` file is configured to use the Redis password from your `.env` file (default: `dev-redis-password-123`).
+> The `docker-compose.dev.yml` file is configured with a default Redis password: `dev-redis-password-123`.
+> Update your `.env` file with: `REDIS_PASSWORD=dev-redis-password-123`
+
+#### Universal Docker Compose (Legacy)
+
+For backward compatibility, you can use the universal `docker-compose.yml`:
+
+```bash
+docker-compose up -d
+```
+
+However, we recommend using environment-specific files (`docker-compose.prod.yml` or `docker-compose.dev.yml`) for optimized configurations.
 
 #### Development and production mode
 
@@ -158,7 +245,7 @@ WEBAPP_HOST = "localhost"
 WEBAPP_PORT = 5000
 TOKEN = "1234567890:QWER.....TYI"
 ADMIN_ID_LIST = 123456,654321
-SUPPORT_LINK = "https://t.me/your_username_123"
+SUPPORT_LINK = "https://t.me/YOUR_USERNAME"
 DB_NAME = "database.db"
 DB_ENCRYPTION = "false"
 DB_PASS = ""
@@ -197,7 +284,7 @@ WEBAPP_HOST = "localhost"
 WEBAPP_PORT = 5000
 TOKEN = "1234567890:QWER.....TYI"
 ADMIN_ID_LIST = 123456,654321
-SUPPORT_LINK = "https://t.me/your_username_123"
+SUPPORT_LINK = "https://t.me/YOUR_USERNAME"
 DB_NAME = "database.db"
 DB_ENCRYPTION = "true"
 DB_PASS = "1234567890"
@@ -259,7 +346,7 @@ reload the bot.<br>For example: ``ADMIN_ID_LIST=123456,654321``
 
 ### 3.2.1 📢 Send to Everyone
 
-* Open the admin menu using the <u>“🔑 Admin Menu”</u> button.
+* Open the admin menu using the <u>“  Admin Menu”</u> button.
 * Open the announcements menu using the <u>“📢 Announcements”</u> button.
 * In the resulting menu, click on <u>“📢 Send to Everyone”</u> button.
 * Type a message or forward to the bot, the bot supports sending a message with pictures and Telegram markup (bold,
@@ -270,32 +357,32 @@ reload the bot.<br>For example: ``ADMIN_ID_LIST=123456,654321``
 
 ![img](https://i.imgur.com/JYN6qx0.gif)
 
-### 3.2.2 🔄 Restocking Message
+### 3.2.2   Restocking Message
 
-* Open the admin menu using the <u>“🔑 Admin Menu”</u> button.
+* Open the admin menu using the <u>“  Admin Menu”</u> button.
 * Open the announcements menu using the <u>“📢 Announcements”</u> button.
-* In the resulting menu, click on <u>“🔄 Restocking Message”</u> button.
+* In the resulting menu, click on <u>“  Restocking Message”</u> button.
 * This message is generated based on items in the database that have "is_new" is true.
 
 ![img](https://i.imgur.com/lu3khwR.gif)
 
 ### 3.2.3 🗂️ Current Stock
 
-* Open the admin menu using the <u>“🔑 Admin Menu”</u> button.
+* Open the admin menu using the <u>“  Admin Menu”</u> button.
 * Open the announcements menu using the <u>“📢 Announcements”</u> button.
 * In the resulting menu, click on <u>“🗂️ Current Stock”</u> button.
 * This message is generated based on items in the database that have "is_sold" is false.
 
 ![img](https://i.imgur.com/T9wMPRG.gif)
 
-### 3.3 📦 Inventory Management
+### 3.3   Inventory Management
 
 #### 3.3.1 ➕ Add Items
 
 ##### 3.3.1.1 JSON
 
-* Open the admin menu using the <u>“🔑 Admin Menu”</u> button.
-* Open the announcements menu using the <u>“📦 Inventory Management”</u> button.
+* Open the admin menu using the <u>“  Admin Menu”</u> button.
+* Open the announcements menu using the <u>“  Inventory Management”</u> button.
 * Open the add items menu using the <u>“➕ Add Items”</u> button.
 * In the resulting menu, click on <u>“JSON”</u> button.
 * Send .json file with new items.<br>Example of .json file:
@@ -326,8 +413,8 @@ reload the bot.<br>For example: ``ADMIN_ID_LIST=123456,654321``
 
 ##### 3.3.1.2 TXT
 
-* Open the admin menu using the <u>“🔑 Admin Menu”</u> button.
-* Open the inventory management menu using the <u>“📦 Inventory Management”</u> button.
+* Open the admin menu using the <u>“  Admin Menu”</u> button.
+* Open the inventory management menu using the <u>“  Inventory Management”</u> button.
 * Open the add items menu using the <u>“➕ Add Items”</u> button.
 * In the resulting menu, click on <u>“TXT”</u> button.
 * Send .txt file with new items.<br>Example of .txt file:
@@ -350,8 +437,8 @@ CATEGORY#1;SUBCATEGORY#1;DESCRIPTION#1;50.0;PRIVATE_DATA#8
 > Note: This way, you will delete all products from “All categories” with the category or subcategory you picked and
 > deleted.
 
-* Open the admin menu using the <u>“🔑 Admin Menu”</u> button.
-* Open the inventory management menu using the <u>“📦 Inventory Management”</u> button.
+* Open the admin menu using the <u>“  Admin Menu”</u> button.
+* Open the inventory management menu using the <u>“  Inventory Management”</u> button.
 * Open the add items menu using the <u>“🗑️ Delete Category”</u> or <u>“🗑️ Delete Subcategory”</u> button.
 * In the resulting menu, select the category or subcategory you want to delete.
 * Confirm or cancel the deletion of the category or subcategory.
@@ -364,7 +451,7 @@ CATEGORY#1;SUBCATEGORY#1;DESCRIPTION#1;50.0;PRIVATE_DATA#8
 
 ##### 3.4.1.1 ➕ Add balance
 
-* Open the admin menu using the <u>“🔑 Admin Menu”</u> button.
+* Open the admin menu using the <u>“  Admin Menu”</u> button.
 * Open the user management menu using the <u>“👥 User Management”</u> button.
 * Open the credit management menu using the <u>“💳 Credit Management”</u> button.
 * In the resulting menu, click on <u>“➕ Add balance”</u> button.
@@ -376,7 +463,7 @@ CATEGORY#1;SUBCATEGORY#1;DESCRIPTION#1;50.0;PRIVATE_DATA#8
 
 ##### 3.4.1.2 ➖ Reduce balance
 
-* Open the admin menu using the <u>“🔑 Admin Menu”</u> button.
+* Open the admin menu using the <u>“  Admin Menu”</u> button.
 * Open the user management menu using the <u>“👥 User Management”</u> button.
 * Open the credit management menu using the <u>“💳 Credit Management”</u> button.
 * In the resulting menu, click on <u>“➖ Reduce balance”</u> button.
@@ -388,7 +475,7 @@ CATEGORY#1;SUBCATEGORY#1;DESCRIPTION#1;50.0;PRIVATE_DATA#8
 
 #### 3.4.2 ↩️ Make Refund
 
-* Open the admin menu using the <u>“🔑 Admin Menu”</u> button.
+* Open the admin menu using the <u>“  Admin Menu”</u> button.
 * Open the user management menu using the <u>“👥 User Management”</u> button.
 * Open the refund menu using the <u>“↩️ Make Refund”</u> button.
 * In the resulting menu, click on the buy button you want to refund.
@@ -396,22 +483,22 @@ CATEGORY#1;SUBCATEGORY#1;DESCRIPTION#1;50.0;PRIVATE_DATA#8
 
 ![img](https://i.imgur.com/hZ7UvJJ.gif)
 
-### 3.5 📊 Analytics & Reports
+### 3.5   Analytics & Reports
 
-### 3.5.1 📊 Statistics
+### 3.5.1   Statistics
 
-* Open the admin menu using the <u>“🔑 Admin Menu”</u> button.
-* Open the statistics menu using the <u>“📊 Analytics & Reports”</u> button.
+* Open the admin menu using the <u>“  Admin Menu”</u> button.
+* Open the statistics menu using the <u>“  Analytics & Reports”</u> button.
 * In the resulting menu, click on the entity for which you want to get statistics.
 * In the resulting menu, click on the time period for which you want statistics.
 
 ![img](https://i.imgur.com/lmuo0QY.gif)
 
-### 3.5.2 💾 Get database file
+### 3.5.2   Get database file
 
-* Open the admin menu using the <u>“🔑 Admin Menu”</u> button.
-* Open the statistics menu using the <u>“📊 Analytics & Reports”</u> button.
-* Click <u>"💾 Get database file"</u> button.
+* Open the admin menu using the <u>“  Admin Menu”</u> button.
+* Open the statistics menu using the <u>“  Analytics & Reports”</u> button.
+* Click <u>"  Get database file"</u> button.
 
 ![img](https://i.imgur.com/hKTGFu6.gif)
 
@@ -454,7 +541,7 @@ To withdraw cryptocurrency from the bot, open the admin menu, go to the wallet t
 
 ![img](https://i.imgur.com/YAGjN3G.png)
 
-## 📋 Todo List
+##   Todo List
 
 - [x] Make migration from direct raw database queries to SQLAlchemy ORM.
 - [x] Add option to encrypt database via SQLCipher (when using SQLAlchemy).

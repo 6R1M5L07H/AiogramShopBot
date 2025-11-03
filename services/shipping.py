@@ -194,3 +194,213 @@ class ShippingService:
                 return True
 
         return False
+
+    # ========================================================================
+    # Shipping Management Business Logic
+    # ========================================================================
+
+    @staticmethod
+    async def get_pending_shipments(session: AsyncSession | Session):
+        """
+        Get all orders awaiting shipment.
+
+        Args:
+            session: Database session
+
+        Returns:
+            List of orders with PAID_AWAITING_SHIPMENT status
+        """
+        from repositories.order import OrderRepository
+        return await OrderRepository.get_orders_awaiting_shipment(session)
+
+    @staticmethod
+    async def get_order_display_data(order, session: AsyncSession | Session) -> dict:
+        """
+        Get formatted display data for an order in shipment list.
+
+        NOTE: This method expects order.user and order.invoices to be eager-loaded
+        (via selectinload) to avoid N+1 queries when called in a loop.
+
+        Args:
+            order: Order model instance (with user and invoices relationships loaded)
+            session: Database session
+
+        Returns:
+            Dict with invoice_display, user_display, created_time
+        """
+        from datetime import datetime
+
+        # Use already-loaded user relationship (no query!)
+        user = order.user
+
+        # Format user display
+        if user and user.telegram_username:
+            user_display = f"@{user.telegram_username} (ID:{user.telegram_id})"
+        elif user:
+            user_display = f"ID:{user.telegram_id}"
+        else:
+            user_display = f"ID:{order.user_id}"
+
+        # Use already-loaded invoices relationship (no query!)
+        invoices = order.invoices
+        if invoices:
+            # Use first invoice (or concatenate if multiple)
+            invoice_display = invoices[0].invoice_number
+            if len(invoices) > 1:
+                invoice_display = " / ".join(inv.invoice_number for inv in invoices)
+        else:
+            invoice_display = f"ORDER-{datetime.now().year}-{order.id:06d}"
+
+        # Format creation time
+        created_time = order.created_at.strftime("%d.%m %H:%M") if order.created_at else "N/A"
+
+        return {
+            "invoice_display": invoice_display,
+            "user_display": user_display,
+            "created_time": created_time
+        }
+
+    @staticmethod
+    async def get_order_details_data(order_id: int, session: AsyncSession | Session) -> dict | None:
+        """
+        Get complete order details including items, invoice, user, and shipping address.
+
+        Args:
+            order_id: Order ID
+            session: Database session
+
+        Returns:
+            Dict with order details or None if order not found
+
+        Raises:
+            ValueError: If order not found
+        """
+        from repositories.order import OrderRepository
+        from repositories.invoice import InvoiceRepository
+        from repositories.user import UserRepository
+        from datetime import datetime
+
+        # Get order with items (with error handling)
+        from exceptions.order import OrderNotFoundException
+
+        try:
+            order = await OrderRepository.get_by_id_with_items(order_id, session)
+        except Exception:
+            raise OrderNotFoundException(order_id)
+
+        invoice = await InvoiceRepository.get_by_order_id(order_id, session)
+        user = await UserRepository.get_by_id(order.user_id, session)
+        shipping_address = await ShippingService.get_shipping_address(order_id, session)
+
+        # Format user display
+        username = f"@{user.telegram_username}" if user.telegram_username else str(user.telegram_id)
+
+        # Get invoice number with fallback
+        if invoice:
+            invoice_number = invoice.invoice_number
+        else:
+            invoice_number = f"ORDER-{datetime.now().year}-{order_id:06d}"
+
+        # Group items by type
+        digital_items = [item for item in order.items if not item.is_physical]
+        physical_items = [item for item in order.items if item.is_physical]
+
+        # Calculate grouped items and totals
+        digital_grouped = ShippingService._group_items(digital_items)
+        physical_grouped = ShippingService._group_items(physical_items)
+
+        return {
+            "order": order,
+            "invoice_number": invoice_number,
+            "username": username,
+            "user_id": user.telegram_id,
+            "shipping_address": shipping_address,
+            "digital_items": digital_grouped,
+            "physical_items": physical_grouped,
+        }
+
+    @staticmethod
+    def _group_items(items: list) -> dict:
+        """
+        Group items by (description, price) and count quantities.
+
+        Args:
+            items: List of order items
+
+        Returns:
+            Dict with (description, price) as key and quantity as value
+        """
+        grouped = {}
+        for item in items:
+            key = (item.description, item.price)
+            if key not in grouped:
+                grouped[key] = 0
+            grouped[key] += 1
+        return grouped
+
+    @staticmethod
+    async def mark_order_as_shipped(order_id: int, session: AsyncSession | Session) -> dict:
+        """
+        Mark order as shipped and send notification to user.
+
+        Args:
+            order_id: Order ID
+            session: Database session
+
+        Returns:
+            Dict with invoice_number for success message
+
+        Raises:
+            ValueError: If order not found
+        """
+        from repositories.order import OrderRepository
+        from repositories.invoice import InvoiceRepository
+        from enums.order_status import OrderStatus
+        from services.notification import NotificationService
+        from db import session_commit
+        from datetime import datetime
+
+        # Update order status
+        await OrderRepository.update_status(order_id, OrderStatus.SHIPPED, session)
+        await session_commit(session)
+
+        # Get order and invoice for notification
+        from exceptions.order import OrderNotFoundException
+
+        try:
+            order = await OrderRepository.get_by_id(order_id, session)
+        except Exception:
+            raise OrderNotFoundException(order_id)
+
+        invoice = await InvoiceRepository.get_by_order_id(order_id, session)
+
+        if invoice:
+            invoice_number = invoice.invoice_number
+        else:
+            invoice_number = f"ORDER-{datetime.now().year}-{order_id:06d}"
+
+        # Send notification to user
+        await NotificationService.order_shipped(order.user_id, order_id, invoice_number, session)
+
+        return {"invoice_number": invoice_number}
+
+    @staticmethod
+    async def get_invoice_number(order_id: int, session: AsyncSession | Session) -> str:
+        """
+        Get invoice number for an order with fallback.
+
+        Args:
+            order_id: Order ID
+            session: Database session
+
+        Returns:
+            Invoice number string
+        """
+        from repositories.invoice import InvoiceRepository
+        from datetime import datetime
+
+        invoice = await InvoiceRepository.get_by_order_id(order_id, session)
+        if invoice:
+            return invoice.invoice_number
+        else:
+            return f"ORDER-{datetime.now().year}-{order_id:06d}"

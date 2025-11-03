@@ -5,6 +5,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
+import config
 from callbacks import OrderCallback
 from enums.bot_entity import BotEntity
 from handlers.user.shipping_states import ShippingAddressStates
@@ -34,7 +35,8 @@ async def process_shipping_address_input(message: Message, state: FSMContext, se
 
     # Show confirmation screen
     message_text = Localizator.get_text(BotEntity.USER, "shipping_address_confirm").format(
-        address=address_text
+        address=address_text,
+        retention_days=config.DATA_RETENTION_DAYS
     )
 
     kb_builder = InlineKeyboardBuilder()
