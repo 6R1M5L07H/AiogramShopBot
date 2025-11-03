@@ -280,15 +280,61 @@ class NotificationService:
         """
         # If order_id provided, use detailed invoice format with items
         if order_id and session:
-            from services.buy import BuyService
             from repositories.item import ItemRepository
+            from repositories.subcategory import SubcategoryRepository
+            from repositories.order import OrderRepository
+            from repositories.invoice import InvoiceRepository
+            from services.invoice_formatter import InvoiceFormatter
+            from enums.order_status import OrderStatus
 
-            # Get items for this order
+            # Get order and items
+            order = await OrderRepository.get_by_id(order_id, session)
             items = await ItemRepository.get_by_order_id(order_id, session)
 
-            if items:
-                # Use the same formatted message as Purchase History
-                msg, _ = await BuyService.generate_buy_message(items, session)
+            if order and items:
+                # Check if order contains physical and/or digital items
+                has_physical_items = any(item.is_physical for item in items)
+                has_digital_items = any(not item.is_physical for item in items)
+                is_mixed_order = has_physical_items and has_digital_items
+
+                # Batch-load all subcategories (eliminates N+1 queries)
+                subcategory_ids = list({item.subcategory_id for item in items})
+                subcategories_dict = await SubcategoryRepository.get_by_ids(subcategory_ids, session)
+
+                # Build items list with private_data
+                items_raw = []
+                for item in items:
+                    subcategory = subcategories_dict.get(item.subcategory_id)
+                    if subcategory:
+                        items_raw.append({
+                            'name': subcategory.name,
+                            'price': item.price,
+                            'quantity': 1,
+                            'is_physical': item.is_physical,
+                            'private_data': item.private_data
+                        })
+
+                # Group items by (name, price, is_physical, private_data)
+                from services.order import OrderService
+                items_list = OrderService._group_items_for_display(items_raw)
+
+                # Format message with InvoiceFormatter
+                msg = InvoiceFormatter.format_complete_order_view(
+                    header_type="payment_success",
+                    invoice_number=invoice_number,
+                    order_status=order.status,
+                    created_at=order.created_at,
+                    paid_at=order.paid_at,
+                    items=items_list,
+                    shipping_cost=order.shipping_cost,
+                    total_price=order.total_price,
+                    separate_digital_physical=True,  # Always use separated view
+                    show_private_data=True,  # Show keys/codes after payment
+                    show_retention_notice=any(item.get('private_data') for item in items_list),
+                    currency_symbol=Localizator.get_currency_symbol(),
+                    entity=BotEntity.USER
+                )
+
                 await NotificationService.send_to_user(msg, user.telegram_id)
                 return
 
@@ -336,152 +382,89 @@ class NotificationService:
         Returns:
             Formatted message string (does NOT send)
         """
+        from services.invoice_formatter import InvoiceFormatter
+
         original_amount = refund_info['original_amount']
         penalty_amount = refund_info['penalty_amount']
         refund_amount = refund_info['refund_amount']
         penalty_percent = refund_info['penalty_percent']
+        reason = refund_info.get('reason', 'UNKNOWN')
+        is_mixed_order = refund_info.get('is_mixed_order', False)
+        partial_refund_details = refund_info.get('partial_refund_info')
 
-        if penalty_amount > 0:
-            # Cancellation with processing fee and strike
-            reason = refund_info.get('reason', 'UNKNOWN')
+        # Load items for mixed order display
+        items_list = None
+        if is_mixed_order and order:
+            from repositories.item import ItemRepository
+            from services.order import OrderService
+            order_items = await ItemRepository.get_by_order_id(order.id, session)
 
-            # Build reason-specific explanation
-            if 'TIMEOUT' in reason.upper():
-                reason_text = (
-                    f"⏱️ <b>Grund:</b> Ihre Reservierungszeit ist abgelaufen.\n\n"
-                    f"Während der Reservierungszeit konnten andere Kunden diese Artikel nicht kaufen. "
-                    f"Daher wird eine Bearbeitungsgebühr fällig."
-                )
-            elif 'reservation_fee' in reason.lower():
-                reason_text = (
-                    f"⏱️ <b>Grund:</b> Stornierung nach Ablauf der Kulanzfrist.\n\n"
-                    f"Ihre Artikel waren reserviert und konnten von anderen Kunden nicht gekauft werden. "
-                    f"Daher wird eine Reservierungsgebühr fällig."
-                )
-            else:
-                reason_text = (
-                    f"⚠️ <b>Grund:</b> Stornierung nach Ablauf der Kulanzfrist.\n\n"
-                    f"Eine Bearbeitungsgebühr wird fällig, da die kostenlose Stornierungsfrist bereits abgelaufen war."
-                )
+            # Build items list (no private_data for cancellation messages)
+            items_raw = [
+                {
+                    'name': item.description,
+                    'price': item.price,
+                    'quantity': 1,
+                    'is_physical': item.is_physical,
+                    'private_data': None  # Don't show private_data in cancellation
+                }
+                for item in order_items
+            ]
 
-            # Build wallet details section
-            if original_amount > 0:
-                wallet_section = (
-                    f"💰 <b>Guthaben-Rückerstattung:</b>\n"
-                    f"• Verwendetes Guthaben: {original_amount:.2f} {currency_sym}\n"
-                    f"• Bearbeitungsgebühr ({penalty_percent}%): -{penalty_amount:.2f} {currency_sym}\n"
-                    f"• <b>Zurückerstattet: {refund_amount:.2f} {currency_sym}</b>"
-                )
-            else:
-                wallet_section = (
-                    f"💸 <b>Reservierungsgebühr:</b>\n"
-                    f"• Bestellwert: {refund_info.get('base_amount', 0):.2f} {currency_sym}\n"
-                    f"• Gebühr ({penalty_percent}%): -{penalty_amount:.2f} {currency_sym}\n"
-                    f"• <b>Von Ihrem Guthaben abgezogen</b>"
-                )
+            # Group items by (name, price, is_physical, private_data)
+            items_list = OrderService._group_items_for_display(items_raw)
 
-            msg = (
-                f"❌ <b>Bestellung storniert</b>\n\n"
-                f"📋 Bestellnummer: {invoice_number}\n\n"
-                f"{reason_text}\n\n"
-                f"{wallet_section}\n\n"
-                f"⚠️ <b>Strike erhalten</b> - Diese Stornierung führte zu einem Strike auf Ihrem Konto.\n\n"
-                f"ℹ️ Weitere Informationen finden Sie in unseren AGB."
+        if is_mixed_order and partial_refund_details:
+            # Mixed order cancellation - show digital items kept, physical items refunded
+            return InvoiceFormatter.format_complete_order_view(
+                header_type="partial_cancellation",
+                invoice_number=invoice_number,
+                items=items_list,
+                total_price=refund_info.get('base_amount', 0),
+                refund_amount=refund_amount,
+                penalty_amount=penalty_amount,
+                penalty_percent=penalty_percent,
+                cancellation_reason=reason,
+                show_strike_warning=(penalty_amount > 0),
+                partial_refund_info=partial_refund_details,
+                currency_symbol=currency_sym,
+                entity=BotEntity.USER
+            )
+        elif penalty_amount > 0:
+            # Regular cancellation with processing fee and strike - use InvoiceFormatter
+            return InvoiceFormatter.format_complete_order_view(
+                header_type="cancellation_refund",
+                invoice_number=invoice_number,
+                items=None,  # No items shown for penalty cancellations
+                total_price=refund_info.get('base_amount', 0),
+                wallet_used=original_amount,
+                refund_amount=refund_amount,
+                penalty_amount=penalty_amount,
+                penalty_percent=penalty_percent,
+                cancellation_reason=reason,
+                show_strike_warning=True,
+                currency_symbol=currency_sym,
+                entity=BotEntity.USER
             )
         else:
             # Full refund (no fee)
-            reason = refund_info.get('reason', 'UNKNOWN')
-
-            # Check if this is an admin cancellation
             if 'ADMIN' in reason.upper():
-                # Build full invoice with items and refund line for admin cancellation
-                from repositories.item import ItemRepository
-                from repositories.subcategory import SubcategoryRepository
-                from datetime import datetime
-                from utils.localizator import Localizator
-                from enums.bot_entity import BotEntity
-
-                # Load items (they still have order_id at this point)
-                order_items = await ItemRepository.get_by_order_id(order.id, session)
-
-                import logging
-                logging.info(f"Admin cancel notification: Found {len(order_items) if order_items else 0} items for order {order.id}")
-
-                # Build items list (same format as invoice)
-                items_dict = {}
-                for item in order_items:
-                    subcategory = await SubcategoryRepository.get_by_id(item.subcategory_id, session)
-                    if subcategory:
-                        key = (subcategory.name, item.price)
-                        items_dict[key] = items_dict.get(key, 0) + 1
-                    else:
-                        logging.warning(f"Subcategory {item.subcategory_id} not found for item {item.id}")
-
-                items_list = ""
-                subtotal = 0.0
-                for (name, price), qty in items_dict.items():
-                    line_total = price * qty
-                    items_list += f"{qty}x {name}\n  {currency_sym}{price:.2f} × {qty}{' ' * (20 - len(name))}{currency_sym}{line_total:.2f}\n"
-                    subtotal += line_total
-
-                logging.info(f"Admin cancel notification: items_list length = {len(items_list)}")
-
-                # Shipping line
-                shipping_line = ""
-                if order.shipping_cost > 0:
-                    shipping_label = Localizator.get_text(BotEntity.USER, "admin_cancel_invoice_shipping")
-                    shipping_line = f"{shipping_label}{' ' * (29 - len(shipping_label))}{currency_sym}{order.shipping_cost:.2f}\n"
-
-                # Calculate spacing for alignment
-                subtotal_label = Localizator.get_text(BotEntity.USER, "admin_cancel_invoice_subtotal")
-                total_label = Localizator.get_text(BotEntity.USER, "admin_cancel_invoice_total")
-                refund_label = Localizator.get_text(BotEntity.USER, "admin_cancel_invoice_refund_amount")
-                balance_label = Localizator.get_text(BotEntity.USER, "admin_cancel_invoice_balance")
-
-                subtotal_spacing = " " * (29 - len(subtotal_label))
-                total_spacing = " " * (29 - len(total_label))
-                refund_spacing = " " * (29 - len(refund_label))
-                balance_spacing = " " * (29 - len(balance_label))
-
-                # Format date
-                date_str = datetime.now().strftime("%Y-%m-%d %H:%M")
-
-                # Add custom reason if provided
-                reason_section = ""
-                if custom_reason:
-                    reason_section = f"\n<b>{Localizator.get_text(BotEntity.USER, 'admin_cancel_reason_label')}</b>\n{custom_reason}\n\n"
-
-                msg = (
-                    f"<b>{Localizator.get_text(BotEntity.USER, 'admin_cancel_invoice_header')}{invoice_number}</b>\n"
-                    f"{Localizator.get_text(BotEntity.USER, 'admin_cancel_invoice_date')} {date_str}\n"
-                    f"{Localizator.get_text(BotEntity.USER, 'admin_cancel_invoice_status')}\n"
-                    f"{reason_section}"
-                    f"<b>{Localizator.get_text(BotEntity.USER, 'admin_cancel_invoice_items')}</b>\n"
-                    f"─────────────────────────────\n"
-                    f"{items_list}"
-                    f"─────────────────────────────\n"
-                    f"{subtotal_label}{subtotal_spacing}{currency_sym}{subtotal:.2f}\n"
-                    f"{shipping_line}"
-                    f"─────────────────────────────\n"
-                    f"<b>{total_label}{total_spacing}{currency_sym}{order.total_price:.2f}</b>\n\n"
-                    f"<b>{Localizator.get_text(BotEntity.USER, 'admin_cancel_invoice_refund_section')}</b>\n"
-                    f"─────────────────────────────\n"
-                    f"{refund_label}{refund_spacing}-{currency_sym}{refund_amount:.2f}\n"
-                    f"─────────────────────────────\n"
-                    f"<b>{balance_label}{balance_spacing}{currency_sym}0.00</b>\n\n"
-                    f"{Localizator.get_text(BotEntity.USER, 'admin_cancel_notice')}\n\n"
-                    f"{Localizator.get_text(BotEntity.USER, 'admin_cancel_refund_notice')}\n\n"
-                    f"{Localizator.get_text(BotEntity.USER, 'admin_cancel_contact_support')}"
+                # Admin cancellation - delegate to build_order_cancelled_by_admin_message
+                return await NotificationService.build_order_cancelled_by_admin_message(
+                    user=user,
+                    invoice_number=invoice_number,
+                    custom_reason=custom_reason,
+                    order=order,
+                    session=session
                 )
             else:
-                msg = (
+                # Simple full refund message
+                return (
                     f"🔔 <b>Order Cancelled</b>\n\n"
                     f"📋 Order Number: {invoice_number}\n\n"
                     f"💰 <b>Full Refund:</b> {refund_amount:.2f} {currency_sym}\n\n"
                     f"Your wallet balance has been fully refunded and you will not receive a strike."
                 )
-
-        return msg
 
     @staticmethod
     async def build_order_cancelled_by_admin_message(
@@ -499,89 +482,61 @@ class NotificationService:
         Returns:
             Formatted message string (does NOT send)
         """
+        from services.invoice_formatter import InvoiceFormatter
+        from utils.localizator import Localizator
+        from enums.bot_entity import BotEntity
+
         # If order info available, show full invoice format
         if order and session:
             from repositories.item import ItemRepository
             from repositories.subcategory import SubcategoryRepository
-            from datetime import datetime
-            from utils.localizator import Localizator
-            from enums.bot_entity import BotEntity
+            import logging
 
             currency_sym = Localizator.get_currency_symbol()
 
             # Load items (they still have order_id at this point)
             order_items = await ItemRepository.get_by_order_id(order.id, session)
-
-            import logging
             logging.info(f"notify_order_cancelled_by_admin: Found {len(order_items) if order_items else 0} items for order {order.id}")
 
-            # Build items list (same format as invoice)
-            items_dict = {}
+            # Build unified items list
+            items_raw = []
             for item in order_items:
                 subcategory = await SubcategoryRepository.get_by_id(item.subcategory_id, session)
                 if subcategory:
-                    key = (subcategory.name, item.price)
-                    items_dict[key] = items_dict.get(key, 0) + 1
+                    items_raw.append({
+                        'name': subcategory.name,
+                        'price': item.price,
+                        'quantity': 1,
+                        'is_physical': item.is_physical,
+                        'private_data': None
+                    })
                 else:
                     logging.warning(f"Subcategory {item.subcategory_id} not found for item {item.id}")
 
-            items_list = ""
-            subtotal = 0.0
-            for (name, price), qty in items_dict.items():
-                line_total = price * qty
-                items_list += f"{qty}x {name}\n  {currency_sym}{price:.2f} × {qty}{' ' * (20 - len(name))}{currency_sym}{line_total:.2f}\n"
-                subtotal += line_total
+            # Group items by (name, price, is_physical, private_data)
+            from services.order import OrderService
+            items_list = OrderService._group_items_for_display(items_raw)
 
-            logging.info(f"notify_order_cancelled_by_admin: items_list length = {len(items_list)}")
-
-            # Shipping line
-            shipping_line = ""
-            if order.shipping_cost > 0:
-                shipping_label = Localizator.get_text(BotEntity.USER, "admin_cancel_invoice_shipping")
-                shipping_line = f"{shipping_label}{' ' * (29 - len(shipping_label))}{currency_sym}{order.shipping_cost:.2f}\n"
-
-            # Calculate spacing for alignment
-            subtotal_label = Localizator.get_text(BotEntity.USER, "admin_cancel_invoice_subtotal")
-            total_label = Localizator.get_text(BotEntity.USER, "admin_cancel_invoice_total")
-
-            subtotal_spacing = " " * (29 - len(subtotal_label))
-            total_spacing = " " * (29 - len(total_label))
-
-            # Format date
-            date_str = datetime.now().strftime("%Y-%m-%d %H:%M")
-
-            # Build reason section (only if custom_reason provided)
-            reason_section = ""
-            if custom_reason:
-                reason_section = f"\n<b>{Localizator.get_text(BotEntity.USER, 'admin_cancel_reason_label')}</b>\n{custom_reason}\n\n"
-
-            msg = (
-                f"<b>{Localizator.get_text(BotEntity.USER, 'admin_cancel_invoice_header')}{invoice_number}</b>\n"
-                f"{Localizator.get_text(BotEntity.USER, 'admin_cancel_invoice_date')} {date_str}\n"
-                f"{Localizator.get_text(BotEntity.USER, 'admin_cancel_invoice_status')}\n"
-                f"{reason_section}"
-                f"<b>{Localizator.get_text(BotEntity.USER, 'admin_cancel_invoice_items')}</b>\n"
-                f"─────────────────────────────\n"
-                f"{items_list}"
-                f"─────────────────────────────\n"
-                f"{subtotal_label}{subtotal_spacing}{currency_sym}{subtotal:.2f}\n"
-                f"{shipping_line}"
-                f"─────────────────────────────\n"
-                f"<b>{total_label}{total_spacing}{currency_sym}{order.total_price:.2f}</b>\n\n"
-                f"{Localizator.get_text(BotEntity.USER, 'admin_cancel_notice')}\n\n"
-                f"{Localizator.get_text(BotEntity.USER, 'admin_cancel_contact_support')}"
+            return InvoiceFormatter.format_complete_order_view(
+                header_type="admin_cancellation",
+                invoice_number=invoice_number,
+                items=items_list,
+                shipping_cost=order.shipping_cost,
+                total_price=order.total_price,
+                cancellation_reason=custom_reason,
+                use_spacing_alignment=True,
+                currency_symbol=currency_sym,
+                entity=BotEntity.USER
             )
         else:
             # Fallback: Simple message without items
-            msg = (
+            return (
                 f"❌ <b>{Localizator.get_text(BotEntity.USER, 'order_cancelled_by_admin_title')}</b>\n\n"
                 f"📋 {Localizator.get_text(BotEntity.USER, 'order_number')}: {invoice_number}\n\n"
                 f"<b>{Localizator.get_text(BotEntity.USER, 'admin_cancel_reason_label')}</b>\n"
                 f"{custom_reason}\n\n"
                 f"{Localizator.get_text(BotEntity.USER, 'admin_cancel_contact_support')}"
             )
-
-        return msg
 
     @staticmethod
     async def build_order_cancelled_strike_only_message(
@@ -611,16 +566,58 @@ class NotificationService:
         return msg
 
     @staticmethod
-    async def order_shipped(user_id: int, invoice_number: str, session: AsyncSession | Session):
+    async def order_shipped(user_id: int, order_id: int, invoice_number: str, session: AsyncSession | Session):
         """
         Sends notification to user when their order has been marked as shipped.
+        Uses InvoiceFormatter for consistent display with items.
         """
         from repositories.user import UserRepository
+        from repositories.order import OrderRepository
+        from repositories.item import ItemRepository
+        from repositories.subcategory import SubcategoryRepository
+        from services.invoice_formatter import InvoiceFormatter
 
         user = await UserRepository.get_by_id(user_id, session)
-        msg = Localizator.get_text(BotEntity.USER, "order_shipped_notification").format(
-            invoice_number=invoice_number
+        order = await OrderRepository.get_by_id(order_id, session)
+        order_items = await ItemRepository.get_by_order_id(order.id, session)
+
+        # Batch-load subcategories
+        subcategory_ids = list({item.subcategory_id for item in order_items})
+        subcategories_dict = await SubcategoryRepository.get_by_ids(subcategory_ids, session)
+
+        # Build items list with private_data
+        items_raw = []
+        for item in order_items:
+            subcategory = subcategories_dict.get(item.subcategory_id)
+            if subcategory:
+                items_raw.append({
+                    'name': subcategory.name,
+                    'price': item.price,
+                    'quantity': 1,
+                    'is_physical': item.is_physical,
+                    'private_data': item.private_data
+                })
+
+        # Group items by (name, price, is_physical, private_data)
+        from services.order import OrderService
+        items_list = OrderService._group_items_for_display(items_raw)
+
+        # Format with InvoiceFormatter
+        msg = InvoiceFormatter.format_complete_order_view(
+            header_type="order_shipped",
+            invoice_number=invoice_number,
+            order_status=order.status,
+            created_at=order.created_at,
+            shipped_at=order.shipped_at,
+            items=items_list,
+            shipping_cost=order.shipping_cost,
+            total_price=order.total_price,
+            separate_digital_physical=True,  # Always use separated view
+            show_private_data=True,  # Show keys/codes (user already has them)
+            currency_symbol=Localizator.get_currency_symbol(),
+            entity=BotEntity.USER
         )
+
         await NotificationService.send_to_user(msg, user.telegram_id)
 
     @staticmethod
@@ -648,8 +645,11 @@ class NotificationService:
             user: User object
             strike_count: Number of strikes that caused the ban
         """
+        from utils.localizator import Localizator
         msg = Localizator.get_text(BotEntity.USER, "user_banned_notification").format(
-            strike_count=strike_count
+            strike_count=strike_count,
+            unban_amount=config.UNBAN_TOP_UP_AMOUNT,
+            currency_sym=Localizator.get_currency_symbol()
         )
         await NotificationService.send_to_user(msg, user.telegram_id)
 
