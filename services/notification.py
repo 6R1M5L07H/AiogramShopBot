@@ -19,6 +19,7 @@ from repositories.category import CategoryRepository
 from repositories.item import ItemRepository
 from repositories.subcategory import SubcategoryRepository
 from utils.localizator import Localizator
+from utils.html_escape import safe_html
 
 
 class NotificationService:
@@ -106,7 +107,7 @@ class NotificationService:
                                                user_dto.telegram_id)
         if user_dto.telegram_username:
             message = Localizator.get_text(BotEntity.ADMIN, "notification_new_deposit_username").format(
-                username=user_dto.telegram_username,
+                username=safe_html(user_dto.telegram_username),
                 deposit_amount_fiat=payment_dto.fiatAmount,
                 currency_sym=Localizator.get_currency_symbol(),
                 value=payment_dto.cryptoAmount,
@@ -136,7 +137,7 @@ class NotificationService:
             cart_grand_total += cart_item_total
             if user.telegram_username:
                 message += Localizator.get_text(BotEntity.ADMIN, "notification_purchase_with_tgid").format(
-                    username=user.telegram_username,
+                    username=safe_html(user.telegram_username),
                     total_price=cart_item_total,
                     quantity=item.quantity,
                     category_name=category.name,
@@ -523,7 +524,7 @@ class NotificationService:
                 items=items_list,
                 shipping_cost=order.shipping_cost,
                 total_price=order.total_price,
-                cancellation_reason=custom_reason,
+                cancellation_reason=safe_html(custom_reason),
                 use_spacing_alignment=True,
                 currency_symbol=currency_sym,
                 entity=BotEntity.USER
@@ -534,7 +535,7 @@ class NotificationService:
                 f"❌ <b>{Localizator.get_text(BotEntity.USER, 'order_cancelled_by_admin_title')}</b>\n\n"
                 f"📋 {Localizator.get_text(BotEntity.USER, 'order_number')}: {invoice_number}\n\n"
                 f"<b>{Localizator.get_text(BotEntity.USER, 'admin_cancel_reason_label')}</b>\n"
-                f"{custom_reason}\n\n"
+                f"{safe_html(custom_reason)}\n\n"
                 f"{Localizator.get_text(BotEntity.USER, 'admin_cancel_contact_support')}"
             )
 
@@ -628,7 +629,7 @@ class NotificationService:
         from repositories.user import UserRepository
 
         user = await UserRepository.get_by_id(user_id, session)
-        username = f"@{user.telegram_username}" if user.telegram_username else f"ID:{user.telegram_id}"
+        username = f"@{safe_html(user.telegram_username)}" if user.telegram_username else f"ID:{user.telegram_id}"
 
         msg = Localizator.get_text(BotEntity.ADMIN, "order_awaiting_shipment_notification").format(
             invoice_number=invoice_number,
@@ -666,7 +667,7 @@ class NotificationService:
 
         # Format user display
         if user.telegram_username:
-            user_display = f"@{user.telegram_username}"
+            user_display = f"@{safe_html(user.telegram_username)}"
         else:
             user_display = f"ID: {user.telegram_id}"
 
@@ -674,7 +675,7 @@ class NotificationService:
             user_display=user_display,
             telegram_id=user.telegram_id,
             strike_count=strike_count,
-            ban_reason=user.blocked_reason or "Unknown",
+            ban_reason=safe_html(user.blocked_reason) if user.blocked_reason else "Unknown",
             unban_amount=UNBAN_TOP_UP_AMOUNT
         )
 

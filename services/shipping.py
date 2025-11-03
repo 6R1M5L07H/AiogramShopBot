@@ -16,6 +16,7 @@ from sqlalchemy import select
 import config
 from db import session_execute, session_commit
 from models.shipping_address import ShippingAddress
+from utils.html_escape import safe_html
 
 
 class ShippingService:
@@ -292,8 +293,8 @@ class ShippingService:
         user = await UserRepository.get_by_id(order.user_id, session)
         shipping_address = await ShippingService.get_shipping_address(order_id, session)
 
-        # Format user display
-        username = f"@{user.telegram_username}" if user.telegram_username else str(user.telegram_id)
+        # Format user display (escape for HTML safety)
+        username = f"@{safe_html(user.telegram_username)}" if user.telegram_username else str(user.telegram_id)
 
         # Get invoice number with fallback
         if invoice:

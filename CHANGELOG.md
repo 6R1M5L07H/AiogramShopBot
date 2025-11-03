@@ -4,6 +4,34 @@ All notable changes to this project will be documented in this file.
 
 ## 2025-11-03
 
+### Security Hardening - Phase 1
+
+**Critical Security Fixes**
+- Added startup validation for ENCRYPTION_SECRET (shipping address encryption)
+- Bot now fails-fast with clear error if secret is missing or less than 32 characters
+- Added startup validation for WEBHOOK_SECRET_TOKEN in webhook mode
+- Prevents bot from starting with insecure configuration
+
+**HTML Injection Prevention**
+- New HTML escaping utility (utils/html_escape.py) with safe_html() and safe_url()
+- Escaped all user-controllable data in admin notifications
+- Fixed injection vulnerabilities in usernames, shipping addresses, custom text, and ban reasons
+- Comprehensive security test suite (20 tests) added
+
+**Development Security**
+- Changed ngrok tunnel from HTTP to HTTPS for encrypted webhook traffic
+- Prevents man-in-the-middle attacks during development
+- Uses bind_tls=True for HTTPS-only tunnel
+
+**Documentation**
+- Enhanced .env.template with security warnings for ENCRYPTION_SECRET and WEBHOOK_SECRET_TOKEN
+- Added openssl commands for secret generation
+- Updated documentation with validation behavior
+
+**Testing**
+- Added tests/security/test_html_escape.py with 20 comprehensive security tests
+- All injection scenarios covered (script, tag, link, quote injection)
+
 ### Environment-Specific Configuration Templates
 
 **New Templates**
