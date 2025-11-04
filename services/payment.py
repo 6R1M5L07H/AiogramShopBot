@@ -224,7 +224,7 @@ class PaymentService:
             raise OrderNotFoundException(order_id)
 
         # Get all invoices for this order (may have multiple for partial payments)
-        invoices = await InvoiceRepository.get_by_order_id(order_id, session)
+        invoices = await InvoiceRepository.get_all_by_order_id(order_id, session)
 
         # Get all payment transactions for this order
         transactions = await PaymentTransactionRepository.get_by_order_id(order_id, session)
