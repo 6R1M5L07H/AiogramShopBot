@@ -187,7 +187,8 @@ class ShippingManagementCallback(BaseCallback, prefix="shipping_management"):
     order_id: int
     confirmation: bool
     page: int
+    filter_type: int | None  # OrderFilterType enum value (None = default REQUIRES_ACTION)
 
     @staticmethod
-    def create(level: int, order_id: int = -1, confirmation: bool = False, page: int = 0):
-        return ShippingManagementCallback(level=level, order_id=order_id, confirmation=confirmation, page=page)
+    def create(level: int, order_id: int = -1, confirmation: bool = False, page: int = 0, filter_type: int | None = None):
+        return ShippingManagementCallback(level=level, order_id=order_id, confirmation=confirmation, page=page, filter_type=filter_type)
