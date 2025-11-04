@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Boolean
 
 import config
@@ -6,6 +6,26 @@ from enums.cryptocurrency import Cryptocurrency
 from enums.currency import Currency
 from enums.payment import PaymentType
 from models.base import Base
+
+
+def _get_callback_url() -> str:
+    """
+    Get callback URL for payment gateway webhooks.
+
+    Uses lazy evaluation to avoid computing URL at import time.
+    This ensures config.WEBHOOK_URL is initialized before use.
+    """
+    if config.WEBHOOK_URL is None:
+        raise ValueError(
+            "WEBHOOK_URL is not initialized. Call config.initialize_webhook_config() first."
+        )
+    return f'{config.WEBHOOK_URL}cryptoprocessing/event'
+
+
+def _get_callback_secret() -> str | None:
+    """Get callback secret for payment gateway authentication."""
+    secret = config.KRYPTO_EXPRESS_API_SECRET
+    return secret if secret and len(secret) > 0 else None
 
 
 class Payment(Base):
@@ -33,8 +53,8 @@ class ProcessingPaymentDTO(BaseModel):
     isPaid: bool | None = None
     isWithdrawn: bool | None = None
     hash: str | None = None
-    callbackUrl: str = f'{config.WEBHOOK_URL}cryptoprocessing/event'
-    callbackSecret: str | None = config.KRYPTO_EXPRESS_API_SECRET if len(config.KRYPTO_EXPRESS_API_SECRET) > 0 else None
+    callbackUrl: str = Field(default_factory=_get_callback_url)
+    callbackSecret: str | None = Field(default_factory=_get_callback_secret)
 
 
 class DepositRecordDTO(BaseModel):

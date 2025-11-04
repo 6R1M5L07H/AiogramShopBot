@@ -12,19 +12,46 @@ from ngrok_executor import start_ngrok
 load_dotenv(".env", override=False)
 RUNTIME_ENVIRONMENT = RuntimeEnvironment(os.environ.get("RUNTIME_ENVIRONMENT"))
 
-# Webhook setup - skip for TEST mode (used by test scripts)
-if RUNTIME_ENVIRONMENT == RuntimeEnvironment.TEST:
-    WEBHOOK_HOST = None
-    WEBHOOK_PATH = None
-    WEBHOOK_URL = None
-elif RUNTIME_ENVIRONMENT == RuntimeEnvironment.DEV:
-    WEBHOOK_HOST = start_ngrok()
-    WEBHOOK_PATH = os.environ.get("WEBHOOK_PATH")
-    WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
-else:  # PROD
-    WEBHOOK_HOST = get_sslipio_external_url()
-    WEBHOOK_PATH = os.environ.get("WEBHOOK_PATH")
-    WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
+# Webhook configuration (initialized lazily at startup to avoid side-effects)
+WEBHOOK_HOST = None
+WEBHOOK_PATH = os.environ.get("WEBHOOK_PATH")
+WEBHOOK_URL = None
+
+
+def initialize_webhook_config():
+    """
+    Initialize webhook configuration with side effects.
+
+    This function must be called explicitly during bot startup.
+    It performs side effects (starting ngrok, HTTP requests) that should NOT
+    happen during module import.
+
+    Side effects:
+    - DEV mode: Starts ngrok tunnel (subprocess)
+    - PROD mode: Makes HTTP request to sslipio.com
+
+    Returns:
+        str: The webhook URL
+    """
+    global WEBHOOK_HOST, WEBHOOK_URL
+
+    # TEST mode: No webhook needed
+    if RUNTIME_ENVIRONMENT == RuntimeEnvironment.TEST:
+        WEBHOOK_HOST = None
+        WEBHOOK_URL = None
+        return None
+
+    # DEV mode: Start ngrok tunnel
+    elif RUNTIME_ENVIRONMENT == RuntimeEnvironment.DEV:
+        WEBHOOK_HOST = start_ngrok()
+        WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
+        return WEBHOOK_URL
+
+    # PROD mode: Get external IP
+    else:
+        WEBHOOK_HOST = get_sslipio_external_url()
+        WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
+        return WEBHOOK_URL
 
 WEBAPP_HOST = os.environ.get("WEBAPP_HOST")
 WEBAPP_PORT = int(os.environ.get("WEBAPP_PORT")) if os.environ.get("WEBAPP_PORT") else None

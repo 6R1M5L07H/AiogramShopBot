@@ -11,6 +11,12 @@ import config
 from utils.config_validator import validate_or_exit
 validate_or_exit(config)
 
+# Initialize webhook configuration (must happen before app setup)
+# This performs side effects (ngrok start, HTTP request) that were previously
+# happening at module import time, which violated "import should be safe" principle
+config.initialize_webhook_config()
+logging.info(f"[Init] Webhook configuration initialized: {config.WEBHOOK_URL}")
+
 from aiogram import Bot, Dispatcher
 from aiogram.enums import ParseMode
 from fastapi import FastAPI, Request, status, HTTPException
@@ -89,7 +95,7 @@ async def on_startup():
         url=config.WEBHOOK_URL,
         secret_token=config.WEBHOOK_SECRET_TOKEN
     )
-    logging.info(f"[Startup] Webhook URL set to: {config.WEBHOOK_URL}")
+    logging.info(f"[Startup] Webhook registered with Telegram")
 
     # Start payment timeout job
     await payment_timeout_job.start()

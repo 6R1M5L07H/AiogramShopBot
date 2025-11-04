@@ -1,14 +1,13 @@
 import logging
-from aiogram import types, Bot
-from aiogram.client.default import DefaultBotProperties
-from aiogram.enums import ParseMode
+from aiogram import types
 from aiogram.types import InlineKeyboardMarkup, BufferedInputFile
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 import config
-from config import ADMIN_ID_LIST, TOKEN
+from config import ADMIN_ID_LIST
+from bot_instance import get_bot
 from enums.bot_entity import BotEntity
 from models.buy import RefundDTO
 from models.cartItem import CartItemDTO
@@ -26,6 +25,14 @@ class NotificationService:
 
     @staticmethod
     async def make_user_button(username: str | None) -> InlineKeyboardMarkup:
+        """
+        Create inline keyboard button linking to user's Telegram profile.
+
+        Note: This is acceptable UI creation in NotificationService because:
+        - Notifications are sent from backend processes (payment processing, cart service)
+        - These processes don't have access to handler/UI layer
+        - The button is part of the notification, not business logic
+        """
         user_button_builder = InlineKeyboardBuilder()
         if username:
             user_button_inline = types.InlineKeyboardButton(text=username, url=f"https://t.me/{username}")
@@ -34,7 +41,7 @@ class NotificationService:
 
     @staticmethod
     async def send_to_admins(message: str | BufferedInputFile, reply_markup: types.InlineKeyboardMarkup | None):
-        bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+        bot = get_bot()
         for admin_id in ADMIN_ID_LIST:
             try:
                 if isinstance(message, str):
@@ -43,27 +50,22 @@ class NotificationService:
                     await bot.send_document(admin_id, message, reply_markup=reply_markup)
             except Exception as e:
                 logging.error(e)
-        await bot.session.close()
 
     @staticmethod
     async def send_to_user(message: str, telegram_id: int):
-        bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+        bot = get_bot()
         try:
             await bot.send_message(telegram_id, message)
         except Exception as e:
             logging.error(e)
-        finally:
-            await bot.session.close()
 
     @staticmethod
     async def edit_message(message: str, source_message_id: int, chat_id: int):
-        bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+        bot = get_bot()
         try:
             await bot.edit_message_text(text=message, chat_id=chat_id, message_id=source_message_id)
         except Exception as e:
             logging.error(e)
-        finally:
-            await bot.session.close()
 
     @staticmethod
     async def payment_expired(user_dto: UserDTO, payment_dto: ProcessingPaymentDTO, deposit_record: DepositRecordDTO):
@@ -163,9 +165,8 @@ class NotificationService:
             subcategory=refund_data.subcategory_name,
             currency_sym=Localizator.get_currency_symbol())
         try:
-            bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+            bot = get_bot()
             await bot.send_message(refund_data.telegram_id, text=user_notification)
-            await bot.session.close()
         except Exception as _:
             pass
 
