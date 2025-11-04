@@ -143,12 +143,19 @@ class ShippingService:
             return None
 
         # Decrypt and return
-        return ShippingService.decrypt_address(
-            shipping_address.encrypted_address,
-            shipping_address.nonce,
-            shipping_address.tag,
-            order_id
-        )
+        try:
+            return ShippingService.decrypt_address(
+                shipping_address.encrypted_address,
+                shipping_address.nonce,
+                shipping_address.tag,
+                order_id
+            )
+        except Exception as e:
+            # Decryption failed (wrong key, corrupted data, etc.)
+            # Log error and return fallback message
+            import logging
+            logging.error(f"Failed to decrypt shipping address for order {order_id}: {e}")
+            return "[DECRYPTION FAILED - Encryption key may have changed or data is corrupted]"
 
     @staticmethod
     async def delete_shipping_address(
