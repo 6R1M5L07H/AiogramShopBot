@@ -2,6 +2,46 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2025-11-04
+
+### Critical Payment Bugfix - Lazy Callback URL Evaluation
+
+**Payment Gateway Integration Fix**
+- Fixed critical bug where payment callback URL was evaluated at import time
+- Callback URL now uses lazy evaluation via Field(default_factory=...)
+- Previously sent 'Nonecryptoprocessing/event' to payment gateway (would break all callbacks)
+- Added validation helpers for callback URL and secret
+- Added 5 tests verifying lazy evaluation behavior
+
+**Impact**
+- Prevents payment callback failures in production
+- Ensures proper webhook URL is sent to KryptoExpress API
+- Critical fix for payment system reliability
+
+### Architecture Improvements - Config Initialization & Bot Singleton
+
+**Config Side-Effects Elimination**
+- Removed side-effects from config.py module import
+- Webhook configuration now uses lazy initialization via initialize_webhook_config()
+- Ngrok tunnel and HTTP requests no longer execute during import time
+- Tests can now import config without triggering network operations
+
+**Bot Instance Management**
+- Implemented singleton pattern for Bot instance (bot_instance.py)
+- Eliminated 4 duplicate Bot(token=...) instantiations from NotificationService
+- All notifications now reuse single Bot instance (no redundant sessions)
+- Removed manual session.close() calls (handled automatically by singleton)
+
+**Improved Testability**
+- Added 17 architecture tests (12 config/bot + 5 payment DTO)
+- Tests verify no side-effects occur at import time
+- Cleaner separation between initialization and import time behavior
+
+**Benefits**
+- Faster test suite execution (no unnecessary network calls)
+- Better resource management (single bot session)
+- Clearer initialization flow with explicit startup sequence
+
 ## 2025-11-03
 
 ### Security Hardening - Phase 1
