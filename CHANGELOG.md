@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 ## 2025-11-04
 
+### Admin Order Management System
+
+**Core Features**
+- Admin interface for managing all order types with filter system (All, Active, Completed, Cancelled)
+- Pagination support with order list showing invoice number, customer, status, and timestamps
+- Detailed order view with payment history and shipping address
+
+**Smart Controls**
+- Context-aware buttons: Mark as Shipped only for physical items, Cancel Order respects digital item delivery
+- Order status display with relevant timestamps
+- Active filter focuses on orders requiring admin action
+
+**Improvements**
+- Renamed ENCRYPTION_SECRET to SHIPPING_ADDRESS_SECRET for clarity
+- Graceful error handling for address decryption failures
+- Service-based architecture with eager loading prevents N+1 queries
+- Order status keys moved to common localization section
+
 ### Critical Payment Bugfix - Lazy Callback URL Evaluation
 
 **Payment Gateway Integration Fix**
