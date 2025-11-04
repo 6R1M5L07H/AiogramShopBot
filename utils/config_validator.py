@@ -19,21 +19,21 @@ def validate_shipping_secret(secret: str) -> None:
     Validate shipping address encryption secret.
 
     Args:
-        secret: The ENCRYPTION_SECRET value from config
+        secret: The SHIPPING_ADDRESS_SECRET value from config
 
     Raises:
         ConfigValidationError: If secret is missing or too weak
     """
     if not secret:
         raise ConfigValidationError(
-            "ENCRYPTION_SECRET is required for shipping address encryption!\n"
+            "SHIPPING_ADDRESS_SECRET is required for shipping address encryption!\n"
             "Generate a secure secret with: openssl rand -hex 32\n"
-            "Add to .env: ENCRYPTION_SECRET=<your-generated-secret>"
+            "Add to .env: SHIPPING_ADDRESS_SECRET=<your-generated-secret>"
         )
 
     if len(secret) < 32:
         raise ConfigValidationError(
-            f"ENCRYPTION_SECRET must be at least 32 characters long (currently: {len(secret)})\n"
+            f"SHIPPING_ADDRESS_SECRET must be at least 32 characters long (currently: {len(secret)})\n"
             "Generate a secure secret with: openssl rand -hex 32"
         )
 

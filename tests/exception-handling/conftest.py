@@ -41,7 +41,7 @@ os.environ.setdefault('PAYMENT_UNDERPAYMENT_PENALTY_PERCENT', '5')
 os.environ.setdefault('PAYMENT_LATE_PENALTY_PERCENT', '5')
 os.environ.setdefault('DATA_RETENTION_DAYS', '30')
 os.environ.setdefault('REFERRAL_DATA_RETENTION_DAYS', '365')
-os.environ.setdefault('ENCRYPTION_SECRET', 'a' * 64)  # 64 hex characters
+os.environ.setdefault('SHIPPING_ADDRESS_SECRET', 'a' * 64)  # 64 hex characters
 os.environ.setdefault('MAX_STRIKES_BEFORE_BAN', '3')
 os.environ.setdefault('EXEMPT_ADMINS_FROM_BAN', 'true')
 os.environ.setdefault('UNBAN_TOP_UP_AMOUNT', '50.0')

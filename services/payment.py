@@ -170,3 +170,104 @@ class PaymentService:
             logging.info(f"✅ Order {order_id} completed (paid by wallet)")
 
         return invoice, needs_crypto_payment
+
+    @staticmethod
+    async def get_payment_history_details(order_id: int, session: AsyncSession | Session) -> dict:
+        """
+        Gets comprehensive payment history details for an order.
+
+        Aggregates data from Order, Invoice(s), and PaymentTransaction(s) tables.
+        Used for admin order detail view to show complete payment information.
+
+        Args:
+            order_id: Order ID
+
+        Returns:
+            Dictionary with payment history:
+            {
+                "order_created_at": datetime,
+                "payment_received_at": datetime | None,
+                "wallet_amount_used": float,
+                "crypto_payments": [
+                    {
+                        "currency": str,
+                        "crypto_amount": float,
+                        "fiat_amount": float,
+                        "kryptoexpress_transaction_id": int,
+                        "kryptoexpress_order_id": str (invoice_number),
+                        "payment_address": str,
+                        "transaction_hash": str | None,
+                        "confirmed_at": datetime,
+                        "is_overpayment": bool,
+                        "is_underpayment": bool,
+                        "is_late_payment": bool,
+                        "penalty_applied": bool,
+                        "penalty_percent": float,
+                        "wallet_credit_amount": float | None
+                    }
+                ],
+                "underpayment_retries": int,
+                "late_payment_penalty": float,
+                "total_paid": float
+            }
+
+        Raises:
+            OrderNotFoundException: If order not found
+        """
+        from repositories.invoice import InvoiceRepository
+        from repositories.payment_transaction import PaymentTransactionRepository
+        from exceptions.order import OrderNotFoundException
+
+        # Get order
+        order = await OrderRepository.get_by_id(order_id, session)
+        if not order:
+            raise OrderNotFoundException(order_id)
+
+        # Get all invoices for this order (may have multiple for partial payments)
+        invoices = await InvoiceRepository.get_by_order_id(order_id, session)
+
+        # Get all payment transactions for this order
+        transactions = await PaymentTransactionRepository.get_by_order_id(order_id, session)
+
+        # Build crypto payments list
+        crypto_payments = []
+        for transaction in transactions:
+            # Find corresponding invoice for this transaction
+            invoice = next((inv for inv in invoices if inv.id == transaction.invoice_id), None)
+
+            crypto_payments.append({
+                "currency": transaction.crypto_currency.name,
+                "crypto_amount": transaction.crypto_amount,
+                "fiat_amount": transaction.fiat_amount,
+                "kryptoexpress_transaction_id": transaction.payment_processing_id,
+                "kryptoexpress_order_id": invoice.invoice_number if invoice else "N/A",
+                "payment_address": transaction.payment_address,
+                "transaction_hash": transaction.transaction_hash,
+                "confirmed_at": transaction.received_at,
+                "is_overpayment": transaction.is_overpayment,
+                "is_underpayment": transaction.is_underpayment,
+                "is_late_payment": transaction.is_late_payment,
+                "penalty_applied": transaction.penalty_applied,
+                "penalty_percent": transaction.penalty_percent,
+                "wallet_credit_amount": transaction.wallet_credit_amount
+            })
+
+        # Calculate late payment penalty (if any transaction has penalty)
+        late_payment_penalty = 0.0
+        for transaction in transactions:
+            if transaction.penalty_applied and transaction.is_late_payment:
+                # Calculate penalty amount from percentage
+                late_payment_penalty += transaction.fiat_amount * (transaction.penalty_percent / 100)
+
+        # Calculate total paid (wallet + all crypto transactions)
+        total_paid = order.wallet_used + sum(t.fiat_amount for t in transactions)
+
+        return {
+            "order_created_at": order.created_at,
+            "payment_received_at": order.paid_at,
+            "wallet_amount_used": order.wallet_used,
+            "crypto_payments": crypto_payments,
+            "underpayment_retries": order.retry_count,
+            "late_payment_penalty": late_payment_penalty,
+            "total_paid": total_paid
+        }

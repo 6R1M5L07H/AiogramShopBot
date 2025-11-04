@@ -365,12 +365,13 @@ class InvoiceFormatter:
         elif header_type == "purchase_history":
             # Purchase history header with status
             if order_status:
+                from enums.bot_entity import BotEntity
                 if order_status == OrderStatus.SHIPPED:
-                    status = Localizator.get_text(entity, "order_status_shipped")
+                    status = Localizator.get_text(BotEntity.COMMON, "order_status_shipped")
                 elif order_status == OrderStatus.PAID_AWAITING_SHIPMENT:
-                    status = Localizator.get_text(entity, "order_status_awaiting_shipment")
+                    status = Localizator.get_text(BotEntity.COMMON, "order_status_awaiting_shipment")
                 else:
-                    status = Localizator.get_text(entity, "order_status_paid")
+                    status = Localizator.get_text(BotEntity.COMMON, "order_status_paid")
 
                 created_str = created_at.strftime("%d.%m.%Y %H:%M") if created_at else "N/A"
                 order_label = Localizator.get_text(entity, "order_label")
