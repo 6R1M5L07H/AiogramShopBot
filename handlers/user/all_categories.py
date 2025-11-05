@@ -67,7 +67,33 @@ async def add_to_cart(**kwargs):
 
     # Show alert for failures OR warnings (stock reduced)
     show_alert = (not success) or (message_key == "add_to_cart_stock_reduced")
-    await callback.answer(text=message, show_alert=show_alert)
+
+    if success:
+        # Success: Show message with Checkout + Back buttons
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+        from callbacks import AllCategoriesCallback, CartCallback
+        from repositories.user import UserRepository
+        from repositories.cart import CartRepository
+
+        unpacked_cb = AllCategoriesCallback.unpack(callback.data)
+        user = await UserRepository.get_by_tgid(callback.from_user.id, session)
+        cart = await CartRepository.get_or_create(user.id, session)
+
+        kb_builder = InlineKeyboardBuilder()
+
+        # Checkout button
+        kb_builder.button(
+            text=Localizator.get_text(BotEntity.USER, "checkout"),
+            callback_data=CartCallback.create(level=2, cart_id=cart.id)
+        )
+
+        # Back button (to subcategory list)
+        kb_builder.row(unpacked_cb.get_back_button(level=1))
+
+        await callback.message.edit_text(text=message, reply_markup=kb_builder.as_markup())
+    else:
+        # Failure: Just show alert
+        await callback.answer(text=message, show_alert=show_alert)
 
     # Get current context and build new callback with level 1 for subcategory list
     unpacked_cb = AllCategoriesCallback.unpack(callback.data)
