@@ -46,10 +46,11 @@ class MyProfileCallback(BaseCallback, prefix="my_profile"):
     action: str
     args_for_action: int | str
     page: int
+    filter_type: int | None = None  # Default to prevent breaking existing callbacks
 
     @staticmethod
-    def create(level: int, action: str = "", args_for_action="", page=0) -> 'MyProfileCallback':
-        return MyProfileCallback(level=level, action=action, args_for_action=args_for_action, page=page)
+    def create(level: int, action: str = "", args_for_action="", page=0, filter_type: int | None = None) -> 'MyProfileCallback':
+        return MyProfileCallback(level=level, action=action, args_for_action=args_for_action, page=page, filter_type=filter_type)
 
 
 class CartCallback(BaseCallback, prefix="cart"):

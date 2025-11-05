@@ -158,7 +158,7 @@ Actions:
 ### Phase 3: Localization
 - [ ] Add status translations (if missing):
   - Use existing keys or add: `order_status_*` for each OrderStatus
-  - Special emphasis on `order_status_paid_awaiting_shipment` (highlight action needed)
+  - Special emphasis on `order_status_PAID_AWAITING_SHIPMENT` (highlight action needed)
 
 - [ ] Add new admin strings:
   - `admin_order_management_title` ("Order Management")

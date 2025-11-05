@@ -86,7 +86,7 @@ async def create_order_handler(**kwargs):
     from services.order import OrderService
 
     # Directly call order creation
-    msg, kb_builder = await OrderService.create_order(callback, kwargs.get("session"), kwargs.get("state"))
+    msg, kb_builder = await OrderService.orchestrate_order_creation(callback, kwargs.get("session"), kwargs.get("state"))
     await callback.message.edit_text(text=msg, reply_markup=kb_builder.as_markup())
 
 

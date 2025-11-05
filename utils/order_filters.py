@@ -80,3 +80,52 @@ def get_status_filter_for_filter_type(filter_type: OrderFilterType | int | None)
 
     # Fallback: default filter
     return [OrderStatus.PAID_AWAITING_SHIPMENT]
+
+
+def get_status_filter_for_user(filter_type: OrderFilterType | int | None) -> list[OrderStatus] | None:
+    """
+    Converts OrderFilterType to list of OrderStatus values for user order history queries.
+
+    User-specific behavior:
+        None → ALL non-pending orders (PAID, SHIPPED, CANCELLED_*)
+        COMPLETED → PAID + SHIPPED
+        CANCELLED → All cancelled states
+
+    Args:
+        filter_type: OrderFilterType enum value (or None for ALL)
+
+    Returns:
+        List of OrderStatus to filter by
+    """
+    # User sees only completed/cancelled orders (no pending orders in history)
+    if filter_type is None:
+        # ALL = Show all non-pending orders
+        return [
+            OrderStatus.PAID,
+            OrderStatus.SHIPPED,
+            OrderStatus.CANCELLED_BY_USER,
+            OrderStatus.CANCELLED_BY_ADMIN,
+            OrderStatus.CANCELLED_BY_SYSTEM,
+            OrderStatus.TIMEOUT,
+        ]
+
+    if filter_type == OrderFilterType.COMPLETED:
+        return [OrderStatus.PAID, OrderStatus.SHIPPED]
+
+    if filter_type == OrderFilterType.CANCELLED:
+        return [
+            OrderStatus.CANCELLED_BY_USER,
+            OrderStatus.CANCELLED_BY_ADMIN,
+            OrderStatus.CANCELLED_BY_SYSTEM,
+            OrderStatus.TIMEOUT,
+        ]
+
+    # Fallback to all non-pending
+    return [
+        OrderStatus.PAID,
+        OrderStatus.SHIPPED,
+        OrderStatus.CANCELLED_BY_USER,
+        OrderStatus.CANCELLED_BY_ADMIN,
+        OrderStatus.CANCELLED_BY_SYSTEM,
+        OrderStatus.TIMEOUT,
+    ]
