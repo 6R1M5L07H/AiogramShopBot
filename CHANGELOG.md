@@ -2,6 +2,34 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2025-11-05
+
+### User Order History
+
+**Core Features**
+- Users can now view their complete order history from My Profile
+- Default view shows all completed and cancelled orders with pagination
+- Filter options: All Orders, Completed, Cancelled
+- Compact single-line layout displays date, invoice ID, and status
+- Order detail view shows full information including shipping address with encryption notice
+
+**User Experience**
+- Direct access to order history without filter pre-selection
+- Filter change button at bottom of list for easy switching
+- Back button preserves selected filter when viewing order details
+- Checkout button added immediately after adding items to cart
+- Pending order banner shows active order with countdown timer
+
+**Technical Improvements**
+- Reuses existing admin components (ShippingService, InvoiceFormatter) for consistency
+- Order status localization keys unified to UPPERCASE for maintainability
+- Shipping address decryption errors hidden from users (shows encryption notice only)
+- Filter-specific logic separated for user and admin views
+
+**Security Fixes**
+- Added ownership verification to prevent unauthorized access to order details
+- Fixed callback compatibility to prevent breaking existing profile interactions
+
 ## 2025-11-04
 
 ### Admin Order Management System
