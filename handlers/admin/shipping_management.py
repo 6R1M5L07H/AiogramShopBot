@@ -253,21 +253,21 @@ async def show_order_details(**kwargs):
     message_text += "\n\n─────────────────────\n"
     message_text += "📊 <b>BESTELLSTATUS</b>\n\n"
 
-    # Map OrderStatus to localized string
+    # Map OrderStatus to localized string (UPPERCASE keys)
     status_map = {
-        OrderStatus.PENDING_PAYMENT: "order_status_pending_payment",
-        OrderStatus.PENDING_PAYMENT_AND_ADDRESS: "order_status_pending_payment_and_address",
-        OrderStatus.PENDING_PAYMENT_PARTIAL: "order_status_pending_payment_partial",
-        OrderStatus.PAID: "order_status_paid",
-        OrderStatus.PAID_AWAITING_SHIPMENT: "order_status_paid_awaiting_shipment",
-        OrderStatus.SHIPPED: "order_status_shipped",
-        OrderStatus.CANCELLED_BY_USER: "order_status_cancelled_by_user",
-        OrderStatus.CANCELLED_BY_ADMIN: "order_status_cancelled_by_admin",
-        OrderStatus.CANCELLED_BY_SYSTEM: "order_status_cancelled_by_system",
-        OrderStatus.TIMEOUT: "order_status_timeout",
+        OrderStatus.PENDING_PAYMENT: "order_status_PENDING_PAYMENT",
+        OrderStatus.PENDING_PAYMENT_AND_ADDRESS: "order_status_PENDING_PAYMENT_AND_ADDRESS",
+        OrderStatus.PENDING_PAYMENT_PARTIAL: "order_status_PENDING_PAYMENT_PARTIAL",
+        OrderStatus.PAID: "order_status_PAID",
+        OrderStatus.PAID_AWAITING_SHIPMENT: "order_status_PAID_AWAITING_SHIPMENT",
+        OrderStatus.SHIPPED: "order_status_SHIPPED",
+        OrderStatus.CANCELLED_BY_USER: "order_status_CANCELLED_BY_USER",
+        OrderStatus.CANCELLED_BY_ADMIN: "order_status_CANCELLED_BY_ADMIN",
+        OrderStatus.CANCELLED_BY_SYSTEM: "order_status_CANCELLED_BY_SYSTEM",
+        OrderStatus.TIMEOUT: "order_status_TIMEOUT",
     }
 
-    status_key = status_map.get(order.status, "order_status_pending_payment")
+    status_key = status_map.get(order.status, "order_status_PENDING_PAYMENT")
     status_text = Localizator.get_text(BotEntity.COMMON, status_key)
     message_text += f"<b>Status:</b> {status_text}\n"
 

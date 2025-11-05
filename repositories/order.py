@@ -425,3 +425,124 @@ class OrderRepository:
             return total_orders // config.PAGE_ENTRIES - 1
         else:
             return math.trunc(total_orders / config.PAGE_ENTRIES)
+    @staticmethod
+    async def get_by_user_id_with_filter(
+        user_id: int,
+        status_filter: list[OrderStatus] | None = None,
+        page: int = 0,
+        session: Session | AsyncSession = None
+    ) -> list[Order]:
+        """
+        Gets orders for a specific user with optional status filter and pagination.
+
+        Args:
+            user_id: User ID to filter by
+            status_filter: List of OrderStatus to filter by (None = all statuses)
+            page: Page number (0-indexed, uses config.PAGE_ENTRIES for page size)
+            session: Database session
+
+        Returns:
+            List of Order objects with eager-loaded invoices
+
+        Performance:
+            Eager loads invoices to avoid N+1 queries.
+            Items are NOT loaded here - they will be loaded in detail view if needed.
+        """
+        from datetime import timedelta
+        import config
+
+        retention_cutoff = datetime.now() - timedelta(days=config.DATA_RETENTION_DAYS)
+
+        stmt = (
+            select(Order)
+            .where(Order.user_id == user_id)
+            .where(Order.created_at >= retention_cutoff)
+            .options(selectinload(Order.invoices))
+        )
+
+        # Apply status filter if provided
+        if status_filter is not None:
+            stmt = stmt.where(Order.status.in_(status_filter))
+
+        # Order by created_at DESC (newest first) with pagination
+        stmt = (
+            stmt
+            .order_by(Order.created_at.desc())
+            .limit(config.PAGE_ENTRIES)
+            .offset(page * config.PAGE_ENTRIES)
+        )
+
+        result = await session_execute(stmt, session)
+        return list(result.scalars().all())
+
+    @staticmethod
+    async def count_by_user_id_with_filter(
+        user_id: int,
+        status_filter: list[OrderStatus] | None = None,
+        session: Session | AsyncSession = None
+    ) -> int:
+        """
+        Counts orders for a specific user with optional status filter.
+
+        Used for pagination calculation.
+
+        Args:
+            user_id: User ID to filter by
+            status_filter: List of OrderStatus to filter by (None = all statuses)
+            session: Database session
+
+        Returns:
+            Total count of orders matching the filter
+        """
+        from datetime import timedelta
+        import config
+
+        retention_cutoff = datetime.now() - timedelta(days=config.DATA_RETENTION_DAYS)
+
+        stmt = (
+            select(func.count(Order.id))
+            .where(Order.user_id == user_id)
+            .where(Order.created_at >= retention_cutoff)
+        )
+
+        # Apply status filter if provided
+        if status_filter is not None:
+            stmt = stmt.where(Order.status.in_(status_filter))
+
+        result = await session_execute(stmt, session)
+        return result.scalar_one()
+
+    @staticmethod
+    async def get_max_page_by_user_id(
+        user_id: int,
+        status_filter: list[OrderStatus] | None = None,
+        session: Session | AsyncSession = None
+    ) -> int:
+        """
+        Calculates the maximum page number for user's orders.
+
+        Args:
+            user_id: User ID to filter by
+            status_filter: List of OrderStatus to filter by (None = all statuses)
+            session: Database session
+
+        Returns:
+            Maximum page number (0-indexed)
+        """
+        import config
+        import math
+
+        total_orders = await OrderRepository.count_by_user_id_with_filter(
+            user_id=user_id,
+            status_filter=status_filter,
+            session=session
+        )
+
+        if total_orders == 0:
+            return 0
+
+        # Same logic as existing repositories
+        if total_orders % config.PAGE_ENTRIES == 0:
+            return total_orders // config.PAGE_ENTRIES - 1
+        else:
+            return math.trunc(total_orders / config.PAGE_ENTRIES)
