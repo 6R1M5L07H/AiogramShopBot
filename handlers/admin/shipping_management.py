@@ -67,134 +67,27 @@ async def show_order_filters(**kwargs):
 
 
 async def show_awaiting_shipment_orders(**kwargs):
-    """Level 1: Shows list of orders with pagination and filters"""
+    """
+    Level 1: Shows list of orders with pagination and filters.
+
+    Wrapper around unified OrderManagementService.
+    """
+    from services.order_management import OrderManagementService
+
     callback = kwargs.get("callback")
     session = kwargs.get("session")
     callback_data = kwargs.get("callback_data")
 
-    # Get filter and page from callback data
-    from enums.order_filter import OrderFilterType
-    from utils.order_filters import get_status_filter_for_filter_type
-    from repositories.order import OrderRepository
-
     filter_type = callback_data.filter_type if callback_data else None
     page = callback_data.page if callback_data else 0
 
-    # Convert filter type to status list (None = default REQUIRES_ACTION)
-    status_filter = get_status_filter_for_filter_type(filter_type)
-
-    # Get orders with pagination
-    orders = await OrderRepository.get_orders_in_retention_period(
-        status_filter=status_filter,
+    message_text, kb_builder = await OrderManagementService.get_order_list_view(
+        session=session,
         page=page,
-        session=session
-    )
-
-    # Get total count and calculate max page
-    max_page = await OrderRepository.get_max_page_in_retention_period(
-        status_filter=status_filter,
-        session=session
-    )
-
-    # Determine filter name for display
-    if filter_type is None or filter_type == OrderFilterType.REQUIRES_ACTION:
-        filter_name = Localizator.get_text(BotEntity.ADMIN, "order_filter_requires_action")
-    elif filter_type == OrderFilterType.ALL:
-        filter_name = Localizator.get_text(BotEntity.ADMIN, "order_filter_all")
-    elif filter_type == OrderFilterType.ACTIVE:
-        filter_name = Localizator.get_text(BotEntity.ADMIN, "order_filter_active")
-    elif filter_type == OrderFilterType.COMPLETED:
-        filter_name = Localizator.get_text(BotEntity.ADMIN, "order_filter_completed")
-    elif filter_type == OrderFilterType.CANCELLED:
-        filter_name = Localizator.get_text(BotEntity.ADMIN, "order_filter_cancelled")
-    else:
-        filter_name = "Filter"
-
-    # Build message
-    message_text = Localizator.get_text(BotEntity.ADMIN, "order_management_title") + "\n"
-    message_text += Localizator.get_text(BotEntity.ADMIN, "order_filter_label").format(filter_name=filter_name) + "\n\n"
-
-    kb_builder = InlineKeyboardBuilder()
-
-    if not orders:
-        # No orders found
-        message_text += Localizator.get_text(BotEntity.ADMIN, "order_no_orders")
-    else:
-        # Status icons mapping
-        STATUS_ICONS = {
-            OrderStatus.PAID_AWAITING_SHIPMENT: "⚠️",
-            OrderStatus.SHIPPED: "✅",
-            OrderStatus.PAID: "💰",
-            OrderStatus.PENDING_PAYMENT: "⏳",
-            OrderStatus.PENDING_PAYMENT_AND_ADDRESS: "📬",
-            OrderStatus.PENDING_PAYMENT_PARTIAL: "⏳",
-            OrderStatus.CANCELLED_BY_USER: "❌",
-            OrderStatus.CANCELLED_BY_ADMIN: "❌",
-            OrderStatus.CANCELLED_BY_SYSTEM: "❌",
-            OrderStatus.TIMEOUT: "⏰",
-        }
-
-        # Add order buttons
-        for order in orders:
-            # Get status icon
-            icon = STATUS_ICONS.get(order.status, "📋")
-
-            # Format datetime
-            created_time = order.created_at.strftime("%d.%m %H:%M")
-
-            # Get invoice number (first invoice)
-            invoice_number = order.invoices[0].invoice_number if order.invoices else f"#{order.id}"
-
-            # Get username
-            username = f"@{order.user.telegram_username}" if order.user.telegram_username else f"ID:{order.user.telegram_id}"
-
-            button_text = f"{icon} {created_time} | {invoice_number} | {username}"
-            kb_builder.button(
-                text=button_text,
-                callback_data=ShippingManagementCallback.create(level=2, order_id=order.id, filter_type=filter_type, page=page).pack()
-            )
-
-        kb_builder.adjust(1)  # One button per row
-
-        # Pagination buttons
-        if max_page > 0:
-            pagination_row = []
-
-            if page > 0:
-                pagination_row.append(
-                    types.InlineKeyboardButton(
-                        text="◀️ Zurück",
-                        callback_data=ShippingManagementCallback.create(level=1, filter_type=filter_type, page=page-1).pack()
-                    )
-                )
-
-            pagination_row.append(
-                types.InlineKeyboardButton(
-                    text=Localizator.get_text(BotEntity.ADMIN, "order_pagination_info").format(current=page+1, total=max_page+1),
-                    callback_data="noop"
-                )
-            )
-
-            if page < max_page:
-                pagination_row.append(
-                    types.InlineKeyboardButton(
-                        text="Weiter ▶️",
-                        callback_data=ShippingManagementCallback.create(level=1, filter_type=filter_type, page=page+1).pack()
-                    )
-                )
-
-            kb_builder.row(*pagination_row)
-
-    # Filter change button
-    kb_builder.button(
-        text=Localizator.get_text(BotEntity.ADMIN, "order_filter_change"),
-        callback_data=ShippingManagementCallback.create(level=0, filter_type=filter_type).pack()
-    )
-
-    # Back to admin menu
-    kb_builder.button(
-        text=Localizator.get_text(BotEntity.ADMIN, "back_to_menu"),
-        callback_data=AdminMenuCallback.create(level=0).pack()
+        filter_type=filter_type,
+        user_id=None,  # Admin sees all users
+        entity=BotEntity.ADMIN,
+        callback_factory=ShippingManagementCallback
     )
 
     if isinstance(callback, CallbackQuery):

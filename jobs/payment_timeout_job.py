@@ -76,12 +76,20 @@ class PaymentTimeoutJob:
 
             for order in expired_orders:
                 try:
-                    await self._cancel_expired_order(order.id, session)
-                    logging.info(f"Cancelled expired order {order.id}")
-                except Exception as e:
-                    logging.error(f"Failed to cancel expired order {order.id}: {e}", exc_info=True)
+                    # Get invoice for logging
+                    from repositories.invoice import InvoiceRepository
+                    invoices_timeout = await InvoiceRepository.get_all_by_order_id(order.id, session)
+                    invoice_timeout_log = invoices_timeout[0].invoice_number if invoices_timeout else "N/A"
 
+                    logging.info(f"⏰ PROCESSING EXPIRED ORDER: {order.id} (Invoice: {invoice_timeout_log})")
+                    await self._cancel_expired_order(order.id, session)
+                    logging.info(f"✅ TIMEOUT CANCEL COMPLETE: Order {order.id} (Invoice: {invoice_timeout_log})")
+                except Exception as e:
+                    logging.error(f"❌ TIMEOUT CANCEL FAILED: Order {order.id}: {e}", exc_info=True)
+
+            logging.info(f"💾 COMMITTING TIMEOUT JOB: {len(expired_orders)} orders processed")
             await session.commit()
+            logging.info(f"✅ TIMEOUT JOB COMMIT SUCCESS")
 
     async def _cancel_expired_order(self, order_id: int, session: AsyncSession):
         """

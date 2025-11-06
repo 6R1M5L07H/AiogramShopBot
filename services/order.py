@@ -223,7 +223,7 @@ class OrderService:
                 invoice_number = invoice.invoice_number
             else:
                 from datetime import datetime
-                invoice_number = f"ORDER-{datetime.now().year}-{order_id:06d}"
+                invoice_number = "N/A"
 
             await NotificationService.order_awaiting_shipment(
                 user_id=order.user_id,
@@ -361,8 +361,17 @@ class OrderService:
         from enums.order_cancel_reason import OrderCancelReason
         import logging
 
+        # Get invoices first for logging
+        from repositories.invoice import InvoiceRepository
+        invoices_temp = await InvoiceRepository.get_all_by_order_id(order_id, session)
+        invoice_num_log = invoices_temp[0].invoice_number if invoices_temp else "N/A"
+
+        logging.info(f"🔄 CANCEL ORDER START: Order {order_id} (Invoice: {invoice_num_log}), Reason: {reason.value}, Refund Wallet: {refund_wallet}")
+
         # Get order
         order = await OrderRepository.get_by_id(order_id, session)
+
+        logging.info(f"📋 Order {order_id} loaded: Status={order.status.value}, Total={order.total_price}€, Wallet Used={order.wallet_used}€")
 
         from exceptions.order import OrderNotFoundException
 
@@ -407,9 +416,9 @@ class OrderService:
             if len(invoices) > 1:
                 invoice_number = " / ".join(inv.invoice_number for inv in invoices)
         else:
-            # Fallback for orders without invoice
+            # Fallback for orders without invoice (e.g., cancelled before payment)
             from datetime import datetime
-            invoice_number = f"ORDER-{datetime.now().year}-{order_id:06d}"
+            invoice_number = "N/A"
 
         # BUILD NOTIFICATION STRINGS FIRST (before items are released)
         # This ensures items still have order_id and can be loaded
@@ -437,6 +446,8 @@ class OrderService:
         # Load items to check if this is a mixed order (digital + physical)
         items = await ItemRepository.get_by_order_id(order_id, session)
 
+        logging.info(f"📦 Order {order_id} (Invoice: {invoice_number}): Loaded {len(items)} items")
+
         # Calculate partial refund for mixed orders (digital items NOT refundable)
         partial_refund_info = OrderService._calculate_partial_refund(
             items=items,
@@ -446,11 +457,20 @@ class OrderService:
             within_grace_period=within_grace_period
         )
 
-        # Calculate total paid amount from all invoices (handles partial payments)
-        # Check which invoices have payments via PaymentTransaction table
+        logging.info(f"📊 Order {order_id} (Invoice: {invoice_number}): Partial refund calculated - is_mixed={partial_refund_info['is_mixed_order']}")
+
+        # Calculate total paid amount (wallet + crypto payments)
+        # Wallet payments: Stored in order.wallet_used field (not in PaymentTransaction table)
+        # Crypto payments: Stored in PaymentTransaction table
         from repositories.payment_transaction import PaymentTransactionRepository
 
         total_paid_fiat = 0.0
+
+        # Add wallet payment (if any)
+        if order.wallet_used > 0:
+            total_paid_fiat += order.wallet_used
+
+        # Add crypto payments from PaymentTransaction table (handles partial/mixed payments)
         for inv in invoices:
             # Check if this invoice has any payment transactions
             transactions = await PaymentTransactionRepository.get_by_invoice_id(inv.id, session)
@@ -477,7 +497,10 @@ class OrderService:
             refundable_amount = total_paid_fiat
 
         # Case 1: Payment was made (wallet or crypto) - refund with/without penalty
+        logging.info(f"💰 REFUND CHECK for Order {order_id} (Invoice: {invoice_number}): refund_wallet={refund_wallet}, refundable_amount={refundable_amount}€, total_paid_fiat={total_paid_fiat}€, apply_penalty={apply_penalty}")
+
         if refund_wallet and refundable_amount > 0:
+            logging.info(f"💰 ENTERING CASE 1: Refund wallet with payment made")
             # For mixed orders: Penalty already calculated in partial_refund_info
             # For non-mixed orders: Calculate penalty here
             if partial_refund_info['is_mixed_order']:
@@ -503,8 +526,15 @@ class OrderService:
                 base_amount = total_paid_fiat
 
             # Apply refund to user wallet
+            old_balance = user.top_up_amount
             user.top_up_amount = round(user.top_up_amount + refund_amount, 2)
+            new_balance = user.top_up_amount
+
+            logging.info(f"💰 REFUND CALCULATION: User {user.id} wallet {old_balance}€ + {refund_amount}€ = {new_balance}€")
+
             await UserRepository.update(user, session)
+
+            logging.info(f"💰 REFUND APPLIED: User {user.id} wallet updated to {new_balance}€ (awaiting commit)")
 
             if penalty_amount > 0:
                 logging.info(
@@ -531,16 +561,19 @@ class OrderService:
 
             # Add strike for late cancellation/timeout (if penalty applied)
             if apply_penalty:
+                logging.info(f"⚠️ ADDING STRIKE: User {user.id}, Order {order_id}, Reason: {reason.value}")
                 await OrderService._add_strike_and_check_ban(
                     user_id=user.id,
                     order_id=order_id,
                     strike_type=StrikeType.TIMEOUT if reason == OrderCancelReason.TIMEOUT else StrikeType.LATE_CANCEL,
                     session=session
                 )
+                logging.info(f"⚠️ STRIKE PROCESSING COMPLETE: User {user.id}")
 
         # Case 2: Wallet NOT used in order BUT user has balance AND penalty applies
         # Charge "reservation fee" for blocking items without payment
         elif apply_penalty and user.top_up_amount > 0:
+            logging.info(f"💸 ENTERING CASE 2: Charge reservation fee (no payment made but wallet has balance)")
             from services.payment_validator import PaymentValidator
             penalty_percent = config.PAYMENT_LATE_PENALTY_PERCENT
 
@@ -565,6 +598,8 @@ class OrderService:
 
         # Case 3: No wallet used AND (no wallet balance OR no penalty)
         # No financial consequence, just release items
+        else:
+            logging.info(f"ℹ️ ENTERING CASE 3: No wallet refund/charge (no payment made, no wallet balance, or no penalty)")
 
         # Set order status based on cancel reason
         if reason == OrderCancelReason.USER:
@@ -838,8 +873,14 @@ class OrderService:
         # Keep order_id in state for payment processing
         # State will be cleared after successful payment
 
+        # Store order_id in FSM state so process_payment can retrieve it
+        if state:
+            await state.update_data(order_id=order_id)
+
         # Directly proceed to payment processing (no intermediate screen)
-        return await OrderService.process_payment(callback, session, state)
+        from handlers.user.order import process_payment
+        kwargs = {"callback": callback, "session": session, "state": state}
+        return await process_payment(**kwargs)
 
     @staticmethod
     async def show_stock_adjustment_confirmation(
@@ -1247,8 +1288,15 @@ class OrderService:
             for cart_item in cart_items:
                 await CartItemRepository.remove_from_cart(cart_item.id, session)
 
+            # Get invoice for logging
+            from repositories.invoice import InvoiceRepository
+            invoices_commit = await InvoiceRepository.get_all_by_order_id(order_id, session)
+            invoice_commit_log = invoices_commit[0].invoice_number if invoices_commit else "N/A"
+
             # Commit changes (wallet refund, order status update, item release, cart clearing)
+            logging.info(f"💾 COMMITTING: Order {order_id} (Invoice: {invoice_commit_log}) cancellation, wallet refund, and cart clearing")
             await session_commit(session)
+            logging.info(f"✅ COMMIT SUCCESS: Order {order_id} (Invoice: {invoice_commit_log}) cancellation complete")
 
             # Clear FSM state
             if state:
@@ -1611,12 +1659,16 @@ class OrderService:
         strikes = await UserStrikeRepository.get_by_user_id(user_id, session)
         actual_strike_count = len(strikes)
 
+        logging.info(f"⚠️ Strike added for user {user_id}: Total strikes = {actual_strike_count}")
+
         # Update user strike count field for consistency
         user.strike_count = actual_strike_count
 
         # Check if ban threshold reached (unless admin is exempt)
         from utils.permission_utils import is_admin_user
         admin_exempt = is_admin_user(user.telegram_id) and config.EXEMPT_ADMINS_FROM_BAN
+
+        logging.info(f"🔍 Ban check for user {user_id}: strikes={actual_strike_count}, threshold={config.MAX_STRIKES_BEFORE_BAN}, admin_exempt={admin_exempt}, already_blocked={user.is_blocked}")
 
         # Check if user should be banned (only if not already banned)
         if actual_strike_count >= config.MAX_STRIKES_BEFORE_BAN and not admin_exempt and not user.is_blocked:
@@ -1631,8 +1683,8 @@ class OrderService:
             await NotificationService.notify_user_banned(user, actual_strike_count)
             await NotificationService.notify_admin_user_banned(user, actual_strike_count)
         elif admin_exempt and actual_strike_count >= config.MAX_STRIKES_BEFORE_BAN:
-            logging.warning(f"⚠️ Admin {user_id} reached ban threshold ({actual_strike_count} strikes) but is exempt from ban")
+            logging.warning(f"⚠️ Admin {user_id} (telegram_id: {user.telegram_id}) reached ban threshold ({actual_strike_count} strikes) but is exempt from ban (EXEMPT_ADMINS_FROM_BAN={config.EXEMPT_ADMINS_FROM_BAN})")
         else:
-            logging.warning(f"⚠️ User {user_id} received strike #{actual_strike_count} (type: {strike_type.name})")
+            logging.warning(f"⚠️ User {user_id} (telegram_id: {user.telegram_id}) received strike #{actual_strike_count}/{config.MAX_STRIKES_BEFORE_BAN} (type: {strike_type.name})")
 
         await UserRepository.update(user, session)

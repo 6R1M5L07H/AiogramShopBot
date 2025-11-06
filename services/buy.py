@@ -67,7 +67,7 @@ class BuyService:
             else:
                 # Fallback for orders without invoice (should not happen in normal flow)
                 from datetime import datetime
-                fallback_ref = f"ORDER-{datetime.now().year}-{order.id:06d}"
+                fallback_ref = "N/A"
                 invoice_numbers = [fallback_ref]
 
         # All purchases should have an order (no legacy support)
