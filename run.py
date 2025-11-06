@@ -81,6 +81,9 @@ async def support(message: types.Message):
 
 @main_router.error(F.update.message.as_("message"))
 async def error_handler(event: ErrorEvent, message: Message):
+    # Log the error FIRST (critical for debugging!)
+    logging.error(f"Unhandled exception in handler: {event.exception}", exc_info=event.exception)
+
     await message.answer("Oops, something went wrong!")
     traceback_str = traceback.format_exc()
     admin_notification = (

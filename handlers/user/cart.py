@@ -81,13 +81,9 @@ async def create_order_handler(**kwargs):
     """
     callback = kwargs.get("callback")
 
-    # Hand off to Order domain
-    from aiogram.utils.keyboard import InlineKeyboardBuilder
-    from services.order import OrderService
-
-    # Directly call order creation
-    msg, kb_builder = await OrderService.orchestrate_order_creation(callback, kwargs.get("session"), kwargs.get("state"))
-    await callback.message.edit_text(text=msg, reply_markup=kb_builder.as_markup())
+    # Redirect to Order domain (OrderCallback level 0)
+    from handlers.user.order import create_order
+    await create_order(**kwargs)
 
 
 

@@ -81,16 +81,26 @@ async def add_to_cart(**kwargs):
 
         kb_builder = InlineKeyboardBuilder()
 
-        # Checkout button
+        # Row 1: Continue Shopping button
         kb_builder.button(
-            text=Localizator.get_text(BotEntity.USER, "checkout"),
-            callback_data=CartCallback.create(level=2, cart_id=cart.id)
+            text="🛍️ " + Localizator.get_text(BotEntity.USER, "continue_shopping"),
+            callback_data=AllCategoriesCallback.create(
+                level=1,  # Back to subcategory list
+                category_id=unpacked_cb.category_id
+            )
         )
 
-        # Back button (to subcategory list)
-        kb_builder.row(unpacked_cb.get_back_button(level=1))
+        # Row 2: Go to Cart button (prominent)
+        kb_builder.button(
+            text="🛒 " + Localizator.get_text(BotEntity.USER, "go_to_cart"),
+            callback_data=CartCallback.create(level=0, cart_id=cart.id)
+        )
+
+        # Force each button on its own row
+        kb_builder.adjust(1)
 
         await callback.message.edit_text(text=message, reply_markup=kb_builder.as_markup())
+        return  # Stop here - don't show subcategory list
     else:
         # Failure: Just show alert
         await callback.answer(text=message, show_alert=show_alert)

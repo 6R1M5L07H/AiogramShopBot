@@ -509,15 +509,13 @@ async def process_payment(**kwargs):
             callback_data=CartCallback.create(0)  # Back to Cart (cross-domain)
         )
         msg = Localizator.get_text(BotEntity.USER, "order_not_found_error")
-        await callback.message.edit_text(text=msg, reply_markup=kb_builder.as_markup())
-        return
+        return msg, kb_builder
 
     # 2. Check if invoice already exists
     existing_invoice = await InvoiceRepository.get_by_order_id(order_id, session)
     if existing_invoice:
         msg, kb_builder = await _handle_existing_invoice(order_id, existing_invoice, session)
-        await callback.message.edit_text(text=msg, reply_markup=kb_builder.as_markup())
-        return
+        return msg, kb_builder
 
     # 3. Check if crypto already selected
     crypto_selected = unpacked_cb and unpacked_cb.cryptocurrency and unpacked_cb.cryptocurrency != Cryptocurrency.PENDING_SELECTION
@@ -532,24 +530,21 @@ async def process_payment(**kwargs):
         # Mode A: Wallet covers everything
         if wallet_balance >= order_total:
             msg, kb_builder = await _process_wallet_only_payment(order_id, order, state, session)
-            await callback.message.edit_text(text=msg, reply_markup=kb_builder.as_markup())
-            return
+            return msg, kb_builder
 
         # Mode B: Wallet insufficient - Show crypto selection
         else:
             msg, kb_builder = await CartService._show_crypto_selection(order_id)
-            await callback.message.edit_text(text=msg, reply_markup=kb_builder.as_markup())
-            return
+            return msg, kb_builder
 
     # 5. Mode C: Crypto selected - Process payment
     if not unpacked_cb or not unpacked_cb.cryptocurrency:
         # Should never happen (crypto_selected would be False), but safety check
         msg, kb_builder = await CartService._show_crypto_selection(order_id)
-        await callback.message.edit_text(text=msg, reply_markup=kb_builder.as_markup())
-        return
+        return msg, kb_builder
 
     msg, kb_builder = await _process_crypto_payment(order_id, unpacked_cb.cryptocurrency, state, session)
-    await callback.message.edit_text(text=msg, reply_markup=kb_builder.as_markup())
+    return msg, kb_builder
 
 
 async def confirm_shipping_address(**kwargs):
@@ -582,21 +577,6 @@ async def reenter_shipping_address(**kwargs):
     msg, kb_builder = await OrderService.reenter_shipping_address(callback, session, state)
     await callback.message.edit_reply_markup()
     await callback.message.answer(msg, reply_markup=kb_builder.as_markup())
-
-
-async def process_payment(**kwargs):
-    """
-    Level 3: Process Payment
-
-    - Hand off to PaymentService
-    - PaymentService handles wallet check, crypto selection, invoice creation
-    """
-    callback = kwargs.get("callback")
-    session = kwargs.get("session")
-    state = kwargs.get("state")
-
-    msg, kb_builder = await OrderService.process_payment(callback, session, state)
-    await callback.message.edit_text(text=msg, reply_markup=kb_builder.as_markup())
 
 
 async def cancel_order(**kwargs):
