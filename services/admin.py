@@ -326,6 +326,13 @@ class AdminService:
         else:
             user_display = f"ID: {user.telegram_id}"
 
+        # Send notification to unbanned user
+        from services.notification import NotificationService
+        user_message = Localizator.get_text(BotEntity.USER, "user_unbanned_by_admin_notification").format(
+            strike_count=user.strike_count
+        )
+        await NotificationService.send_to_user(user_message, user.telegram_id)
+
         return Localizator.get_text(BotEntity.ADMIN, "user_unbanned_success").format(
             user_display=user_display,
             strike_count=user.strike_count

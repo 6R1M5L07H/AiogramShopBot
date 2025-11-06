@@ -115,8 +115,8 @@ def setup_logging():
     log_level_str = getattr(config, "LOG_LEVEL", "INFO")
     log_level = getattr(logging, log_level_str.upper(), logging.INFO)
 
-    # Get rotation days (default to 7)
-    rotation_days = getattr(config, "LOG_ROTATION_DAYS", 7)
+    # Get retention days (uses environment-specific defaults)
+    retention_days = getattr(config, "LOG_RETENTION_DAYS", 7)
 
     # Check if secret masking is enabled (default to True for security)
     mask_secrets = getattr(config, "LOG_MASK_SECRETS", True)
@@ -132,7 +132,7 @@ def setup_logging():
         filename=log_dir / "bot.log",
         when="midnight",          # Rotate at midnight
         interval=1,               # Every 1 day
-        backupCount=rotation_days,  # Keep N days of logs
+        backupCount=retention_days,  # Keep N days of logs
         encoding="utf-8"
     )
     file_handler.setFormatter(formatter)
@@ -166,7 +166,7 @@ def setup_logging():
 
     # Log initialization message
     logging.info("=" * 80)
-    logging.info(f"Logging initialized: Level={log_level_str}, Rotation={rotation_days} days, Masking={'ENABLED' if mask_secrets else 'DISABLED'}")
+    logging.info(f"Logging initialized: Level={log_level_str}, Retention={retention_days} days, Masking={'ENABLED' if mask_secrets else 'DISABLED'}")
     logging.info("=" * 80)
 
 
