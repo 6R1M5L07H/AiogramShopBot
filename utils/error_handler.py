@@ -175,10 +175,17 @@ def safe_service_call(entity: BotEntity = BotEntity.ADMIN):
     """
     def decorator(handler_func):
         async def wrapper(*args, **kwargs):
+            # Try to get callback from kwargs first, then check positional args
             callback = kwargs.get('callback')
+            if not callback and args:
+                # Check if first positional arg is a CallbackQuery
+                from aiogram.types import CallbackQuery
+                if isinstance(args[0], CallbackQuery):
+                    callback = args[0]
+
             if not callback:
                 # Can't send error message without callback
-                logging.error("safe_service_call: No callback in kwargs")
+                logging.error("safe_service_call: No callback found in args or kwargs")
                 return await handler_func(*args, **kwargs)
 
             try:

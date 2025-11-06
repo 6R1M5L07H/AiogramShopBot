@@ -99,9 +99,10 @@ def get_status_filter_for_user(filter_type: OrderFilterType | int | None) -> lis
     """
     # User sees only completed/cancelled orders (no pending orders in history)
     if filter_type is None:
-        # ALL = Show all non-pending orders
+        # ALL = Show all non-pending orders (including awaiting shipment)
         return [
             OrderStatus.PAID,
+            OrderStatus.PAID_AWAITING_SHIPMENT,
             OrderStatus.SHIPPED,
             OrderStatus.CANCELLED_BY_USER,
             OrderStatus.CANCELLED_BY_ADMIN,
@@ -110,7 +111,7 @@ def get_status_filter_for_user(filter_type: OrderFilterType | int | None) -> lis
         ]
 
     if filter_type == OrderFilterType.COMPLETED:
-        return [OrderStatus.PAID, OrderStatus.SHIPPED]
+        return [OrderStatus.PAID, OrderStatus.PAID_AWAITING_SHIPMENT, OrderStatus.SHIPPED]
 
     if filter_type == OrderFilterType.CANCELLED:
         return [
@@ -123,6 +124,7 @@ def get_status_filter_for_user(filter_type: OrderFilterType | int | None) -> lis
     # Fallback to all non-pending
     return [
         OrderStatus.PAID,
+        OrderStatus.PAID_AWAITING_SHIPMENT,
         OrderStatus.SHIPPED,
         OrderStatus.CANCELLED_BY_USER,
         OrderStatus.CANCELLED_BY_ADMIN,

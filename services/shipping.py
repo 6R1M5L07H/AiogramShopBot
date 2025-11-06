@@ -257,7 +257,7 @@ class ShippingService:
             if len(invoices) > 1:
                 invoice_display = " / ".join(inv.invoice_number for inv in invoices)
         else:
-            invoice_display = f"ORDER-{datetime.now().year}-{order.id:06d}"
+            invoice_display = "N/A"
 
         # Format creation time
         created_time = order.created_at.strftime("%d.%m %H:%M") if order.created_at else "N/A"
@@ -307,7 +307,7 @@ class ShippingService:
         if invoice:
             invoice_number = invoice.invoice_number
         else:
-            invoice_number = f"ORDER-{datetime.now().year}-{order_id:06d}"
+            invoice_number = "N/A"
 
         # Group items by type
         digital_items = [item for item in order.items if not item.is_physical]
@@ -385,7 +385,7 @@ class ShippingService:
         if invoice:
             invoice_number = invoice.invoice_number
         else:
-            invoice_number = f"ORDER-{datetime.now().year}-{order_id:06d}"
+            invoice_number = "N/A"
 
         # Send notification to user
         await NotificationService.order_shipped(order.user_id, order_id, invoice_number, session)
@@ -411,4 +411,4 @@ class ShippingService:
         if invoice:
             return invoice.invoice_number
         else:
-            return f"ORDER-{datetime.now().year}-{order_id:06d}"
+            return "N/A"
