@@ -186,8 +186,15 @@ class ItemRepository:
 
     @staticmethod
     async def get_by_order_id(order_id: int, session: Session | AsyncSession) -> list[ItemDTO]:
-        """Holt alle Items einer Order"""
-        stmt = select(Item).where(Item.order_id == order_id)
+        """
+        Holt alle Items einer Order mit eager loading für Subcategories.
+        Eliminiert N+1 Queries durch selectinload(Item.subcategory).
+        """
+        from sqlalchemy.orm import selectinload
+
+        stmt = select(Item).where(Item.order_id == order_id).options(
+            selectinload(Item.subcategory)
+        )
         result = await session_execute(stmt, session)
         return [ItemDTO.model_validate(item, from_attributes=True) for item in result.scalars().all()]
 

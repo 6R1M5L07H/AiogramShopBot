@@ -86,9 +86,9 @@ async def _handle_exact_payment(payment_dto, invoice, order, session):
 
     logging.info(f"🎉 SUCCESS: Order {order.id} marked as PAID")
 
-    # Send notification to user
+    # Send notification to user (includes invoice details + purchased items)
     user = await UserRepository.get_by_id(order.user_id, session)
-    await NotificationService.payment_success(user, invoice.invoice_number)
+    await NotificationService.payment_success(user, invoice.invoice_number, order.id, session)
 
 
 async def _handle_minor_overpayment(payment_dto, invoice, order, session):
@@ -133,9 +133,9 @@ async def _handle_minor_overpayment(payment_dto, invoice, order, session):
 
     logging.info(f"🎉 SUCCESS: Order {order.id} marked as PAID (minor overpayment forfeited)")
 
-    # Send notification to user (same as exact payment)
+    # Send notification to user (includes invoice details + purchased items)
     user = await UserRepository.get_by_id(order.user_id, session)
-    await NotificationService.payment_success(user, invoice.invoice_number)
+    await NotificationService.payment_success(user, invoice.invoice_number, order.id, session)
 
 
 async def _handle_significant_overpayment(payment_dto, invoice, order, session):
@@ -227,6 +227,7 @@ async def _handle_first_underpayment(payment_dto, invoice, order, session):
     from repositories.invoice import InvoiceRepository
     from models.invoice import InvoiceDTO
     from services.invoice import InvoiceService
+    from services.cart import normalize_crypto_amount
 
     logging.info(f"🔄 FIRST UNDERPAYMENT: Extending deadline for order {order.id}")
 
@@ -273,7 +274,10 @@ async def _handle_first_underpayment(payment_dto, invoice, order, session):
     order.expires_at = new_expires_at
 
     # Calculate remaining amount using invoice exchange rate
+    # CRITICAL: Normalize to currency's smallest unit (e.g. satoshi) to prevent
+    # floating-point precision errors that could cause false underpayment detection
     remaining_crypto = invoice.payment_amount_crypto - payment_dto.cryptoAmount
+    remaining_crypto = normalize_crypto_amount(remaining_crypto, payment_dto.cryptoCurrency)
     remaining_fiat = calculate_fiat_from_crypto(remaining_crypto, invoice)
 
     # Create new invoice for remaining amount with KryptoExpress
@@ -293,16 +297,18 @@ async def _handle_first_underpayment(payment_dto, invoice, order, session):
     logging.info(f"⏰ Order {order.id} extended until {order.expires_at}")
     logging.info(f"📋 New invoice created: {new_invoice.invoice_number}")
     logging.info(f"   Payment address: {new_invoice.payment_address}")
-    logging.info(f"   Remaining amount: {format_crypto_amount(remaining_crypto)} {payment_dto.cryptoCurrency.value} (€{remaining_fiat:.2f})")
+    logging.info(f"   Required crypto (from new invoice): {format_crypto_amount(new_invoice.payment_amount_crypto)} {payment_dto.cryptoCurrency.value} (€{remaining_fiat:.2f})")
 
     # Send notification to user with new deadline and invoice
+    # CRITICAL: Use new_invoice.payment_amount_crypto (not our calculated remaining_crypto)
+    # This ensures user sees the EXACT amount that KryptoExpress expects at the payment address
     user = await UserRepository.get_by_id(order.user_id, session)
     await NotificationService.payment_underpayment_retry(
         user=user,
         invoice_number=invoice.invoice_number,
         paid_crypto=format_crypto_amount(payment_dto.cryptoAmount),
         required_crypto=format_crypto_amount(invoice.payment_amount_crypto),
-        remaining_crypto=format_crypto_amount(remaining_crypto),
+        remaining_crypto=format_crypto_amount(new_invoice.payment_amount_crypto),  # Use actual invoice amount!
         crypto_currency=payment_dto.cryptoCurrency,
         new_invoice_number=new_invoice.invoice_number,
         new_payment_address=new_invoice.payment_address,

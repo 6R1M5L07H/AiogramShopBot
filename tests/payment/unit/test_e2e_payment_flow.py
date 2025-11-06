@@ -238,9 +238,10 @@ class TestPaymentValidationEdgeCases:
         assert net == 42.75
 
         # 5% of 0.01 EUR (edge case)
+        # Result: 0.0005 EUR rounds DOWN to 0.00 EUR (favors customer)
         penalty, net = PaymentValidator.calculate_penalty(0.01, 5.0)
-        assert abs(penalty - 0.0005) < 0.00001
-        assert abs(net - 0.0095) < 0.00001
+        assert penalty == 0.0  # Rounded down to 2 decimals
+        assert net == 0.01  # Full amount kept (no penalty applied due to rounding)
 
 
 if __name__ == "__main__":

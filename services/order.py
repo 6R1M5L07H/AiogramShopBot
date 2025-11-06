@@ -17,6 +17,7 @@ from models.cart import CartDTO
 from models.cartItem import CartItemDTO
 from models.item import ItemDTO
 from models.order import OrderDTO
+from models.user import UserDTO
 from repositories.cartItem import CartItemRepository
 from repositories.item import ItemRepository
 from repositories.order import OrderRepository
@@ -157,7 +158,6 @@ class OrderService:
         from models.buyItem import BuyItemDTO
         from repositories.buy import BuyRepository
         from repositories.buyItem import BuyItemRepository
-        from services.message import MessageService
         from services.notification import NotificationService
 
         # Get order details
@@ -210,16 +210,9 @@ class OrderService:
         await session_commit(session)
         logging.info(f"✅ Order {order_id} data committed (status=PAID, items sold, buy records created)")
 
-        # 5. Deliver items to user
-        user = await UserRepository.get_by_id(order.user_id, session)
-
-        # Create message with bought items (same format as old system)
-        items_message = MessageService.create_message_with_bought_items(items)
-
-        # Send items to user via DM (user receives their purchased items)
-        await NotificationService.send_to_user(items_message, user.telegram_id)
-
-        logging.info(f"✅ Order {order_id} completed - {len(items)} items delivered to user {user.id}")
+        # Note: Items are now delivered via NotificationService.payment_success()
+        # which sends a single combined message with invoice details + private_data
+        logging.info(f"✅ Order {order_id} completed - {len(items)} items will be delivered via payment_success notification")
 
         # Send admin notification if order has physical items awaiting shipment
         if has_physical_items:
@@ -230,7 +223,7 @@ class OrderService:
                 invoice_number = invoice.invoice_number
             else:
                 from datetime import datetime
-                invoice_number = f"ORDER-{datetime.now().year}-{order_id:06d}"
+                invoice_number = "N/A"
 
             await NotificationService.order_awaiting_shipment(
                 user_id=order.user_id,
@@ -240,11 +233,111 @@ class OrderService:
             logging.info(f"📢 Admin notification sent: Order {order_id} awaiting shipment")
 
     @staticmethod
+    def _calculate_partial_refund(
+        items: list['ItemDTO'],
+        order_total: float,
+        shipping_cost: float,
+        reason: 'OrderCancelReason',
+        within_grace_period: bool
+    ) -> dict:
+        """
+        Calculate refund for mixed orders (digital + physical items).
+
+        Rules:
+        1. Digital items (already delivered): NOT refundable
+        2. Physical items (not shipped): Refundable
+        3. Shipping cost: Refundable if physical items cancelled
+        4. Penalty: Applied only to refundable amount (physical + shipping)
+
+        Args:
+            items: List of ItemDTOs in the order
+            order_total: Total order amount (items + shipping)
+            shipping_cost: Shipping cost for physical items
+            reason: Cancellation reason (affects penalty)
+            within_grace_period: True if within grace period (no penalty)
+
+        Returns:
+            dict with refund breakdown:
+            {
+                'digital_amount': float,      # Amount for digital items (NOT refunded)
+                'physical_amount': float,     # Amount for physical items (refundable)
+                'shipping_cost': float,       # Shipping cost (refundable if physical)
+                'refundable_base': float,     # physical + shipping (before penalty)
+                'penalty_percent': float,     # Penalty percentage applied
+                'penalty_amount': float,      # Penalty amount (rounded down)
+                'final_refund': float,        # Actual refund amount
+                'has_digital_items': bool,    # True if order contains digital items
+                'has_physical_items': bool,   # True if order contains physical items
+                'is_mixed_order': bool        # True if both digital and physical
+            }
+        """
+        from services.payment_validator import PaymentValidator
+
+        digital_total = 0.0
+        physical_total = 0.0
+        has_digital = False
+        has_physical = False
+
+        for item in items:
+            # Each item represents 1 unit (no quantity field in ItemDTO)
+            item_total = item.price
+            if item.is_physical:
+                physical_total += item_total
+                has_physical = True
+            else:
+                digital_total += item_total
+                has_digital = True
+
+        is_mixed = has_digital and has_physical
+
+        # Shipping cost only refunded if physical items present
+        refundable_base = physical_total
+        if has_physical:
+            refundable_base += shipping_cost
+
+        # Determine penalty
+        # NO penalty: Admin cancellation OR User within grace period
+        # YES penalty: User after grace period OR Timeout
+        apply_penalty = False
+        penalty_percent = 0.0
+
+        if reason == OrderCancelReason.ADMIN:
+            apply_penalty = False
+        elif reason == OrderCancelReason.USER:
+            apply_penalty = not within_grace_period
+        elif reason == OrderCancelReason.TIMEOUT:
+            apply_penalty = True
+
+        if apply_penalty:
+            penalty_percent = config.PAYMENT_LATE_PENALTY_PERCENT
+            penalty_amount, final_refund = PaymentValidator.calculate_penalty(
+                refundable_base,
+                penalty_percent
+            )
+        else:
+            penalty_amount = 0.0
+            final_refund = refundable_base
+
+        return {
+            'digital_amount': round(digital_total, 2),
+            'physical_amount': round(physical_total, 2),
+            'shipping_cost': round(shipping_cost, 2),
+            'refundable_base': round(refundable_base, 2),
+            'penalty_percent': penalty_percent,
+            'penalty_amount': round(penalty_amount, 2),
+            'final_refund': round(final_refund, 2),
+            'has_digital_items': has_digital,
+            'has_physical_items': has_physical,
+            'is_mixed_order': is_mixed
+        }
+
+    @staticmethod
     async def cancel_order(
         order_id: int,
         reason: 'OrderCancelReason',
         session: AsyncSession | Session,
-        refund_wallet: bool = True
+        refund_wallet: bool = True,
+        custom_reason: str = None
     ) -> tuple[bool, str]:
         """
         Cancels an order with the specified reason.
@@ -254,6 +347,7 @@ class OrderService:
             reason: Reason for cancellation (USER, TIMEOUT, ADMIN)
             session: Database session
             refund_wallet: Whether to refund wallet balance (False if payment handler already credited)
+            custom_reason: Optional custom reason text (used for ADMIN cancellations)
 
         Returns:
             tuple[bool, str]: (within_grace_period, message)
@@ -267,11 +361,22 @@ class OrderService:
         from enums.order_cancel_reason import OrderCancelReason
         import logging
 
+        # Get invoices first for logging
+        from repositories.invoice import InvoiceRepository
+        invoices_temp = await InvoiceRepository.get_all_by_order_id(order_id, session)
+        invoice_num_log = invoices_temp[0].invoice_number if invoices_temp else "N/A"
+
+        logging.info(f"🔄 CANCEL ORDER START: Order {order_id} (Invoice: {invoice_num_log}), Reason: {reason.value}, Refund Wallet: {refund_wallet}")
+
         # Get order
         order = await OrderRepository.get_by_id(order_id, session)
 
+        logging.info(f"📋 Order {order_id} loaded: Status={order.status.value}, Total={order.total_price}€, Wallet Used={order.wallet_used}€")
+
+        from exceptions.order import OrderNotFoundException
+
         if not order:
-            raise ValueError("Order not found")
+            raise OrderNotFoundException(order_id)
 
         # Determine which statuses can be cancelled
         cancellable_statuses = [
@@ -285,14 +390,288 @@ class OrderService:
         if reason == OrderCancelReason.ADMIN:
             cancellable_statuses.append(OrderStatus.PAID_AWAITING_SHIPMENT)
 
+        from exceptions.order import InvalidOrderStateException
+
         if order.status not in cancellable_statuses:
-            raise ValueError("Order cannot be cancelled (Status: {})".format(order.status.value))
+            raise InvalidOrderStateException(
+                order_id=order_id,
+                current_state=order.status.value,
+                required_state="PENDING_PAYMENT or PAID"
+            )
 
         # Check grace period (only relevant for USER cancellation)
         time_elapsed = (datetime.utcnow() - order.created_at).total_seconds() / 60  # Minutes
         within_grace_period = time_elapsed <= config.ORDER_CANCEL_GRACE_PERIOD_MINUTES
 
-        # Release reserved items - restore stock
+        # Get ALL invoices for notification (handles partial payments with multiple invoices)
+        from repositories.invoice import InvoiceRepository
+        invoices = await InvoiceRepository.get_all_by_order_id(order_id, session)
+
+        # For backward compatibility with notification methods that expect single invoice
+        invoice = invoices[0] if invoices else None
+
+        if invoices:
+            # Use first invoice number for notification, or concatenate all (if multiple)
+            invoice_number = invoices[0].invoice_number
+            if len(invoices) > 1:
+                invoice_number = " / ".join(inv.invoice_number for inv in invoices)
+        else:
+            # Fallback for orders without invoice (e.g., cancelled before payment)
+            from datetime import datetime
+            invoice_number = "N/A"
+
+        # BUILD NOTIFICATION STRINGS FIRST (before items are released)
+        # This ensures items still have order_id and can be loaded
+        notification_messages = {}  # Store pre-built messages
+
+        # Handle wallet refund/penalty logic
+        # Three scenarios:
+        # 1. order.wallet_used > 0: Refund wallet (with or without penalty)
+        # 2. order.wallet_used = 0 BUT user has wallet balance AND penalty applies: Charge reservation fee
+        # 3. order.wallet_used = 0 AND (no wallet OR no penalty): No fee
+        wallet_refund_info = None
+        user = await UserRepository.get_by_id(order.user_id, session)
+
+        # Determine if penalty should be applied
+        # NO penalty: Admin cancellation OR User within grace period
+        # YES penalty: User after grace period OR Timeout
+        apply_penalty = False
+        if reason == OrderCancelReason.ADMIN:
+            apply_penalty = False  # Admin cancels never have penalty
+        elif reason == OrderCancelReason.USER:
+            apply_penalty = not within_grace_period  # User penalty only outside grace period
+        elif reason == OrderCancelReason.TIMEOUT:
+            apply_penalty = True  # Timeout always has penalty (strike)
+
+        # Load items to check if this is a mixed order (digital + physical)
+        items = await ItemRepository.get_by_order_id(order_id, session)
+
+        logging.info(f"📦 Order {order_id} (Invoice: {invoice_number}): Loaded {len(items)} items")
+
+        # Calculate partial refund for mixed orders (digital items NOT refundable)
+        partial_refund_info = OrderService._calculate_partial_refund(
+            items=items,
+            order_total=order.total_price,
+            shipping_cost=order.shipping_cost or 0.0,
+            reason=reason,
+            within_grace_period=within_grace_period
+        )
+
+        logging.info(f"📊 Order {order_id} (Invoice: {invoice_number}): Partial refund calculated - is_mixed={partial_refund_info['is_mixed_order']}")
+
+        # Calculate total paid amount (wallet + crypto payments)
+        # Wallet payments: Stored in order.wallet_used field (not in PaymentTransaction table)
+        # Crypto payments: Stored in PaymentTransaction table
+        from repositories.payment_transaction import PaymentTransactionRepository
+
+        total_paid_fiat = 0.0
+
+        # Add wallet payment (if any)
+        if order.wallet_used > 0:
+            total_paid_fiat += order.wallet_used
+
+        # Add crypto payments from PaymentTransaction table (handles partial/mixed payments)
+        for inv in invoices:
+            # Check if this invoice has any payment transactions
+            transactions = await PaymentTransactionRepository.get_by_invoice_id(inv.id, session)
+            if transactions:
+                # Sum up all payments for this invoice
+                invoice_paid = sum(tx.fiat_amount for tx in transactions)
+                total_paid_fiat += round(invoice_paid, 2)
+
+        total_paid_fiat = round(total_paid_fiat, 2)
+
+        # For mixed orders: Use partial refund calculation (digital items NOT refunded)
+        # For non-mixed orders: Use full refund (existing behavior)
+        if partial_refund_info['is_mixed_order']:
+            # Mixed order: Only refund physical items + shipping
+            refundable_amount = partial_refund_info['final_refund']
+            logging.info(
+                f"🔄 Mixed order cancellation: Digital={partial_refund_info['digital_amount']}€ (NOT refunded), "
+                f"Physical={partial_refund_info['physical_amount']}€, "
+                f"Shipping={partial_refund_info['shipping_cost']}€, "
+                f"Refundable={refundable_amount}€"
+            )
+        else:
+            # Non-mixed order: Use standard refund calculation based on total_paid_fiat
+            refundable_amount = total_paid_fiat
+
+        # Case 1: Payment was made (wallet or crypto) - refund with/without penalty
+        logging.info(f"💰 REFUND CHECK for Order {order_id} (Invoice: {invoice_number}): refund_wallet={refund_wallet}, refundable_amount={refundable_amount}€, total_paid_fiat={total_paid_fiat}€, apply_penalty={apply_penalty}")
+
+        if refund_wallet and refundable_amount > 0:
+            logging.info(f"💰 ENTERING CASE 1: Refund wallet with payment made")
+            # For mixed orders: Penalty already calculated in partial_refund_info
+            # For non-mixed orders: Calculate penalty here
+            if partial_refund_info['is_mixed_order']:
+                # Mixed order: Use pre-calculated values from partial_refund_info
+                penalty_amount = partial_refund_info['penalty_amount']
+                refund_amount = partial_refund_info['final_refund']
+                penalty_percent = partial_refund_info['penalty_percent']
+                base_amount = partial_refund_info['refundable_base']
+            elif apply_penalty:
+                # Non-mixed order with penalty: Calculate now
+                from services.payment_validator import PaymentValidator
+                penalty_percent = config.PAYMENT_LATE_PENALTY_PERCENT
+                penalty_amount, refund_amount = PaymentValidator.calculate_penalty(
+                    total_paid_fiat,
+                    penalty_percent
+                )
+                base_amount = total_paid_fiat
+            else:
+                # No penalty
+                penalty_amount = 0.0
+                refund_amount = refundable_amount
+                penalty_percent = 0.0
+                base_amount = total_paid_fiat
+
+            # Apply refund to user wallet
+            old_balance = user.top_up_amount
+            user.top_up_amount = round(user.top_up_amount + refund_amount, 2)
+            new_balance = user.top_up_amount
+
+            logging.info(f"💰 REFUND CALCULATION: User {user.id} wallet {old_balance}€ + {refund_amount}€ = {new_balance}€")
+
+            await UserRepository.update(user, session)
+
+            logging.info(f"💰 REFUND APPLIED: User {user.id} wallet updated to {new_balance}€ (awaiting commit)")
+
+            if penalty_amount > 0:
+                logging.info(
+                    f"💰 Refunded {refund_amount} EUR to user {user.id} wallet "
+                    f"({reason.value} cancellation, {penalty_percent}% penalty applied, "
+                    f"base: {base_amount}€)"
+                )
+            else:
+                logging.info(
+                    f"💰 Refunded {refund_amount} EUR to user {user.id} wallet "
+                    f"({reason.value} cancellation, no penalty)"
+                )
+
+            wallet_refund_info = {
+                'original_amount': total_paid_fiat,  # Total paid (wallet + crypto)
+                'base_amount': base_amount,  # Amount before penalty
+                'penalty_amount': penalty_amount,
+                'refund_amount': refund_amount,
+                'penalty_percent': penalty_percent,
+                'reason': reason.value,
+                'is_mixed_order': partial_refund_info['is_mixed_order'],
+                'partial_refund_info': partial_refund_info if partial_refund_info['is_mixed_order'] else None
+            }
+
+            # Add strike for late cancellation/timeout (if penalty applied)
+            if apply_penalty:
+                logging.info(f"⚠️ ADDING STRIKE: User {user.id}, Order {order_id}, Reason: {reason.value}")
+                await OrderService._add_strike_and_check_ban(
+                    user_id=user.id,
+                    order_id=order_id,
+                    strike_type=StrikeType.TIMEOUT if reason == OrderCancelReason.TIMEOUT else StrikeType.LATE_CANCEL,
+                    session=session
+                )
+                logging.info(f"⚠️ STRIKE PROCESSING COMPLETE: User {user.id}")
+
+        # Case 2: Wallet NOT used in order BUT user has balance AND penalty applies
+        # Charge "reservation fee" for blocking items without payment
+        elif apply_penalty and user.top_up_amount > 0:
+            logging.info(f"💸 ENTERING CASE 2: Charge reservation fee (no payment made but wallet has balance)")
+            from services.payment_validator import PaymentValidator
+            penalty_percent = config.PAYMENT_LATE_PENALTY_PERCENT
+
+            # Calculate fee based on order total (capped at wallet balance)
+            base_amount = min(order.total_price, user.top_up_amount)
+            penalty_amount, _ = PaymentValidator.calculate_penalty(base_amount, penalty_percent)
+
+            # Deduct reservation fee from wallet
+            user.top_up_amount = round(user.top_up_amount - penalty_amount, 2)
+            await UserRepository.update(user, session)
+
+            logging.info(f"💸 Charged {penalty_amount} EUR reservation fee from user {user.id} wallet ({reason.value} cancellation, no wallet used but penalty applies)")
+
+            wallet_refund_info = {
+                'original_amount': 0.0,
+                'penalty_amount': penalty_amount,
+                'refund_amount': 0.0,
+                'penalty_percent': penalty_percent,
+                'reason': f"{reason.value}_reservation_fee",
+                'base_amount': base_amount
+            }
+
+        # Case 3: No wallet used AND (no wallet balance OR no penalty)
+        # No financial consequence, just release items
+        else:
+            logging.info(f"ℹ️ ENTERING CASE 3: No wallet refund/charge (no payment made, no wallet balance, or no penalty)")
+
+        # Set order status based on cancel reason
+        if reason == OrderCancelReason.USER:
+            new_status = OrderStatus.CANCELLED_BY_USER
+            message = "Order successfully cancelled"
+            # Add strike if cancelled outside grace period
+            if not within_grace_period:
+                await OrderService._add_strike_and_check_ban(
+                    user_id=user.id,
+                    order_id=order_id,
+                    strike_type=StrikeType.LATE_CANCEL,
+                    session=session
+                )
+        elif reason == OrderCancelReason.TIMEOUT:
+            new_status = OrderStatus.TIMEOUT
+            within_grace_period = False  # Timeouts never count as grace period
+            message = "Order cancelled due to timeout"
+            # Add strike for timeout (if not already added above)
+            # Check if wallet was used (strike already added in wallet refund section)
+            if order.wallet_used == 0:
+                await OrderService._add_strike_and_check_ban(
+                    user_id=user.id,
+                    order_id=order_id,
+                    strike_type=StrikeType.TIMEOUT,
+                    session=session
+                )
+        elif reason == OrderCancelReason.ADMIN:
+            new_status = OrderStatus.CANCELLED_BY_ADMIN
+            within_grace_period = True  # Admin cancels don't cause strikes
+            message = "Order cancelled by admin"
+        else:
+            raise ValueError(f"Unknown cancel reason: {reason}")
+
+        # BUILD NOTIFICATION MESSAGES (before releasing items)
+        # Items still have order_id at this point, so notifications can load them
+        from services.notification import NotificationService
+        from utils.localizator import Localizator
+
+        if wallet_refund_info:
+            # Wallet-based notification (includes strike info if penalty was applied)
+            notification_messages['wallet_refund'] = await NotificationService.build_order_cancelled_wallet_refund_message(
+                user=user,
+                order=order,
+                invoice=invoice,
+                invoice_number=invoice_number,
+                refund_info=wallet_refund_info,
+                currency_sym=Localizator.get_currency_symbol(),
+                session=session,
+                custom_reason=custom_reason
+            )
+        elif not within_grace_period and reason != OrderCancelReason.ADMIN:
+            # No wallet involved but strike was given
+            notification_messages['strike_only'] = await NotificationService.build_order_cancelled_strike_only_message(
+                user=user,
+                invoice_number=invoice_number,
+                reason=reason,
+                custom_reason=custom_reason
+            )
+        elif reason == OrderCancelReason.ADMIN:
+            # Admin cancellation (with or without custom reason)
+            notification_messages['admin_cancel'] = await NotificationService.build_order_cancelled_by_admin_message(
+                user=user,
+                invoice_number=invoice_number,
+                custom_reason=custom_reason,  # Can be None
+                order=order,
+                session=session
+            )
+
+        # UPDATE ORDER STATUS
+        await OrderRepository.update_status(order_id, new_status, session)
+
+        # RELEASE ITEMS AND RESTORE STOCK
         items = await ItemRepository.get_by_order_id(order_id, session)
 
         # Group items by subcategory and price for stock restoration
@@ -341,165 +720,13 @@ class OrderService:
             item.order_id = None
         await ItemRepository.update(items, session)
 
-        # Handle wallet refund/penalty logic
-        # Three scenarios:
-        # 1. order.wallet_used > 0: Refund wallet (with or without penalty)
-        # 2. order.wallet_used = 0 BUT user has wallet balance AND penalty applies: Charge reservation fee
-        # 3. order.wallet_used = 0 AND (no wallet OR no penalty): No fee
-        wallet_refund_info = None
-        user = await UserRepository.get_by_id(order.user_id, session)
-
-        # Determine if penalty should be applied
-        # NO penalty: Admin cancellation OR User within grace period
-        # YES penalty: User after grace period OR Timeout
-        apply_penalty = False
-        if reason == OrderCancelReason.ADMIN:
-            apply_penalty = False  # Admin cancels never have penalty
-        elif reason == OrderCancelReason.USER:
-            apply_penalty = not within_grace_period  # User penalty only outside grace period
-        elif reason == OrderCancelReason.TIMEOUT:
-            apply_penalty = True  # Timeout always has penalty (strike)
-
-        # Case 1: Wallet was already used in order (refund with/without penalty)
-        if refund_wallet and order.wallet_used > 0:
-            if apply_penalty:
-                # Apply penalty (configurable percentage)
-                # Use calculate_penalty() to ensure correct rounding (penalty rounded DOWN)
-                from services.payment_validator import PaymentValidator
-                penalty_percent = config.PAYMENT_LATE_PENALTY_PERCENT
-                penalty_amount, refund_amount = PaymentValidator.calculate_penalty(
-                    order.wallet_used,
-                    penalty_percent
-                )
-
-                user.top_up_amount = round(user.top_up_amount + refund_amount, 2)
-                await UserRepository.update(user, session)
-
-                logging.info(f"💰 Refunded {refund_amount} EUR to user {user.id} wallet ({reason.value} cancellation, {penalty_percent}% penalty applied)")
-
-                wallet_refund_info = {
-                    'original_amount': order.wallet_used,
-                    'penalty_amount': penalty_amount,
-                    'refund_amount': refund_amount,
-                    'penalty_percent': penalty_percent,
-                    'reason': reason.value
-                }
-                # Add strike for late cancellation/timeout
-                await OrderService._add_strike_and_check_ban(
-                    user_id=user.id,
-                    order_id=order_id,
-                    strike_type=StrikeType.TIMEOUT if reason == OrderCancelReason.TIMEOUT else StrikeType.LATE_CANCEL,
-                    session=session
-                )
-            else:
-                # Full refund for: ADMIN or USER within grace period (rounded to 2 decimals)
-                user.top_up_amount = round(user.top_up_amount + order.wallet_used, 2)
-                await UserRepository.update(user, session)
-
-                logging.info(f"💰 Refunded {order.wallet_used} EUR to user {user.id} wallet ({reason.value} cancellation, no penalty)")
-
-                wallet_refund_info = {
-                    'original_amount': order.wallet_used,
-                    'penalty_amount': 0.0,
-                    'refund_amount': order.wallet_used,
-                    'penalty_percent': 0,
-                    'reason': reason.value
-                }
-
-        # Case 2: Wallet NOT used in order BUT user has balance AND penalty applies
-        # Charge "reservation fee" for blocking items without payment
-        elif apply_penalty and user.top_up_amount > 0:
-            from services.payment_validator import PaymentValidator
-            penalty_percent = config.PAYMENT_LATE_PENALTY_PERCENT
-
-            # Calculate fee based on order total (capped at wallet balance)
-            base_amount = min(order.total_price, user.top_up_amount)
-            penalty_amount, _ = PaymentValidator.calculate_penalty(base_amount, penalty_percent)
-
-            # Deduct reservation fee from wallet
-            user.top_up_amount = round(user.top_up_amount - penalty_amount, 2)
-            await UserRepository.update(user, session)
-
-            logging.info(f"💸 Charged {penalty_amount} EUR reservation fee from user {user.id} wallet ({reason.value} cancellation, no wallet used but penalty applies)")
-
-            wallet_refund_info = {
-                'original_amount': 0.0,
-                'penalty_amount': penalty_amount,
-                'refund_amount': 0.0,
-                'penalty_percent': penalty_percent,
-                'reason': f"{reason.value}_reservation_fee",
-                'base_amount': base_amount
-            }
-
-        # Case 3: No wallet used AND (no wallet balance OR no penalty)
-        # No financial consequence, just release items
-
-        # Set order status based on cancel reason
-        if reason == OrderCancelReason.USER:
-            new_status = OrderStatus.CANCELLED_BY_USER
-            message = "Order successfully cancelled"
-            # Add strike if cancelled outside grace period
-            if not within_grace_period:
-                await OrderService._add_strike_and_check_ban(
-                    user_id=user.id,
-                    order_id=order_id,
-                    strike_type=StrikeType.LATE_CANCEL,
-                    session=session
-                )
-        elif reason == OrderCancelReason.TIMEOUT:
-            new_status = OrderStatus.TIMEOUT
-            within_grace_period = False  # Timeouts never count as grace period
-            message = "Order cancelled due to timeout"
-            # Add strike for timeout (if not already added above)
-            # Check if wallet was used (strike already added in wallet refund section)
-            if order.wallet_used == 0:
-                await OrderService._add_strike_and_check_ban(
-                    user_id=user.id,
-                    order_id=order_id,
-                    strike_type=StrikeType.TIMEOUT,
-                    session=session
-                )
-        elif reason == OrderCancelReason.ADMIN:
-            new_status = OrderStatus.CANCELLED_BY_ADMIN
-            within_grace_period = True  # Admin cancels don't cause strikes
-            message = "Order cancelled by admin"
-        else:
-            raise ValueError(f"Unknown cancel reason: {reason}")
-
-        await OrderRepository.update_status(order_id, new_status, session)
-
-        # Send notification to user
-        from services.notification import NotificationService
-        from utils.localizator import Localizator
-        from repositories.invoice import InvoiceRepository
-
-        # Get invoice number for notification
-        invoice = await InvoiceRepository.get_by_order_id(order_id, session)
-        if invoice:
-            invoice_number = invoice.invoice_number
-        else:
-            # Fallback for orders without invoice (should not happen in normal flow)
-            from datetime import datetime
-            invoice_number = f"ORDER-{datetime.now().year}-{order_id:06d}"
-
-        if wallet_refund_info:
-            # Wallet-based notification (includes strike info if penalty was applied)
-            await NotificationService.notify_order_cancelled_wallet_refund(
-                user=user,
-                order=order,
-                invoice=invoice,
-                invoice_number=invoice_number,
-                refund_info=wallet_refund_info,
-                currency_sym=Localizator.get_currency_symbol(),
-                session=session
-            )
-        elif not within_grace_period and reason != OrderCancelReason.ADMIN:
-            # No wallet involved but strike was given - notify user about strike
-            await NotificationService.notify_order_cancelled_strike_only(
-                user=user,
-                invoice_number=invoice_number,
-                reason=reason
-            )
+        # SEND NOTIFICATIONS (only after successful item release)
+        if 'wallet_refund' in notification_messages:
+            await NotificationService.send_to_user(notification_messages['wallet_refund'], user.telegram_id)
+        elif 'strike_only' in notification_messages:
+            await NotificationService.send_to_user(notification_messages['strike_only'], user.telegram_id)
+        elif 'admin_cancel' in notification_messages:
+            await NotificationService.send_to_user(notification_messages['admin_cancel'], user.telegram_id)
 
         return within_grace_period, message
 
@@ -516,294 +743,6 @@ class OrderService:
         """
         from enums.order_cancel_reason import OrderCancelReason
         return await OrderService.cancel_order(order_id, OrderCancelReason.USER, session)
-
-    # ========================================
-    # Handler Methods (moved from CartService)
-    # ========================================
-
-    @staticmethod
-    async def create_order(
-        callback: CallbackQuery,
-        session: AsyncSession | Session,
-        state=None
-    ) -> tuple[str, InlineKeyboardBuilder]:
-        """
-        Level 0: Create Order from Cart
-
-        Flow:
-        1. Get cart items and create CartDTO
-        2. Call orchestrator to create order with stock reservation
-        3. Commit and clear cart
-        4. UI Fork based on result:
-           - Stock adjustments → Show confirmation screen
-           - Physical items → Request shipping address
-           - Digital items → Redirect to payment
-
-        Returns:
-            Tuple of (message, keyboard)
-        """
-        # 1. Get cart items
-        user = await UserRepository.get_by_tgid(callback.from_user.id, session)
-        cart_items = await CartItemRepository.get_all_by_user_id(user.id, session)
-
-        if not cart_items:
-            kb_builder = InlineKeyboardBuilder()
-            kb_builder.button(
-                text=Localizator.get_text(BotEntity.COMMON, "back_button"),
-                callback_data=CartCallback.create(0)  # Back to Cart (cross-domain)
-            )
-            return Localizator.get_text(BotEntity.USER, "no_cart_items"), kb_builder
-
-        try:
-            # 2. Create order via orchestrator
-            cart_dto = CartDTO(user_id=user.id, items=cart_items)
-            order, stock_adjustments, has_physical_items = await OrderService.orchestrate_order_creation(
-                cart_dto=cart_dto,
-                session=session
-            )
-
-            # Save order_id to FSM for later use
-            if state:
-                await state.update_data(order_id=order.id)
-
-            # Commit order
-            await session_commit(session)
-
-            # 3. UI Fork: Stock adjustments?
-            if stock_adjustments:
-                # Show confirmation screen - cart NOT cleared yet (user might cancel)
-                # Store adjustments in FSM state for potential back navigation
-                if state:
-                    import json
-                    await state.update_data(
-                        stock_adjustments=json.dumps(stock_adjustments),
-                        order_id=order.id
-                    )
-                return await OrderService.show_stock_adjustment_confirmation(
-                    callback, order, stock_adjustments, session
-                )
-
-            # 4. Clear cart (order successfully created, no adjustments)
-            for cart_item in cart_items:
-                await CartItemRepository.remove_from_cart(cart_item.id, session)
-            await session_commit(session)
-
-            # 5. UI Fork: Physical items?
-            if has_physical_items:
-                # Request shipping address
-                from handlers.user.shipping_states import ShippingAddressStates
-                await state.set_state(ShippingAddressStates.waiting_for_address)
-
-                message_text = Localizator.get_text(BotEntity.USER, "shipping_address_request").format(
-                    retention_days=config.DATA_RETENTION_DAYS
-                )
-                kb_builder = InlineKeyboardBuilder()
-                kb_builder.button(
-                    text=Localizator.get_text(BotEntity.COMMON, "cancel"),
-                    callback_data=OrderCallback.create(level=4, order_id=order.id)  # Cancel Order
-                )
-                return message_text, kb_builder
-
-            # 6. UI Fork: Digital items → Redirect directly to payment (no intermediate screen)
-            return await OrderService.process_payment(callback, session, state, order_id=order.id)
-
-        except ValueError as e:
-            # All items out of stock - remove them from cart immediately to prevent loop
-            logging.info(f"🧹 Removing all out-of-stock items from cart for user {user.id}")
-            for cart_item in cart_items:
-                await CartItemRepository.remove_from_cart(cart_item.id, session)
-            await session_commit(session)
-
-            kb_builder = InlineKeyboardBuilder()
-            kb_builder.button(
-                text=Localizator.get_text(BotEntity.USER, "back_to_cart"),
-                callback_data=CartCallback.create(0)  # Back to Cart (cross-domain)
-            )
-            message_text = (
-                f"❌ <b>{Localizator.get_text(BotEntity.USER, 'all_items_out_of_stock')}</b>\n\n"
-                f"{Localizator.get_text(BotEntity.USER, 'all_items_out_of_stock_desc')}"
-            )
-            return message_text, kb_builder
-
-    @staticmethod
-    async def process_payment(
-        callback: CallbackQuery,
-        session: AsyncSession | Session,
-        state=None,
-        order_id: int = None
-    ) -> tuple[str, InlineKeyboardBuilder]:
-        """
-        Level 4: Payment Processing Router
-
-        Smart payment flow:
-        1. First checks if wallet can cover everything
-        2. If yes: processes payment immediately (no crypto selection needed)
-        3. If no: shows crypto selection, then processes with crypto payment
-
-        Three modes:
-        A. First visit + wallet covers all: Direct wallet payment
-        B. First visit + wallet insufficient: Show crypto selection
-        C. Crypto selected: Process payment with crypto
-
-        Args:
-            order_id: Optional order_id to use directly (when called from Cart domain)
-
-        Returns:
-            Tuple of (message, keyboard)
-        """
-        from services.payment import PaymentService
-        from enums.cryptocurrency import Cryptocurrency
-        from repositories.invoice import InvoiceRepository
-
-        # Get order_id from parameter, callback, or FSM (in that order)
-        unpacked_cb = None
-        if not order_id:
-            # Try to unpack as OrderCallback first, fall back to CartCallback
-            try:
-                unpacked_cb = OrderCallback.unpack(callback.data)
-                order_id = unpacked_cb.order_id
-            except (ValueError, TypeError):
-                # If that fails, try CartCallback (which also has order_id field)
-                unpacked_cb = CartCallback.unpack(callback.data)
-                order_id = unpacked_cb.order_id
-
-            if order_id == -1 and state:
-                state_data = await state.get_data()
-                order_id = state_data.get("order_id")
-
-        if not order_id or order_id == -1:
-            # No order found - error
-            kb_builder = InlineKeyboardBuilder()
-            kb_builder.button(
-                text=Localizator.get_text(BotEntity.COMMON, "back_button"),
-                callback_data=CartCallback.create(0)  # Back to Cart (cross-domain)
-            )
-            return Localizator.get_text(BotEntity.USER, "order_not_found_error"), kb_builder
-
-        # Check if invoice already exists for this order
-        existing_invoice = await InvoiceRepository.get_by_order_id(order_id, session)
-
-        if existing_invoice:
-            # Invoice already exists - show existing payment screen (no new crypto selection!)
-            order = await OrderRepository.get_by_id(order_id, session)
-
-            # Format payment screen with existing invoice
-            payment_message = await OrderService._format_payment_screen(
-                invoice=existing_invoice,
-                order=order,
-                session=session
-            )
-
-            kb_builder = InlineKeyboardBuilder()
-            kb_builder.button(
-                text=Localizator.get_text(BotEntity.USER, "cancel_order"),
-                callback_data=OrderCallback.create(level=4, order_id=order_id)
-            )
-
-            return payment_message, kb_builder
-
-        # Check if crypto already selected (only if callback was unpacked)
-        crypto_selected = unpacked_cb and unpacked_cb.cryptocurrency and unpacked_cb.cryptocurrency != Cryptocurrency.PENDING_SELECTION
-
-        # Mode A/B: First visit - Check wallet balance first
-        if not crypto_selected:
-            # Get order and user to check wallet balance
-            order = await OrderRepository.get_by_id(order_id, session)
-            user = await UserRepository.get_by_id(order.user_id, session)
-            wallet_balance = user.top_up_amount
-            order_total = order.total_price
-
-            # If wallet covers everything, process payment immediately
-            if wallet_balance >= order_total:
-                # Mode A: Direct wallet payment (use BTC as dummy, won't be used)
-                try:
-                    invoice, needs_crypto_payment = await PaymentService.orchestrate_payment_processing(
-                        order_id=order_id,
-                        crypto_currency=Cryptocurrency.BTC,  # Dummy value, wallet covers all
-                        session=session
-                    )
-
-                    # Clear FSM state
-                    if state:
-                        await state.clear()
-
-                    # Show completion message with full invoice details
-                    kb_builder = InlineKeyboardBuilder()
-                    message_text = await OrderService._format_wallet_payment_invoice(
-                        invoice=invoice,
-                        order=order,
-                        session=session
-                    )
-                    return message_text, kb_builder
-
-                except ValueError as e:
-                    # Error during payment processing
-                    kb_builder = InlineKeyboardBuilder()
-                    kb_builder.button(
-                        text=Localizator.get_text(BotEntity.COMMON, "back_button"),
-                        callback_data=OrderCallback.create(0)
-                    )
-                    return Localizator.get_text(BotEntity.USER, "payment_processing_error").format(error=str(e)), kb_builder
-            else:
-                # Mode B: Wallet insufficient - Show crypto selection
-                from services.cart import CartService
-                return await CartService._show_crypto_selection(order_id)
-
-        # Mode C: Crypto selected - Process payment
-        if not unpacked_cb or not unpacked_cb.cryptocurrency:
-            # Should never happen (crypto_selected would be False), but safety check
-            from services.cart import CartService
-            return await CartService._show_crypto_selection(order_id)
-
-        try:
-            invoice, needs_crypto_payment = await PaymentService.orchestrate_payment_processing(
-                order_id=order_id,
-                crypto_currency=unpacked_cb.cryptocurrency,
-                session=session
-            )
-
-            # Clear FSM state (order processing done)
-            if state:
-                await state.clear()
-
-            if not needs_crypto_payment:
-                # Wallet covered everything - Order PAID and completed!
-                order = await OrderRepository.get_by_id(order_id, session)
-                kb_builder = InlineKeyboardBuilder()
-                message_text = await OrderService._format_wallet_payment_invoice(
-                    invoice=invoice,
-                    order=order,
-                    session=session
-                )
-                return message_text, kb_builder
-
-            else:
-                # Wallet insufficient - Show payment screen with QR code
-                order = await OrderRepository.get_by_id(order_id, session)
-
-                # Format payment details
-                payment_message = await OrderService._format_payment_screen(
-                    invoice=invoice,
-                    order=order,
-                    session=session
-                )
-
-                kb_builder = InlineKeyboardBuilder()
-                kb_builder.button(
-                    text=Localizator.get_text(BotEntity.USER, "cancel_order"),
-                    callback_data=OrderCallback.create(level=4, order_id=order_id)  # Cancel Order = Level 4
-                )
-
-                return payment_message, kb_builder
-
-        except ValueError as e:
-            # Error during payment processing
-            kb_builder = InlineKeyboardBuilder()
-            kb_builder.button(
-                text=Localizator.get_text(BotEntity.COMMON, "back_button"),
-                callback_data=OrderCallback.create(0)
-            )
-            return Localizator.get_text(BotEntity.USER, "payment_processing_error").format(error=str(e)), kb_builder
 
     @staticmethod
     async def reenter_shipping_address(
@@ -934,8 +873,14 @@ class OrderService:
         # Keep order_id in state for payment processing
         # State will be cleared after successful payment
 
+        # Store order_id in FSM state so process_payment can retrieve it
+        if state:
+            await state.update_data(order_id=order_id)
+
         # Directly proceed to payment processing (no intermediate screen)
-        return await OrderService.process_payment(callback, session, state)
+        from handlers.user.order import process_payment
+        kwargs = {"callback": callback, "session": session, "state": state}
+        return await process_payment(**kwargs)
 
     @staticmethod
     async def show_stock_adjustment_confirmation(
@@ -1343,8 +1288,15 @@ class OrderService:
             for cart_item in cart_items:
                 await CartItemRepository.remove_from_cart(cart_item.id, session)
 
+            # Get invoice for logging
+            from repositories.invoice import InvoiceRepository
+            invoices_commit = await InvoiceRepository.get_all_by_order_id(order_id, session)
+            invoice_commit_log = invoices_commit[0].invoice_number if invoices_commit else "N/A"
+
             # Commit changes (wallet refund, order status update, item release, cart clearing)
+            logging.info(f"💾 COMMITTING: Order {order_id} (Invoice: {invoice_commit_log}) cancellation, wallet refund, and cart clearing")
             await session_commit(session)
+            logging.info(f"✅ COMMIT SUCCESS: Order {order_id} (Invoice: {invoice_commit_log}) cancellation complete")
 
             # Clear FSM state
             if state:
@@ -1389,74 +1341,53 @@ class OrderService:
         Returns:
             Formatted message string
         """
-        from datetime import datetime
         from repositories.item import ItemRepository
         from repositories.subcategory import SubcategoryRepository
+        from services.invoice_formatter import InvoiceFormatter
 
-        # Calculate time remaining
-        time_remaining = (order.expires_at - datetime.now()).total_seconds() / 60
-
-        # Get order items and build items list
+        # Get order items
         order_items = await ItemRepository.get_by_order_id(order.id, session)
-        items_dict = {}
+
+        # Batch-load all subcategories (eliminates N+1 queries)
+        subcategory_ids = list({item.subcategory_id for item in order_items})
+        subcategories_dict = await SubcategoryRepository.get_by_ids(subcategory_ids, session)
+
+        # Build unified items list
+        items_raw = []
         for item in order_items:
-            subcategory = await SubcategoryRepository.get_by_id(item.subcategory_id, session)
-            key = (subcategory.name, item.price)
-            items_dict[key] = items_dict.get(key, 0) + 1
+            subcategory = subcategories_dict.get(item.subcategory_id)
+            if subcategory:
+                items_raw.append({
+                    'name': subcategory.name,
+                    'price': item.price,
+                    'quantity': 1,
+                    'is_physical': item.is_physical,
+                    'private_data': None
+                })
 
-        items_list = ""
-        subtotal = 0.0
-        for (name, price), qty in items_dict.items():
-            line_total = price * qty
-            items_list += f"{qty}x {name}\n  {Localizator.get_currency_symbol()}{price:.2f} × {qty}{' ' * (20 - len(name))}{Localizator.get_currency_symbol()}{line_total:.2f}\n"
-            subtotal += line_total
+        # Group items by (name, price, is_physical, private_data)
+        items_list = OrderService._group_items_for_display(items_raw)
 
-        # Shipping line
-        shipping_line = ""
-        if order.shipping_cost > 0:
-            shipping_line = f"Shipping{' ' * 18}{Localizator.get_currency_symbol()}{order.shipping_cost:.2f}\n"
+        # Format crypto amount with currency
+        crypto_amount_display = f"{invoice.payment_amount_crypto} {invoice.payment_crypto_currency.value}"
 
-        # Format wallet used (if any)
-        wallet_line = ""
-        wallet_spacing = ""
-        if order.wallet_used > 0:
-            wallet_spacing = " " * 11
-            wallet_line = Localizator.get_text(BotEntity.USER, "payment_wallet_line").format(
-                wallet_used=order.wallet_used,
-                wallet_spacing=wallet_spacing,
-                currency_sym=Localizator.get_currency_symbol()
-            )
-
-        # Calculate spacing for alignment
-        subtotal_spacing = " " * 18
-        total_spacing = " " * 23
-        crypto_spacing = " " * 11
-
-        # Format date and time
-        date_str = datetime.now().strftime("%Y-%m-%d %H:%M")
-        expires_time = order.expires_at.strftime("%H:%M")
-
-        message_text = Localizator.get_text(BotEntity.USER, "payment_required_screen").format(
+        return InvoiceFormatter.format_complete_order_view(
+            header_type="payment_screen",
             invoice_number=invoice.invoice_number,
-            date=date_str,
-            items_list=items_list,
-            subtotal=subtotal,
-            subtotal_spacing=subtotal_spacing,
-            shipping_line=shipping_line,
-            total=order.total_price,
-            total_spacing=total_spacing,
-            currency_sym=Localizator.get_currency_symbol(),
-            wallet_line=wallet_line,
-            crypto_spacing=crypto_spacing,
+            expires_at=order.expires_at,
+            items=items_list,
+            shipping_cost=order.shipping_cost,
+            total_price=order.total_price,
+            wallet_used=order.wallet_used,
+            crypto_payment_needed=invoice.fiat_amount,
             payment_address=invoice.payment_address,
-            crypto_amount=invoice.payment_amount_crypto,
-            crypto_currency=invoice.payment_crypto_currency.value,
-            crypto_amount_fiat=invoice.fiat_amount,
-            time_remaining=int(time_remaining),
-            expires_time=expires_time
+            payment_amount_crypto=crypto_amount_display,
+            use_spacing_alignment=True,
+            separate_digital_physical=True,  # Always use separated view
+            show_private_data=False,  # Don't show keys before payment
+            currency_symbol=Localizator.get_currency_symbol(),
+            entity=BotEntity.USER
         )
-
-        return message_text
 
     @staticmethod
     async def _calculate_order_totals(
@@ -1593,60 +1524,101 @@ class OrderService:
         """
         from repositories.item import ItemRepository
         from repositories.subcategory import SubcategoryRepository
-        from datetime import datetime
+        from services.invoice_formatter import InvoiceFormatter
 
         # Get order items
         order_items = await ItemRepository.get_by_order_id(order.id, session)
 
-        # Check if order contains physical items
+        # Check if order contains physical and/or digital items
         has_physical_items = any(item.is_physical for item in order_items)
+        has_digital_items = any(not item.is_physical for item in order_items)
+        is_mixed_order = has_physical_items and has_digital_items
 
-        # Build items list
-        items_dict = {}
+        # Batch-load all subcategories (eliminates N+1 queries)
+        subcategory_ids = list({item.subcategory_id for item in order_items})
+        subcategories_dict = await SubcategoryRepository.get_by_ids(subcategory_ids, session)
+
+        # Build unified items list WITH private_data (keys/codes for digital items)
+        items = []
         for item in order_items:
-            subcategory = await SubcategoryRepository.get_by_id(item.subcategory_id, session)
-            key = (subcategory.name, item.price)
-            items_dict[key] = items_dict.get(key, 0) + 1
+            subcategory = subcategories_dict.get(item.subcategory_id)
+            if subcategory:
+                items.append({
+                    'name': subcategory.name,
+                    'price': item.price,
+                    'quantity': 1,
+                    'is_physical': item.is_physical,
+                    'private_data': item.private_data  # Include keys/codes for digital items
+                })
 
-        items_list = ""
-        subtotal = 0.0
-        for (name, price), qty in items_dict.items():
-            line_total = price * qty
-            items_list += f"{qty}x {name}\n  {Localizator.get_currency_symbol()}{price:.2f} × {qty}{' ' * (20 - len(name))}{Localizator.get_currency_symbol()}{line_total:.2f}\n"
-            subtotal += line_total
+        # Group items by (name, price, is_physical, private_data)
+        # Items with identical private_data get grouped, unique ones stay separate
+        items_list = OrderService._group_items_for_display(items)
 
-        # Shipping line
-        shipping_line = ""
-        if order.shipping_cost > 0:
-            shipping_line = f"Shipping{' ' * 18}{Localizator.get_currency_symbol()}{order.shipping_cost:.2f}\n"
-
-        # Calculate spacing for alignment
-        subtotal_spacing = " " * 18
-        total_spacing = " " * 23
-        wallet_spacing = " " * 20
-
-        # Format date
-        date_str = datetime.now().strftime("%Y-%m-%d %H:%M")
-
-        # Choose localization key based on item type
+        # Choose footer based on item type
         if has_physical_items:
-            localization_key = "order_completed_wallet_only_physical"
+            footer_text = Localizator.get_text(BotEntity.USER, "order_completed_wallet_only_physical_footer")
         else:
-            localization_key = "order_completed_wallet_only_digital"
+            footer_text = Localizator.get_text(BotEntity.USER, "order_completed_wallet_only_digital_footer")
 
-        return Localizator.get_text(BotEntity.USER, localization_key).format(
+        return InvoiceFormatter.format_complete_order_view(
+            header_type="wallet_payment",
             invoice_number=invoice.invoice_number,
-            date=date_str,
-            items_list=items_list,
-            subtotal=subtotal,
-            subtotal_spacing=subtotal_spacing,
-            shipping_line=shipping_line,
-            total=order.total_price,
-            total_spacing=total_spacing,
+            items=items_list,
+            shipping_cost=order.shipping_cost,
+            total_price=order.total_price,
             wallet_used=invoice.fiat_amount,
-            wallet_spacing=wallet_spacing,
-            currency_sym=Localizator.get_currency_symbol()
+            use_spacing_alignment=True,
+            separate_digital_physical=True,  # Always use separated view
+            show_private_data=True,  # Show keys/codes immediately after wallet payment
+            show_retention_notice=True,  # Show data retention notice
+            currency_symbol=Localizator.get_currency_symbol(),
+            footer_text=footer_text,
+            entity=BotEntity.USER
         )
+
+    @staticmethod
+    def _group_items_for_display(items: list[dict]) -> list[dict]:
+        """
+        Group items for display based on (name, price, is_physical, private_data).
+
+        Items with identical attributes (including private_data) are grouped together.
+        Items with unique private_data remain separate.
+
+        Args:
+            items: List of item dicts with keys: name, price, quantity, is_physical, private_data
+
+        Returns:
+            List of grouped items with updated quantities
+        """
+        grouped = {}
+
+        for item in items:
+            # Group by all attributes including private_data
+            # This ensures items with identical private_data get grouped,
+            # but items with unique private_data (keys, codes) stay separate
+            key = (
+                item['name'],
+                item['price'],
+                item['is_physical'],
+                item.get('private_data')  # None or actual value
+            )
+
+            if key not in grouped:
+                grouped[key] = 0
+            grouped[key] += item.get('quantity', 1)
+
+        # Build result list
+        return [
+            {
+                'name': name,
+                'price': price,
+                'quantity': quantity,
+                'is_physical': is_physical,
+                'private_data': private_data
+            }
+            for (name, price, is_physical, private_data), quantity in grouped.items()
+        ]
 
     @staticmethod
     async def _add_strike_and_check_ban(
@@ -1667,6 +1639,12 @@ class OrderService:
         from models.user_strike import UserStrikeDTO
         from repositories.user_strike import UserStrikeRepository
 
+        # Check if strike for this order already exists (prevent duplicates)
+        existing_strikes = await UserStrikeRepository.get_by_order_id(order_id, session)
+        if existing_strikes:
+            logging.warning(f"⚠️ Strike for order {order_id} already exists - skipping duplicate")
+            return
+
         # Create strike record
         strike_dto = UserStrikeDTO(
             user_id=user_id,
@@ -1681,26 +1659,32 @@ class OrderService:
         strikes = await UserStrikeRepository.get_by_user_id(user_id, session)
         actual_strike_count = len(strikes)
 
+        logging.info(f"⚠️ Strike added for user {user_id}: Total strikes = {actual_strike_count}")
+
         # Update user strike count field for consistency
         user.strike_count = actual_strike_count
 
         # Check if ban threshold reached (unless admin is exempt)
-        is_admin = user.telegram_id in config.ADMIN_ID_LIST
-        admin_exempt = is_admin and config.EXEMPT_ADMINS_FROM_BAN
+        from utils.permission_utils import is_admin_user
+        admin_exempt = is_admin_user(user.telegram_id) and config.EXEMPT_ADMINS_FROM_BAN
 
-        if actual_strike_count >= config.MAX_STRIKES_BEFORE_BAN and not admin_exempt:
+        logging.info(f"🔍 Ban check for user {user_id}: strikes={actual_strike_count}, threshold={config.MAX_STRIKES_BEFORE_BAN}, admin_exempt={admin_exempt}, already_blocked={user.is_blocked}")
+
+        # Check if user should be banned (only if not already banned)
+        if actual_strike_count >= config.MAX_STRIKES_BEFORE_BAN and not admin_exempt and not user.is_blocked:
+            # User just crossed ban threshold - ban and notify
             user.is_blocked = True
             user.blocked_at = datetime.utcnow()
             user.blocked_reason = f"Automatic ban: {actual_strike_count} strikes (threshold: {config.MAX_STRIKES_BEFORE_BAN})"
             logging.warning(f"🚫 User {user_id} BANNED: {actual_strike_count} strikes reached")
 
-            # Send ban notifications
+            # Send ban notifications (only once when ban happens)
             from services.notification import NotificationService
             await NotificationService.notify_user_banned(user, actual_strike_count)
             await NotificationService.notify_admin_user_banned(user, actual_strike_count)
         elif admin_exempt and actual_strike_count >= config.MAX_STRIKES_BEFORE_BAN:
-            logging.warning(f"⚠️ Admin {user_id} reached ban threshold ({actual_strike_count} strikes) but is exempt from ban")
+            logging.warning(f"⚠️ Admin {user_id} (telegram_id: {user.telegram_id}) reached ban threshold ({actual_strike_count} strikes) but is exempt from ban (EXEMPT_ADMINS_FROM_BAN={config.EXEMPT_ADMINS_FROM_BAN})")
         else:
-            logging.warning(f"⚠️ User {user_id} received strike #{actual_strike_count} (type: {strike_type.name})")
+            logging.warning(f"⚠️ User {user_id} (telegram_id: {user.telegram_id}) received strike #{actual_strike_count}/{config.MAX_STRIKES_BEFORE_BAN} (type: {strike_type.name})")
 
         await UserRepository.update(user, session)

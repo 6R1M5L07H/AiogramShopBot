@@ -44,10 +44,10 @@ class UserService:
     async def get_my_profile_buttons(telegram_id: int, session: Session | AsyncSession) -> tuple[
         str, InlineKeyboardBuilder]:
         kb_builder = InlineKeyboardBuilder()
+        kb_builder.button(text=Localizator.get_text(BotEntity.USER, "order_history_button"),
+                          callback_data=MyProfileCallback.create(7))
         kb_builder.button(text=Localizator.get_text(BotEntity.USER, "top_up_balance_button"),
                           callback_data=MyProfileCallback.create(1, "top_up_balance"))
-        kb_builder.button(text=Localizator.get_text(BotEntity.USER, "purchase_history_button"),
-                          callback_data=MyProfileCallback.create(4, "purchase_history"))
         kb_builder.button(text=Localizator.get_text(BotEntity.USER, "strike_statistics"),
                           callback_data=MyProfileCallback.create(6, "strike_statistics"))
         kb_builder.adjust(1)
@@ -67,21 +67,14 @@ class UserService:
     async def get_top_up_buttons(callback: CallbackQuery) -> tuple[str, InlineKeyboardBuilder]:
         unpacked_cb = MyProfileCallback.unpack(callback.data)
         kb_builder = InlineKeyboardBuilder()
-        kb_builder.button(text=Localizator.get_text(BotEntity.COMMON, "btc_top_up"),
-                          callback_data=MyProfileCallback.create(unpacked_cb.level + 1,
-                                                                 args_for_action=Cryptocurrency.BTC.value))
-        kb_builder.button(text=Localizator.get_text(BotEntity.COMMON, "ltc_top_up"),
-                          callback_data=MyProfileCallback.create(unpacked_cb.level + 1,
-                                                                 args_for_action=Cryptocurrency.LTC.value))
-        kb_builder.button(text=Localizator.get_text(BotEntity.COMMON, "sol_top_up"),
-                          callback_data=MyProfileCallback.create(unpacked_cb.level + 1,
-                                                                 args_for_action=Cryptocurrency.SOL.value))
-        kb_builder.button(text=Localizator.get_text(BotEntity.COMMON, "eth_top_up"),
-                          callback_data=MyProfileCallback.create(unpacked_cb.level + 1,
-                                                                 args_for_action=Cryptocurrency.ETH.value))
-        kb_builder.button(text=Localizator.get_text(BotEntity.COMMON, "bnb_top_up"),
-                          callback_data=MyProfileCallback.create(unpacked_cb.level + 1,
-                                                                 args_for_action=Cryptocurrency.BNB.value))
+
+        # Generate crypto buttons from enum (same 5 cryptos for payment and top-up)
+        for crypto in Cryptocurrency.get_payment_options():
+            entity, key = crypto.get_localization_key()
+            kb_builder.button(
+                text=Localizator.get_text(entity, key),
+                callback_data=MyProfileCallback.create(unpacked_cb.level + 1, args_for_action=crypto.value)
+            )
 
         kb_builder.adjust(1)
         kb_builder.row(unpacked_cb.get_back_button())
@@ -95,10 +88,32 @@ class UserService:
         user = await UserRepository.get_by_tgid(callback.from_user.id, session)
         buys = await BuyRepository.get_by_buyer_id(user.id, unpacked_cb.page, session)
         kb_builder = InlineKeyboardBuilder()
+
+        # Batch-load all items and subcategories (eliminates N+1 queries)
+        item_ids = []
         for buy in buys:
             buy_item = await BuyItemRepository.get_single_by_buy_id(buy.id, session)
-            item = await ItemRepository.get_by_id(buy_item.item_id, session)
-            subcategory = await SubcategoryRepository.get_by_id(item.subcategory_id, session)
+            item_ids.append(buy_item.item_id)
+
+        # Get all items in one query
+        items_dict = {}
+        for item_id in item_ids:
+            item = await ItemRepository.get_by_id(item_id, session)
+            items_dict[item_id] = item
+
+        # Batch-load subcategories
+        subcategory_ids = list({item.subcategory_id for item in items_dict.values()})
+        subcategories_dict = await SubcategoryRepository.get_by_ids(subcategory_ids, session)
+
+        # Build buttons with batch-loaded data
+        for buy in buys:
+            buy_item = await BuyItemRepository.get_single_by_buy_id(buy.id, session)
+            item = items_dict.get(buy_item.item_id)
+            if not item:
+                continue
+            subcategory = subcategories_dict.get(item.subcategory_id)
+            if not subcategory:
+                continue
 
             # Format date only for list view (keep it short)
             date_str = buy.buy_datetime.strftime("%d.%m.%Y") if buy.buy_datetime else "N/A"
@@ -158,7 +173,7 @@ class UserService:
             else:
                 # Fallback for strikes on orders without invoice (legacy data)
                 from datetime import datetime
-                invoice_number = f"ORDER-{datetime.now().year}-{strike.order_id:06d}"
+                invoice_number = "N/A"
 
             strikes_list += Localizator.get_text(BotEntity.USER, "strike_list_item").format(
                 date=date_str,
@@ -183,3 +198,158 @@ class UserService:
         kb_builder.row(unpacked_cb.get_back_button(0))
 
         return message, kb_builder
+
+    @staticmethod
+    async def get_my_orders_overview(
+        telegram_id: int,
+        session: Session | AsyncSession
+    ) -> tuple[str, InlineKeyboardBuilder]:
+        """
+        Get user order history overview with pending order banner if exists.
+
+        Shows:
+        - Pending order banner (if exists) with link to payment
+        - Filter selection (ALL, COMPLETED, CANCELLED)
+
+        Args:
+            telegram_id: Telegram user ID
+            session: Database session
+
+        Returns:
+            Tuple of (message_text, keyboard_builder)
+        """
+        from enums.order_filter import OrderFilterType
+        from repositories.order import OrderRepository
+        from repositories.invoice import InvoiceRepository
+        from datetime import datetime
+
+        user = await UserRepository.get_by_tgid(telegram_id, session)
+        kb_builder = InlineKeyboardBuilder()
+
+        # Check for pending order
+        pending_order = await OrderRepository.get_pending_order_by_user(user.id, session)
+
+        # Build message
+        message_text = Localizator.get_text(BotEntity.USER, "my_orders_title") + "\n\n"
+
+        # Add pending order banner if exists
+        if pending_order:
+            # Get invoice number
+            invoices = await InvoiceRepository.get_all_by_order_id(pending_order.id, session)
+            invoice_number = invoices[0].invoice_number if invoices else "N/A"
+
+            # Calculate remaining time
+            if pending_order.expires_at:
+                remaining_seconds = (pending_order.expires_at - datetime.now()).total_seconds()
+                remaining_minutes = max(0, int(remaining_seconds / 60))
+            else:
+                remaining_minutes = 0
+
+            message_text += Localizator.get_text(BotEntity.USER, "pending_order_banner").format(
+                invoice_number=invoice_number,
+                remaining_minutes=remaining_minutes
+            ) + "\n\n"
+
+            # Button to go to pending order
+            from callbacks import CartCallback
+            kb_builder.button(
+                text=Localizator.get_text(BotEntity.USER, "go_to_payment"),
+                callback_data=CartCallback.create(level=0).pack()
+            )
+
+        message_text += "─────────────\n\n"
+        message_text += Localizator.get_text(BotEntity.USER, "order_history_label")
+
+        # Filter buttons (redirect to list view with selected filter)
+        filter_buttons = [
+            (None, "order_filter_all"),
+            (OrderFilterType.COMPLETED, "order_filter_completed_user"),
+            (OrderFilterType.CANCELLED, "order_filter_cancelled_user"),
+        ]
+
+        for f_type, localization_key in filter_buttons:
+            button_text = Localizator.get_text(BotEntity.USER, localization_key)
+            kb_builder.button(
+                text=button_text,
+                callback_data=MyProfileCallback.create(level=8, filter_type=f_type, page=0).pack()
+            )
+
+        kb_builder.adjust(1)
+
+        # Back to profile
+        kb_builder.button(
+            text=Localizator.get_text(BotEntity.COMMON, "back_button"),
+            callback_data=MyProfileCallback.create(level=0).pack()
+        )
+
+        return message_text, kb_builder
+
+    @staticmethod
+    async def get_my_orders_list(
+        telegram_id: int,
+        filter_type: int | None,
+        page: int,
+        session: Session | AsyncSession
+    ) -> tuple[str, InlineKeyboardBuilder]:
+        """
+        Get paginated list of user's orders with filter.
+
+        Wrapper around unified OrderManagementService.
+
+        Args:
+            telegram_id: Telegram user ID
+            filter_type: OrderFilterType enum value (None = ALL)
+            page: Page number (0-indexed)
+            session: Database session
+
+        Returns:
+            Tuple of (message_text, keyboard_builder)
+        """
+        from services.order_management import OrderManagementService
+
+        user = await UserRepository.get_by_tgid(telegram_id, session)
+
+        return await OrderManagementService.get_order_list_view(
+            session=session,
+            page=page,
+            filter_type=filter_type,
+            user_id=user.id,  # User-specific orders
+            entity=BotEntity.USER,
+            callback_factory=MyProfileCallback
+        )
+
+    @staticmethod
+    async def get_order_detail_for_user(
+        order_id: int,
+        telegram_id: int,
+        session: Session | AsyncSession,
+        filter_type: int | None = None
+    ) -> tuple[str, InlineKeyboardBuilder]:
+        """
+        Get detailed order view for user.
+
+        Wrapper around unified OrderManagementService.
+
+        Args:
+            order_id: Order ID
+            telegram_id: Telegram user ID (for ownership verification)
+            session: Database session
+            filter_type: Filter type to return to (for back button)
+
+        Returns:
+            Tuple of (message_text, keyboard_builder)
+
+        Raises:
+            OrderNotFoundException: If order not found or doesn't belong to user
+        """
+        from services.order_management import OrderManagementService
+
+        return await OrderManagementService.get_order_detail_view(
+            order_id=order_id,
+            session=session,
+            telegram_id=telegram_id,  # Ownership check
+            entity=BotEntity.USER,
+            callback_factory=MyProfileCallback,
+            filter_type=filter_type,
+            page=0
+        )

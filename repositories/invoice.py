@@ -18,8 +18,12 @@ class InvoiceRepository:
 
     @staticmethod
     async def get_by_order_id(order_id: int, session: Session | AsyncSession) -> InvoiceDTO | None:
-        """Holt erste Invoice einer Order (für Backward-Compatibility)"""
-        stmt = select(Invoice).where(Invoice.order_id == order_id)
+        """
+        Holt erste Invoice einer Order (für Backward-Compatibility).
+        Bei partial payments gibt es mehrere Invoices - gibt erste zurück.
+        Für Refund-Logik use get_all_by_order_id() instead.
+        """
+        stmt = select(Invoice).where(Invoice.order_id == order_id).order_by(Invoice.id).limit(1)
         result = await session_execute(stmt, session)
         invoice = result.scalar_one_or_none()
 
@@ -53,10 +57,10 @@ class InvoiceRepository:
     @staticmethod
     async def get_next_invoice_number(session: Session | AsyncSession) -> str:
         """
-        Generiert eindeutige Invoice-Nummer im Format: YYYY-XXXXX
-        Beispiel: 2025-AX7D8
+        Generiert eindeutige Invoice-Nummer im Format: INV-YYYY-XXXXXX
+        Beispiel: INV-2025-AX7D8K
 
-        5-stelliger alphanumerischer Code (Großbuchstaben + Zahlen ohne 0/O/1/I zur Vermeidung von Verwechslungen)
+        6-stelliger alphanumerischer Code (Großbuchstaben + Zahlen ohne 0/O/1/I zur Vermeidung von Verwechslungen)
         """
         import random
         import string
@@ -69,9 +73,9 @@ class InvoiceRepository:
 
         # Versuche max 10x einen eindeutigen Code zu generieren
         for _ in range(10):
-            # Generiere 5-stelligen Code
+            # Generiere 6-stelligen Code
             code = ''.join(random.choices(chars, k=6))
-            invoice_number = f"{year}-{code}"
+            invoice_number = f"INV-{year}-{code}"
 
             # Prüfe ob schon existiert
             stmt = select(Invoice.invoice_number).where(Invoice.invoice_number == invoice_number)

@@ -60,10 +60,93 @@ async def strike_statistics(**kwargs):
 
 
 async def get_order_from_history(**kwargs):
+    from exceptions import OrderNotFoundException, ShopBotException
+    import logging
+
     callback = kwargs.get("callback")
     session = kwargs.get("session")
-    msg, kb_builder = await BuyService.get_purchase(callback, session)
-    await callback.message.edit_text(text=msg, reply_markup=kb_builder.as_markup())
+
+    try:
+        msg, kb_builder = await BuyService.get_purchase(callback, session)
+        await callback.message.edit_text(text=msg, reply_markup=kb_builder.as_markup())
+
+    except OrderNotFoundException:
+        await callback.answer("❌ Order not found", show_alert=True)
+
+    except ShopBotException as e:
+        await callback.answer(f"❌ Error: {str(e)}", show_alert=True)
+
+    except Exception as e:
+        logging.exception(f"Unexpected error getting order from history: {e}")
+        await callback.answer("❌ An unexpected error occurred", show_alert=True)
+
+
+async def my_orders_overview(**kwargs):
+    """Level 7: Order history - default to All Orders list (filter selection via button)"""
+    callback = kwargs.get("callback")
+    session = kwargs.get("session")
+
+    # Directly show All Orders list (filter_type=None, page=0)
+    msg_text, kb_builder = await UserService.get_my_orders_list(
+        callback.from_user.id,
+        filter_type=None,  # All Orders
+        page=0,
+        session=session
+    )
+    await callback.message.edit_text(msg_text, reply_markup=kb_builder.as_markup())
+
+
+async def my_orders_list(**kwargs):
+    """Level 8: Paginated order list with filter"""
+    callback = kwargs.get("callback")
+    session = kwargs.get("session")
+    callback_data = MyProfileCallback.unpack(callback.data)
+
+    msg_text, kb_builder = await UserService.get_my_orders_list(
+        callback.from_user.id,
+        callback_data.filter_type,
+        callback_data.page,
+        session
+    )
+    await callback.message.edit_text(msg_text, reply_markup=kb_builder.as_markup())
+
+
+async def my_order_detail(**kwargs):
+    """Level 9: Order detail view"""
+    from exceptions import OrderNotFoundException
+    import logging
+
+    callback = kwargs.get("callback")
+    session = kwargs.get("session")
+    callback_data = MyProfileCallback.unpack(callback.data)
+
+    try:
+        msg_text, kb_builder = await UserService.get_order_detail_for_user(
+            callback_data.args_for_action,
+            callback.from_user.id,  # Pass telegram_id for ownership check
+            session,
+            filter_type=callback_data.filter_type
+        )
+        await callback.message.edit_text(msg_text, reply_markup=kb_builder.as_markup())
+
+    except OrderNotFoundException:
+        await callback.answer("❌ Bestellung nicht gefunden", show_alert=True)
+
+    except Exception as e:
+        logging.exception(f"Unexpected error getting order detail: {e}")
+        await callback.answer("❌ Ein unerwarteter Fehler ist aufgetreten", show_alert=True)
+
+
+async def my_orders_filter_selection(**kwargs):
+    """Level 10: Filter selection for order history"""
+    callback = kwargs.get("callback")
+    session = kwargs.get("session")
+
+    msg_text, kb_builder = await UserService.get_my_orders_overview(
+        callback.from_user.id,
+        session
+    )
+    await callback.message.edit_text(msg_text, reply_markup=kb_builder.as_markup())
 
 
 async def create_payment(**kwargs):
@@ -85,7 +168,11 @@ async def navigate(callback: CallbackQuery, callback_data: MyProfileCallback, se
         2: create_payment,
         4: purchase_history,
         5: get_order_from_history,
-        6: strike_statistics
+        6: strike_statistics,
+        7: my_orders_overview,
+        8: my_orders_list,
+        9: my_order_detail,
+        10: my_orders_filter_selection
     }
 
     current_level_function = levels[current_level]

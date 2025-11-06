@@ -2,6 +2,269 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2025-11-06
+
+### Unified Order Management System
+
+**Order Management Service**
+- Unified order display logic for admin and user contexts via OrderManagementService
+- Consistent order list view with pagination, filters, and order details
+- Admin and users now share same service layer for order display
+- Filter system supports: All, Active, Completed, Cancelled
+- Ownership verification prevents unauthorized access to order details
+
+**User Experience Improvements**
+- Add to cart confirmation now shows "Continue Shopping" + "Go to Cart" buttons (standard e-commerce UX)
+- Users can easily continue browsing or proceed to checkout after adding items
+- Buttons properly separated on individual rows
+
+**Debugging & Logging**
+- Added extensive logging throughout order cancellation flow (35+ log points)
+- Invoice numbers included in all cancellation logs
+- Auto-ban logic now logs threshold checks and admin exemption status
+- Environment-specific log retention (dev: DATA_RETENTION_DAYS, prod: 5 days)
+
+**Technical Improvements**
+- Service layer shared between admin and user contexts (DRY principle)
+- Error handler now logs all unhandled exceptions in run.py
+- Consistent invoice formatting across all contexts (InvoiceFormatter service)
+
+**Documentation**
+- Added comprehensive test plan for unified order management (admin and user flows)
+- Documented remaining features: items list in cancellation notifications, refund button in admin detail view
+
+## 2025-11-05
+
+### User Order History
+
+**Core Features**
+- Users can now view their complete order history from My Profile
+- Default view shows all completed and cancelled orders with pagination
+- Filter options: All Orders, Completed, Cancelled
+- Compact single-line layout displays date, invoice ID, and status
+- Order detail view shows full information including shipping address with encryption notice
+
+**User Experience**
+- Direct access to order history without filter pre-selection
+- Filter change button at bottom of list for easy switching
+- Back button preserves selected filter when viewing order details
+- Checkout button added immediately after adding items to cart
+- Pending order banner shows active order with countdown timer
+
+**Technical Improvements**
+- Reuses existing admin components (ShippingService, InvoiceFormatter) for consistency
+- Order status localization keys unified to UPPERCASE for maintainability
+- Shipping address decryption errors hidden from users (shows encryption notice only)
+- Filter-specific logic separated for user and admin views
+
+**Security Fixes**
+- Added ownership verification to prevent unauthorized access to order details
+- Fixed callback compatibility to prevent breaking existing profile interactions
+
+## 2025-11-04
+
+### Admin Order Management System
+
+**Core Features**
+- Admin interface for managing all order types with filter system (All, Active, Completed, Cancelled)
+- Pagination support with order list showing invoice number, customer, status, and timestamps
+- Detailed order view with payment history and shipping address
+
+**Smart Controls**
+- Context-aware buttons: Mark as Shipped only for physical items, Cancel Order respects digital item delivery
+- Order status display with relevant timestamps
+- Active filter focuses on orders requiring admin action
+
+**Improvements**
+- Renamed ENCRYPTION_SECRET to SHIPPING_ADDRESS_SECRET for clarity
+- Graceful error handling for address decryption failures
+- Service-based architecture with eager loading prevents N+1 queries
+- Order status keys moved to common localization section
+
+### Critical Payment Bugfix - Lazy Callback URL Evaluation
+
+**Payment Gateway Integration Fix**
+- Fixed critical bug where payment callback URL was evaluated at import time
+- Callback URL now uses lazy evaluation via Field(default_factory=...)
+- Previously sent 'Nonecryptoprocessing/event' to payment gateway (would break all callbacks)
+- Added validation helpers for callback URL and secret
+- Added 5 tests verifying lazy evaluation behavior
+
+**Impact**
+- Prevents payment callback failures in production
+- Ensures proper webhook URL is sent to KryptoExpress API
+- Critical fix for payment system reliability
+
+### Architecture Improvements - Config Initialization & Bot Singleton
+
+**Config Side-Effects Elimination**
+- Removed side-effects from config.py module import
+- Webhook configuration now uses lazy initialization via initialize_webhook_config()
+- Ngrok tunnel and HTTP requests no longer execute during import time
+- Tests can now import config without triggering network operations
+
+**Bot Instance Management**
+- Implemented singleton pattern for Bot instance (bot_instance.py)
+- Eliminated 4 duplicate Bot(token=...) instantiations from NotificationService
+- All notifications now reuse single Bot instance (no redundant sessions)
+- Removed manual session.close() calls (handled automatically by singleton)
+
+**Improved Testability**
+- Added 17 architecture tests (12 config/bot + 5 payment DTO)
+- Tests verify no side-effects occur at import time
+- Cleaner separation between initialization and import time behavior
+
+**Benefits**
+- Faster test suite execution (no unnecessary network calls)
+- Better resource management (single bot session)
+- Clearer initialization flow with explicit startup sequence
+
+## 2025-11-03
+
+### Security Hardening - Phase 1
+
+**Critical Security Fixes**
+- Added startup validation for ENCRYPTION_SECRET (shipping address encryption)
+- Bot now fails-fast with clear error if secret is missing or less than 32 characters
+- Added startup validation for WEBHOOK_SECRET_TOKEN in webhook mode
+- Prevents bot from starting with insecure configuration
+
+**HTML Injection Prevention**
+- New HTML escaping utility (utils/html_escape.py) with safe_html() and safe_url()
+- Escaped all user-controllable data in admin notifications
+- Fixed injection vulnerabilities in usernames, shipping addresses, custom text, and ban reasons
+- Comprehensive security test suite (20 tests) added
+
+**Development Security**
+- Changed ngrok tunnel from HTTP to HTTPS for encrypted webhook traffic
+- Prevents man-in-the-middle attacks during development
+- Uses bind_tls=True for HTTPS-only tunnel
+
+**Documentation**
+- Enhanced .env.template with security warnings for ENCRYPTION_SECRET and WEBHOOK_SECRET_TOKEN
+- Added openssl commands for secret generation
+- Updated documentation with validation behavior
+
+**Testing**
+- Added tests/security/test_html_escape.py with 20 comprehensive security tests
+- All injection scenarios covered (script, tag, link, quote injection)
+
+### Environment-Specific Configuration Templates
+
+**New Templates**
+- .env.dev.template: Development config with relaxed limits, DEBUG logging, ngrok
+- .env.prod.template: Production config with strict security, encryption, automated backups
+- docker-compose.prod.yml: Production deployment with Caddy reverse proxy and TLS
+
+**Benefits**
+- Quick setup: `cp .env.dev.template .env` or `cp .env.prod.template .env`
+- Reduced configuration errors with environment-specific defaults
+- Clear separation of development and production settings
+
+### Centralized Error Handling System
+
+**Implementation**
+- New utils/error_handler.py with centralized exception handling
+- Maps 20+ custom exception types to localized user messages
+- Added 13 new error messages to l10n/en.json and l10n/de.json
+- Comprehensive test suite with full coverage
+
+### SQL Query Logging Improvements
+
+**Changes**
+- SQL echo now conditional based on LOG_LEVEL environment variable
+- Queries only logged when LOG_LEVEL=DEBUG
+- Clean production logs without SQL noise
+
+### Architecture Improvements
+
+**Handler/Service Layer Separation**
+- Moved handler logic from services/order.py to handlers/user/order.py
+- Clear separation: handlers manage UI/routing, services contain business logic
+
+## 2025-11-02
+
+### Shipping Management Service Layer Refactoring
+
+**Architecture Improvements**
+- Refactored shipping management from handler/repository pattern to handler/service/repository architecture
+- Extracted all business logic from handlers to dedicated ShippingService class
+- Eliminated 17 direct repository calls from shipping management handler
+- Improved separation of concerns: handlers now only manage UI and routing, business logic in service layer
+
+**Enhanced Error Handling**
+- Added graceful handling for non-existent orders in shipping management
+- Implemented proper error messages and fallback navigation for missing order scenarios
+- Prevents application crashes from database lookup failures
+
+**Testing Infrastructure**
+- Implemented automated testing using aiogram-tests framework
+- Added comprehensive test fixtures with in-memory database and Redis mocking
+- Created 4 integration tests for shipping management workflows
+- Added detailed manual test guide with 10 test scenarios
+
+**User Privacy**
+- Enhanced shipping address confirmation with data retention notice
+- Users now see clear information about encrypted storage and automatic deletion policy
+
+**Security Improvements**
+- Implemented comprehensive security audit covering SQL injection, XSS, and authentication vulnerabilities
+- Added optional webhook security headers middleware (disabled by default for API-only deployment)
+- Implemented automated database backup system with compression and retention policy
+
+**Documentation**
+- Created comprehensive software engineering audit TODO for technical debt tracking
+- Documented mixed order handling issues with delivery and refund logic
+- Added implementation plans for partial refund calculation in mixed orders
+
+## 2025-11-01
+
+### Admin Order Cancellation with Custom Reason
+
+**Admin Interface**
+- Admin can choose to cancel orders with or without providing a reason
+- Two-step confirmation workflow with reason preview before execution (when reason provided)
+- Direct cancellation option for quick processing without explanation
+- Cancel button available to abort the cancellation process at any time
+- Full order invoice displayed in user notification including itemized list and totals
+
+**User Experience**
+- Users receive detailed cancellation notification with admin's explanation (when provided)
+- Notification includes complete order breakdown with items, prices, and shipping costs
+- Full wallet refund with no penalties for admin-initiated cancellations
+- Clear distinction between admin cancellations and system/user cancellations
+- Graceful handling of cancellations without custom reason
+
+**Technical Implementation**
+- FSM state management for multi-step admin input workflow
+- Dual cancellation paths: with custom reason (Level 5→6) or without reason (Level 7)
+- Transactional notification building: message assembled before database changes
+- Notifications sent only after successful item release to ensure data consistency
+- Proper FSM state lifecycle management to prevent premature data cleanup
+- Optional custom_reason parameter in notification system
+
+## 2025-10-31
+
+### Payment System Improvements
+
+**Invoice System**
+- Invoice numbers now use INV- prefix format (INV-YYYY-XXXXXX) for consistency with TOPUP- format
+- Fixed duplicate prefix display in user-facing invoice messages
+
+**Payment Notifications**
+- Unified payment confirmation into single invoice-style message with order details and purchased items
+- Fixed missing parameters (topup_reference, bot_name) in deposit and payment expiry notifications
+- Consistent reference display across all payment messages
+
+**Payment Testing**
+- Simplified webhook simulator to 3 parameters (--reference, --amount-paid, --no-signature)
+- Auto-detection of payment type from INV-/TOPUP- prefix
+- Database lookup of expected amounts for accurate test scenarios
+
+**Admin Interface**
+- Enhanced order view with itemized invoice format showing quantities and line totals
+- Cleaner presentation of digital vs physical items with explicit "Stk." quantities
+
 ## 2025-10-30
 
 ### Strike System & Automated User Ban Management

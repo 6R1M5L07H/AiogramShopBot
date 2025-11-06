@@ -12,6 +12,7 @@ from enums.order_status import OrderStatus
 from handlers.common.common import add_pagination_buttons
 from models.buy import BuyDTO
 from models.buyItem import BuyItemDTO
+from models.cart import CartDTO
 from models.cartItem import CartItemDTO
 from models.item import ItemDTO
 from models.order import OrderDTO
@@ -44,6 +45,33 @@ def format_crypto_amount(amount: float) -> str:
     # Remove trailing zeros after decimal point
     formatted = formatted.rstrip('0').rstrip('.')
     return formatted
+
+
+def normalize_crypto_amount(amount: float, crypto_currency: Cryptocurrency) -> float:
+    """
+    Normalizes crypto amount to the currency's smallest unit to prevent rounding errors.
+
+    This ensures that calculations, displays, and validations all use the same
+    precision, preventing floating-point errors that could cause underpayment
+    detection on valid payments.
+
+    Examples:
+        BTC: 0.000012345678901 → 0.00001234 (8 decimals = satoshi)
+        ETH: 0.123456789012345678901 → 0.123456789012345678 (18 decimals = wei)
+        USDT: 123.4567891 → 123.456789 (6 decimals)
+
+    Args:
+        amount: Raw floating point amount
+        crypto_currency: Cryptocurrency enum
+
+    Returns:
+        Normalized amount rounded to currency's precision
+    """
+    decimals = crypto_currency.get_divider()
+
+    # Round to the currency's precision using standard rounding
+    # This eliminates floating point errors beyond the currency's smallest unit
+    return round(amount, decimals)
 
 
 class CartService:
@@ -114,10 +142,17 @@ class CartService:
         page = 0 if isinstance(message, Message) else CartCallback.unpack(message.data).page
         cart_items = await CartItemRepository.get_by_user_id(user.id, 0, session)
         kb_builder = InlineKeyboardBuilder()
+
+        # Batch-load all subcategories (eliminates N+1 queries)
+        subcategory_ids = list({cart_item.subcategory_id for cart_item in cart_items})
+        subcategories_dict = await SubcategoryRepository.get_by_ids(subcategory_ids, session)
+
         for cart_item in cart_items:
             item_dto = ItemDTO(category_id=cart_item.category_id, subcategory_id=cart_item.subcategory_id)
             price = await ItemRepository.get_price(item_dto, session)
-            subcategory = await SubcategoryRepository.get_by_id(cart_item.subcategory_id, session)
+            subcategory = subcategories_dict.get(cart_item.subcategory_id)
+            if not subcategory:
+                continue
             kb_builder.button(text=Localizator.get_text(BotEntity.USER, "cart_item_button").format(
                 subcategory_name=subcategory.name,
                 qty=cart_item.quantity,
@@ -163,7 +198,6 @@ class CartService:
             from repositories.item import ItemRepository
             from repositories.subcategory import SubcategoryRepository
             from collections import Counter
-            from callbacks import OrderCallback
 
             kb_builder = InlineKeyboardBuilder()
 
@@ -178,11 +212,17 @@ class CartService:
                 if item.subcategory_id not in subcategory_prices:
                     subcategory_prices[item.subcategory_id] = item.price
 
+            # Batch-load all subcategories (eliminates N+1 queries)
+            subcategory_ids_set = set(items_by_subcategory.keys())
+            subcategories_dict = await SubcategoryRepository.get_by_ids(list(subcategory_ids_set), session)
+
             # Format items list
             items_list = ""
             subtotal = 0.0
             for subcategory_id, qty in items_by_subcategory.items():
-                subcategory = await SubcategoryRepository.get_by_id(subcategory_id, session)
+                subcategory = subcategories_dict.get(subcategory_id)
+                if not subcategory:
+                    continue
                 price = subcategory_prices[subcategory_id]
                 line_total = price * qty
                 subtotal += line_total
@@ -385,10 +425,16 @@ class CartService:
         max_shipping_cost = 0.0
         has_physical_items = False
 
+        # Batch-load all subcategories (eliminates N+1 queries)
+        subcategory_ids = list({cart_item.subcategory_id for cart_item in cart_items})
+        subcategories_dict = await SubcategoryRepository.get_by_ids(subcategory_ids, session)
+
         for cart_item in cart_items:
             item_dto = ItemDTO(category_id=cart_item.category_id, subcategory_id=cart_item.subcategory_id)
             price = await ItemRepository.get_price(item_dto, session)
-            subcategory = await SubcategoryRepository.get_by_id(cart_item.subcategory_id, session)
+            subcategory = subcategories_dict.get(cart_item.subcategory_id)
+            if not subcategory:
+                continue
             line_item_total = price * cart_item.quantity
             cart_line_item = Localizator.get_text(BotEntity.USER, "cart_line_item_checkout").format(
                 qty=cart_item.quantity,
@@ -552,9 +598,15 @@ class CartService:
         elif len(out_of_stock) > 0:
             kb_builder.row(unpacked_cb.get_back_button(0))
             msg = Localizator.get_text(BotEntity.USER, "out_of_stock")
+
+            # Batch-load all subcategories (eliminates N+1 queries)
+            subcategory_ids = list({item.subcategory_id for item in out_of_stock})
+            subcategories_dict = await SubcategoryRepository.get_by_ids(subcategory_ids, session)
+
             for item in out_of_stock:
-                subcategory = await SubcategoryRepository.get_by_id(item.subcategory_id, session)
-                msg += subcategory.name + "\n"
+                subcategory = subcategories_dict.get(item.subcategory_id)
+                if subcategory:
+                    msg += subcategory.name + "\n"
             return msg, kb_builder
 
     # ========================================
@@ -650,10 +702,9 @@ class CartService:
 
         # Wallet is sufficient → Create order directly
         try:
-            order, stock_adjustments = await OrderService.create_order_from_cart(
-                user_id=user_id,
-                cart_items=cart_items,
-                crypto_currency=Cryptocurrency.BTC,  # Dummy value (not used when wallet covers all)
+            cart_dto = CartDTO(user_id=user_id, items=cart_items)
+            order, stock_adjustments, has_physical_items = await OrderService.orchestrate_order_creation(
+                cart_dto=cart_dto,
                 session=session
             )
         except ValueError as e:
@@ -719,39 +770,13 @@ class CartService:
         message_text = Localizator.get_text(BotEntity.USER, "choose_payment_crypto")
         kb_builder = InlineKeyboardBuilder()
 
-        # Crypto buttons (uses existing localization)
-        kb_builder.button(
-            text=Localizator.get_text(BotEntity.COMMON, "btc_top_up"),
-            callback_data=CartCallback.create(4, cryptocurrency=Cryptocurrency.BTC)
-        )
-        kb_builder.button(
-            text=Localizator.get_text(BotEntity.COMMON, "eth_top_up"),
-            callback_data=CartCallback.create(4, cryptocurrency=Cryptocurrency.ETH)
-        )
-        kb_builder.button(
-            text=Localizator.get_text(BotEntity.COMMON, "ltc_top_up"),
-            callback_data=CartCallback.create(4, cryptocurrency=Cryptocurrency.LTC)
-        )
-        kb_builder.button(
-            text=Localizator.get_text(BotEntity.COMMON, "sol_top_up"),
-            callback_data=CartCallback.create(4, cryptocurrency=Cryptocurrency.SOL)
-        )
-        kb_builder.button(
-            text=Localizator.get_text(BotEntity.COMMON, "bnb_top_up"),
-            callback_data=CartCallback.create(4, cryptocurrency=Cryptocurrency.BNB)
-        )
-        kb_builder.button(
-            text=Localizator.get_text(BotEntity.USER, "usdt_trc20_top_up"),
-            callback_data=CartCallback.create(4, cryptocurrency=Cryptocurrency.USDT_TRC20)
-        )
-        kb_builder.button(
-            text=Localizator.get_text(BotEntity.USER, "usdt_erc20_top_up"),
-            callback_data=CartCallback.create(4, cryptocurrency=Cryptocurrency.USDT_ERC20)
-        )
-        kb_builder.button(
-            text=Localizator.get_text(BotEntity.USER, "usdc_erc20_top_up"),
-            callback_data=CartCallback.create(4, cryptocurrency=Cryptocurrency.USDC_ERC20)
-        )
+        # Generate crypto buttons from enum
+        for crypto in Cryptocurrency.get_payment_options():
+            entity, key = crypto.get_localization_key()
+            kb_builder.button(
+                text=Localizator.get_text(entity, key),
+                callback_data=CartCallback.create(4, cryptocurrency=crypto)
+            )
 
         kb_builder.adjust(2)
         kb_builder.row(CartCallback.create(0).get_back_button(0))
@@ -776,10 +801,9 @@ class CartService:
         """
         # Create order with PENDING_SELECTION (will be updated when user selects crypto)
         try:
-            order, stock_adjustments = await OrderService.create_order_from_cart(
-                user_id=user_id,
-                cart_items=cart_items,
-                crypto_currency=Cryptocurrency.PENDING_SELECTION,  # Updated when user selects crypto
+            cart_dto = CartDTO(user_id=user_id, items=cart_items)
+            order, stock_adjustments, has_physical_items = await OrderService.orchestrate_order_creation(
+                cart_dto=cart_dto,
                 session=session
             )
             return order, stock_adjustments, False
@@ -973,8 +997,10 @@ class CartService:
         unpacked_cb = CartCallback.unpack(callback.data)
         crypto_currency = unpacked_cb.cryptocurrency
 
+        from exceptions.payment import CryptocurrencyNotSelectedException
+
         if not crypto_currency:
-            raise ValueError("No cryptocurrency selected")
+            raise CryptocurrencyNotSelectedException(order_id=unpacked_cb.order_id)
 
         # NEW FLOW (Option B - Step 2): Order already exists from Level 3
         # Just create invoice with selected crypto

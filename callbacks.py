@@ -46,10 +46,11 @@ class MyProfileCallback(BaseCallback, prefix="my_profile"):
     action: str
     args_for_action: int | str
     page: int
+    filter_type: int | None = None  # Default to prevent breaking existing callbacks
 
     @staticmethod
-    def create(level: int, action: str = "", args_for_action="", page=0) -> 'MyProfileCallback':
-        return MyProfileCallback(level=level, action=action, args_for_action=args_for_action, page=page)
+    def create(level: int, action: str = "", args_for_action="", page=0, filter_type: int | None = None) -> 'MyProfileCallback':
+        return MyProfileCallback(level=level, action=action, args_for_action=args_for_action, page=page, filter_type=filter_type)
 
 
 class CartCallback(BaseCallback, prefix="cart"):
@@ -187,7 +188,8 @@ class ShippingManagementCallback(BaseCallback, prefix="shipping_management"):
     order_id: int
     confirmation: bool
     page: int
+    filter_type: int | None  # OrderFilterType enum value (None = default REQUIRES_ACTION)
 
     @staticmethod
-    def create(level: int, order_id: int = -1, confirmation: bool = False, page: int = 0):
-        return ShippingManagementCallback(level=level, order_id=order_id, confirmation=confirmation, page=page)
+    def create(level: int, order_id: int = -1, confirmation: bool = False, page: int = 0, filter_type: int | None = None):
+        return ShippingManagementCallback(level=level, order_id=order_id, confirmation=confirmation, page=page, filter_type=filter_type)
