@@ -2,6 +2,37 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2025-11-06
+
+### Unified Order Management System
+
+**Order Management Service**
+- Unified order display logic for admin and user contexts via OrderManagementService
+- Consistent order list view with pagination, filters, and order details
+- Admin and users now share same service layer for order display
+- Filter system supports: All, Active, Completed, Cancelled
+- Ownership verification prevents unauthorized access to order details
+
+**User Experience Improvements**
+- Add to cart confirmation now shows "Continue Shopping" + "Go to Cart" buttons (standard e-commerce UX)
+- Users can easily continue browsing or proceed to checkout after adding items
+- Buttons properly separated on individual rows
+
+**Debugging & Logging**
+- Added extensive logging throughout order cancellation flow (35+ log points)
+- Invoice numbers included in all cancellation logs
+- Auto-ban logic now logs threshold checks and admin exemption status
+- Environment-specific log retention (dev: DATA_RETENTION_DAYS, prod: 5 days)
+
+**Technical Improvements**
+- Service layer shared between admin and user contexts (DRY principle)
+- Error handler now logs all unhandled exceptions in run.py
+- Consistent invoice formatting across all contexts (InvoiceFormatter service)
+
+**Documentation**
+- Added comprehensive test plan for unified order management (admin and user flows)
+- Documented remaining features: items list in cancellation notifications, refund button in admin detail view
+
 ## 2025-11-05
 
 ### User Order History

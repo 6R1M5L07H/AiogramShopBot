@@ -298,16 +298,25 @@ class OrderRepository:
         result = await session_execute(stmt, session)
         return result.scalar_one()
 
+    # REMOVED: Replaced by unified get_by_user_id_with_filter(user_id=None)
+    # - get_orders_in_retention_period() → use get_by_user_id_with_filter(user_id=None)
+    # - count_orders_in_retention_period() → use count_by_user_id_with_filter(user_id=None)
+    # - get_max_page_in_retention_period() → use get_max_page_by_user_id(user_id=None)
+
     @staticmethod
-    async def get_orders_in_retention_period(
+    async def get_by_user_id_with_filter(
+        user_id: int | None = None,
         status_filter: list[OrderStatus] | None = None,
         page: int = 0,
         session: Session | AsyncSession = None
     ) -> list[Order]:
         """
-        Gets orders within data retention period with pagination and optional status filter.
+        Gets orders with optional user filter, status filter, and pagination.
+
+        Unified method for both Admin (user_id=None) and User (user_id=specific).
 
         Args:
+            user_id: User ID to filter by (None = all users for admin)
             status_filter: List of OrderStatus to filter by (None = all statuses)
             page: Page number (0-indexed, uses config.PAGE_ENTRIES for page size)
             session: Database session
@@ -318,10 +327,6 @@ class OrderRepository:
         Performance:
             Eager loads user and invoices to avoid N+1 queries.
             Items are NOT loaded here - they will be loaded in detail view if needed.
-
-        Pagination:
-            Uses config.PAGE_ENTRIES (default: 8) for page size.
-            Consistent with existing pagination in category, subcategory, cart, buy repositories.
         """
         from datetime import timedelta
         import config
@@ -337,128 +342,9 @@ class OrderRepository:
             )
         )
 
-        # Apply status filter if provided
-        if status_filter is not None:
-            stmt = stmt.where(Order.status.in_(status_filter))
-
-        # Order by created_at DESC (newest first) with pagination
-        stmt = (
-            stmt
-            .order_by(Order.created_at.desc())
-            .limit(config.PAGE_ENTRIES)
-            .offset(page * config.PAGE_ENTRIES)
-        )
-
-        result = await session_execute(stmt, session)
-        return list(result.scalars().all())
-
-    @staticmethod
-    async def count_orders_in_retention_period(
-        status_filter: list[OrderStatus] | None = None,
-        session: Session | AsyncSession = None
-    ) -> int:
-        """
-        Counts orders within data retention period with optional status filter.
-
-        Used for pagination calculation.
-
-        Args:
-            status_filter: List of OrderStatus to filter by (None = all statuses)
-            session: Database session
-
-        Returns:
-            Total count of orders matching the filter
-        """
-        from datetime import timedelta
-        import config
-
-        retention_cutoff = datetime.now() - timedelta(days=config.DATA_RETENTION_DAYS)
-
-        stmt = (
-            select(func.count(Order.id))
-            .where(Order.created_at >= retention_cutoff)
-        )
-
-        # Apply status filter if provided
-        if status_filter is not None:
-            stmt = stmt.where(Order.status.in_(status_filter))
-
-        result = await session_execute(stmt, session)
-        return result.scalar_one()
-
-    @staticmethod
-    async def get_max_page_in_retention_period(
-        status_filter: list[OrderStatus] | None = None,
-        session: Session | AsyncSession = None
-    ) -> int:
-        """
-        Calculates the maximum page number for orders in retention period.
-
-        Uses same logic as other repositories (category, subcategory, buy, cart).
-
-        Args:
-            status_filter: List of OrderStatus to filter by (None = all statuses)
-            session: Database session
-
-        Returns:
-            Maximum page number (0-indexed)
-
-        Example:
-            - 0 orders: returns 0
-            - 1-8 orders (PAGE_ENTRIES=8): returns 0
-            - 9-16 orders: returns 1
-            - 17-24 orders: returns 2
-        """
-        import config
-        import math
-
-        total_orders = await OrderRepository.count_orders_in_retention_period(
-            status_filter=status_filter,
-            session=session
-        )
-
-        if total_orders == 0:
-            return 0
-
-        # Same logic as existing repositories
-        if total_orders % config.PAGE_ENTRIES == 0:
-            return total_orders // config.PAGE_ENTRIES - 1
-        else:
-            return math.trunc(total_orders / config.PAGE_ENTRIES)
-    @staticmethod
-    async def get_by_user_id_with_filter(
-        user_id: int,
-        status_filter: list[OrderStatus] | None = None,
-        page: int = 0,
-        session: Session | AsyncSession = None
-    ) -> list[Order]:
-        """
-        Gets orders for a specific user with optional status filter and pagination.
-
-        Args:
-            user_id: User ID to filter by
-            status_filter: List of OrderStatus to filter by (None = all statuses)
-            page: Page number (0-indexed, uses config.PAGE_ENTRIES for page size)
-            session: Database session
-
-        Returns:
-            List of Order objects with eager-loaded invoices
-
-        Performance:
-            Eager loads invoices to avoid N+1 queries.
-            Items are NOT loaded here - they will be loaded in detail view if needed.
-        """
-        from datetime import timedelta
-        import config
-
-        retention_cutoff = datetime.now() - timedelta(days=config.DATA_RETENTION_DAYS)
-
-        stmt = (
-            select(Order)
-            .where(Order.user_id == user_id)
-            .where(Order.created_at >= retention_cutoff)
-            .options(selectinload(Order.invoices))
-        )
+        # Apply user filter if provided (None = admin sees all)
+        if user_id is not None:
+            stmt = stmt.where(Order.user_id == user_id)
 
         # Apply status filter if provided
         if status_filter is not None:
@@ -477,17 +363,18 @@ class OrderRepository:
 
     @staticmethod
     async def count_by_user_id_with_filter(
-        user_id: int,
+        user_id: int | None = None,
         status_filter: list[OrderStatus] | None = None,
         session: Session | AsyncSession = None
     ) -> int:
         """
-        Counts orders for a specific user with optional status filter.
+        Counts orders with optional user filter and status filter.
 
+        Unified method for both Admin (user_id=None) and User (user_id=specific).
         Used for pagination calculation.
 
         Args:
-            user_id: User ID to filter by
+            user_id: User ID to filter by (None = all users for admin)
             status_filter: List of OrderStatus to filter by (None = all statuses)
             session: Database session
 
@@ -501,9 +388,12 @@ class OrderRepository:
 
         stmt = (
             select(func.count(Order.id))
-            .where(Order.user_id == user_id)
             .where(Order.created_at >= retention_cutoff)
         )
+
+        # Apply user filter if provided (None = admin sees all)
+        if user_id is not None:
+            stmt = stmt.where(Order.user_id == user_id)
 
         # Apply status filter if provided
         if status_filter is not None:
@@ -514,15 +404,17 @@ class OrderRepository:
 
     @staticmethod
     async def get_max_page_by_user_id(
-        user_id: int,
+        user_id: int | None = None,
         status_filter: list[OrderStatus] | None = None,
         session: Session | AsyncSession = None
     ) -> int:
         """
-        Calculates the maximum page number for user's orders.
+        Calculates the maximum page number for orders.
+
+        Unified method for both Admin (user_id=None) and User (user_id=specific).
 
         Args:
-            user_id: User ID to filter by
+            user_id: User ID to filter by (None = all users for admin)
             status_filter: List of OrderStatus to filter by (None = all statuses)
             session: Database session
 

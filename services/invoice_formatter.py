@@ -194,7 +194,7 @@ class InvoiceFormatter:
 
         # Add shipping address (escape HTML to prevent injection)
         if shipping_address:
-            message += "\n<b>Adressdaten:</b>\n"
+            message += f"\n{Localizator.get_text(BotEntity.ADMIN, 'shipping_address_admin_label')}\n"
             message += f"{safe_html(shipping_address)}"
 
         return message
@@ -575,49 +575,38 @@ class InvoiceFormatter:
             # Build reason-specific explanation
             if penalty_amount and penalty_amount > 0:
                 if cancellation_reason and 'TIMEOUT' in cancellation_reason.upper():
-                    reason_text = (
-                        f"⏱️ <b>Grund:</b> Ihre Reservierungszeit ist abgelaufen.\n\n"
-                        f"Während der Reservierungszeit konnten andere Kunden diese Artikel nicht kaufen. "
-                        f"Daher wird eine Bearbeitungsgebühr fällig."
-                    )
+                    reason_text = Localizator.get_text(entity, 'cancellation_reason_timeout')
                 elif cancellation_reason and 'reservation_fee' in cancellation_reason.lower():
-                    reason_text = (
-                        f"⏱️ <b>Grund:</b> Stornierung nach Ablauf der Kulanzfrist.\n\n"
-                        f"Ihre Artikel waren reserviert und konnten von anderen Kunden nicht gekauft werden. "
-                        f"Daher wird eine Reservierungsgebühr fällig."
-                    )
+                    reason_text = Localizator.get_text(entity, 'cancellation_reason_reservation_fee')
                 else:
-                    reason_text = (
-                        f"⚠️ <b>Grund:</b> Stornierung nach Ablauf der Kulanzfrist.\n\n"
-                        f"Eine Bearbeitungsgebühr wird fällig, da die kostenlose Stornierungsfrist bereits abgelaufen war."
-                    )
+                    reason_text = Localizator.get_text(entity, 'cancellation_reason_late')
 
                 message += f"{reason_text}\n\n"
 
                 # Wallet details section
                 if wallet_used > 0:
                     wallet_section = (
-                        f"💰 <b>Guthaben-Rückerstattung:</b>\n"
-                        f"• Verwendetes Guthaben: {wallet_used:.2f} {currency_symbol}\n"
-                        f"• Bearbeitungsgebühr ({penalty_percent}%): -{penalty_amount:.2f} {currency_symbol}\n"
-                        f"• <b>Zurückerstattet: {refund_amount:.2f} {currency_symbol}</b>"
+                        f"{Localizator.get_text(entity, 'cancellation_wallet_refund_header')}\n"
+                        f"{Localizator.get_text(entity, 'cancellation_wallet_used').format(wallet_used=f'{wallet_used:.2f}', currency_symbol=currency_symbol)}\n"
+                        f"{Localizator.get_text(entity, 'cancellation_processing_fee').format(penalty_percent=penalty_percent, penalty_amount=f'{penalty_amount:.2f}', currency_symbol=currency_symbol)}\n"
+                        f"{Localizator.get_text(entity, 'cancellation_amount_refunded').format(refund_amount=f'{refund_amount:.2f}', currency_symbol=currency_symbol)}"
                     )
                 else:
                     base_amount = total_price or 0.0
                     wallet_section = (
-                        f"💸 <b>Reservierungsgebühr:</b>\n"
-                        f"• Bestellwert: {base_amount:.2f} {currency_symbol}\n"
-                        f"• Gebühr ({penalty_percent}%): -{penalty_amount:.2f} {currency_symbol}\n"
-                        f"• <b>Von Ihrem Guthaben abgezogen</b>"
+                        f"{Localizator.get_text(entity, 'cancellation_reservation_fee_header')}\n"
+                        f"{Localizator.get_text(entity, 'cancellation_order_value').format(base_amount=f'{base_amount:.2f}', currency_symbol=currency_symbol)}\n"
+                        f"{Localizator.get_text(entity, 'cancellation_fee').format(penalty_percent=penalty_percent, penalty_amount=f'{penalty_amount:.2f}', currency_symbol=currency_symbol)}\n"
+                        f"{Localizator.get_text(entity, 'cancellation_deducted_from_wallet')}"
                     )
 
                 message += f"{wallet_section}\n\n"
 
                 if show_strike_warning:
-                    message += f"⚠️ <b>Strike erhalten</b> - Diese Stornierung führte zu einem Strike auf Ihrem Konto.\n\n"
+                    message += f"{Localizator.get_text(entity, 'cancellation_strike_received')}\n\n"
             else:
                 # Full refund (no penalty)
-                message += f"💰 <b>Volle Rückerstattung:</b> {refund_amount:.2f} {currency_symbol}\n\n"
+                message += f"{Localizator.get_text(entity, 'cancellation_full_refund').format(refund_amount=f'{refund_amount:.2f}', currency_symbol=currency_symbol)}\n\n"
 
         # === CANCELLATION REASON ===
         if cancellation_reason and header_type in ["admin_cancellation", "cancellation_refund", "partial_cancellation"]:
@@ -644,7 +633,7 @@ class InvoiceFormatter:
 
         # === SHIPPING ADDRESS (Admin View) ===
         if shipping_address:
-            message += "\n<b>Adressdaten:</b>\n"
+            message += f"\n{Localizator.get_text(entity, 'shipping_address_admin_label')}\n"
             message += f"{shipping_address}\n"
 
         # === FOOTER ===

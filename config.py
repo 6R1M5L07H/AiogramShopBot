@@ -83,7 +83,7 @@ DB_ENCRYPTION = os.environ.get("DB_ENCRYPTION", False) == 'true'
 DB_NAME = os.environ.get("DB_NAME")
 DB_PASS = os.environ.get("DB_PASS")
 PAGE_ENTRIES = int(os.environ.get("PAGE_ENTRIES"))
-BOT_LANGUAGE = os.environ.get("BOT_LANGUAGE")
+BOT_LANGUAGE = os.environ.get("BOT_LANGUAGE", "en")  # Default to English
 MULTIBOT = os.environ.get("MULTIBOT", False) == 'true'
 CURRENCY = Currency(os.environ.get("CURRENCY"))
 KRYPTO_EXPRESS_API_KEY = os.environ.get("KRYPTO_EXPRESS_API_KEY")
@@ -138,7 +138,17 @@ UNBAN_TOP_UP_AMOUNT = float(os.environ.get("UNBAN_TOP_UP_AMOUNT", "50.0"))  # Mi
 # Logging Configuration
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")  # DEBUG, INFO, WARNING, ERROR, CRITICAL
 LOG_MASK_SECRETS = os.environ.get("LOG_MASK_SECRETS", "true") == "true"  # Mask sensitive data in logs
-LOG_ROTATION_DAYS = int(os.environ.get("LOG_ROTATION_DAYS", "7"))  # Keep logs for N days
+
+# Log Retention: Environment-specific defaults
+# Dev: Use DATA_RETENTION_DAYS (30 days default) for debugging
+# Prod: Use 5 days default to save disk space
+if RUNTIME_ENVIRONMENT == "dev":
+    LOG_RETENTION_DAYS = int(os.environ.get("LOG_RETENTION_DAYS", str(DATA_RETENTION_DAYS)))
+else:
+    LOG_RETENTION_DAYS = int(os.environ.get("LOG_RETENTION_DAYS", "5"))
+
+# Backward compatibility alias
+LOG_ROTATION_DAYS = LOG_RETENTION_DAYS
 
 # Rate Limiting Configuration
 MAX_ORDERS_PER_USER_PER_HOUR = int(os.environ.get("MAX_ORDERS_PER_USER_PER_HOUR", "5"))  # Prevent order spam

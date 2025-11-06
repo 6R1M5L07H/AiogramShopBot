@@ -198,7 +198,6 @@ class CartService:
             from repositories.item import ItemRepository
             from repositories.subcategory import SubcategoryRepository
             from collections import Counter
-            from callbacks import OrderCallback
 
             kb_builder = InlineKeyboardBuilder()
 
