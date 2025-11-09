@@ -17,13 +17,27 @@ class InvoiceRepository:
         return invoice.id
 
     @staticmethod
-    async def get_by_order_id(order_id: int, session: Session | AsyncSession) -> InvoiceDTO | None:
+    async def get_by_order_id(order_id: int, session: Session | AsyncSession, include_inactive: bool = False) -> InvoiceDTO | None:
         """
         Holt erste Invoice einer Order (für Backward-Compatibility).
         Bei partial payments gibt es mehrere Invoices - gibt erste zurück.
         Für Refund-Logik use get_all_by_order_id() instead.
+
+        Args:
+            order_id: Order ID
+            session: Database session
+            include_inactive: If True, includes expired/cancelled invoices (for history views)
+
+        Returns:
+            First invoice for order, or None if not found
         """
-        stmt = select(Invoice).where(Invoice.order_id == order_id).order_by(Invoice.id).limit(1)
+        stmt = select(Invoice).where(Invoice.order_id == order_id)
+
+        # Filter by is_active unless explicitly requesting inactive invoices
+        if not include_inactive:
+            stmt = stmt.where(Invoice.is_active == 1)
+
+        stmt = stmt.order_by(Invoice.id).limit(1)
         result = await session_execute(stmt, session)
         invoice = result.scalar_one_or_none()
 
@@ -32,12 +46,26 @@ class InvoiceRepository:
         return None
 
     @staticmethod
-    async def get_all_by_order_id(order_id: int, session: Session | AsyncSession) -> list[InvoiceDTO]:
+    async def get_all_by_order_id(order_id: int, session: Session | AsyncSession, include_inactive: bool = False) -> list[InvoiceDTO]:
         """
         Holt ALLE Invoices einer Order (für Underpayment-Fälle).
         Returns list of invoices sorted by creation time.
+
+        Args:
+            order_id: Order ID
+            session: Database session
+            include_inactive: If True, includes expired/cancelled invoices (for history views)
+
+        Returns:
+            List of invoices for order
         """
-        stmt = select(Invoice).where(Invoice.order_id == order_id).order_by(Invoice.id)
+        stmt = select(Invoice).where(Invoice.order_id == order_id)
+
+        # Filter by is_active unless explicitly requesting inactive invoices
+        if not include_inactive:
+            stmt = stmt.where(Invoice.is_active == 1)
+
+        stmt = stmt.order_by(Invoice.id)
         result = await session_execute(stmt, session)
         invoices = result.scalars().all()
 
@@ -87,3 +115,25 @@ class InvoiceRepository:
 
         # Fallback: sollte nie passieren (33^6 = ~1,3 Milliarden Möglichkeiten)
         raise RuntimeError("Could not generate unique invoice number after 10 attempts")
+
+    @staticmethod
+    async def mark_as_inactive(invoice_id: int, session: Session | AsyncSession) -> bool:
+        """
+        Marks an invoice as inactive (soft delete) to preserve audit trail.
+
+        Args:
+            invoice_id: Invoice ID to mark as inactive
+            session: Database session
+
+        Returns:
+            True if marked as inactive, False if not found
+        """
+        stmt = select(Invoice).where(Invoice.id == invoice_id)
+        result = await session_execute(stmt, session)
+        invoice = result.scalar_one_or_none()
+
+        if invoice:
+            invoice.is_active = 0
+            await session_flush(session)
+            return True
+        return False

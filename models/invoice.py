@@ -30,6 +30,9 @@ class Invoice(Base):
     actual_paid_amount_crypto = Column(Float, nullable=True)  # Actual amount received (for tracking)
     payment_attempt = Column(Integer, nullable=False, default=1)  # 1st or 2nd payment attempt
 
+    # Soft Delete Flag (Audit Trail)
+    is_active = Column(Integer, nullable=False, default=1)  # 1=active, 0=expired/cancelled (preserves history)
+
     # Relations
     order = relationship('Order', back_populates='invoices')  # Changed from 'invoice' to 'invoices' to match Order model
     payment_transactions = relationship('PaymentTransaction', back_populates='invoice', cascade='all, delete-orphan')
@@ -49,3 +52,4 @@ class InvoiceDTO(BaseModel):
     parent_invoice_id: int | None = None
     actual_paid_amount_crypto: float | None = None
     payment_attempt: int | None = None
+    is_active: int | None = 1  # Default to active

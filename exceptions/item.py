@@ -51,3 +51,16 @@ class InvalidItemDataException(ItemException):
         )
         self.item_id = item_id
         self.reason = reason
+
+
+class TierPricingCalculationException(ItemException):
+    """Raised when tier pricing calculation fails."""
+
+    def __init__(self, subcategory_id: int, quantity: int, reason: str):
+        super().__init__(
+            f"Tier pricing calculation failed for subcategory {subcategory_id} (qty: {quantity}): {reason}",
+            details={'subcategory_id': subcategory_id, 'quantity': quantity, 'reason': reason}
+        )
+        self.subcategory_id = subcategory_id
+        self.quantity = quantity
+        self.reason = reason

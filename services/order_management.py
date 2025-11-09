@@ -32,6 +32,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 from datetime import datetime
+import logging
 
 from enums.bot_entity import BotEntity
 from enums.order_status import OrderStatus
@@ -256,7 +257,7 @@ class OrderManagementService:
             OrderNotFoundException: If order not found or doesn't belong to user
         """
         from services.shipping import ShippingService
-        from services.invoice_formatter import InvoiceFormatter
+        from services.invoice_formatter import InvoiceFormatterService
         from exceptions.order import OrderNotFoundException
         from repositories.user import UserRepository
 
@@ -278,21 +279,45 @@ class OrderManagementService:
 
         # Get actual items with private_data for User context
         from repositories.item import ItemRepository
+        from repositories.subcategory import SubcategoryRepository
+        from services.order import OrderService
         order_items = await ItemRepository.get_by_order_id(order_id, session)
 
-        # Build items list with private_data
+        # Parse tier breakdown from order (NO recalculation!)
+        tier_breakdown_list = OrderService._parse_tier_breakdown_from_order(order)
+
+        # Get subcategory information
+        subcategory_ids = list({item.subcategory_id for item in order_items})
+        subcategories_dict = await SubcategoryRepository.get_by_ids(subcategory_ids, session)
+
+        # Fallback: If tier_breakdown_json not available (old orders), recalculate
+        if not tier_breakdown_list:
+            logging.warning(f"Order {order_id} has no tier_breakdown_json, falling back to recalculation")
+            tier_breakdown_list = await OrderService._group_items_with_tier_pricing(
+                order_items, subcategories_dict, session
+            )
+
+        # Build items list with private_data (ungrouped for individual keys/codes)
         items_raw = []
         for item in order_items:
+            # Find corresponding tier breakdown from tier_breakdown_list
+            tier_breakdown = None
+            for tier_item in tier_breakdown_list:
+                subcategory = subcategories_dict.get(item.subcategory_id)
+                if subcategory and tier_item['subcategory_name'] == subcategory.name:
+                    tier_breakdown = tier_item.get('breakdown')
+                    break
+
             items_raw.append({
                 'name': item.description,
                 'price': item.price,
                 'quantity': 1,  # Each item is already individual
                 'is_physical': item.is_physical,
-                'private_data': item.private_data
+                'private_data': item.private_data,
+                'tier_breakdown': tier_breakdown  # Add tier breakdown to each item
             })
 
-        # Group items by (name, price, is_physical, private_data)
-        from services.order import OrderService
+        # Group items by (name, price, is_physical, private_data) while preserving tier_breakdown
         items_list = OrderService._group_items_for_display(items_raw)
 
         # Calculate subtotal
@@ -302,7 +327,7 @@ class OrderManagementService:
         has_private_data = any(item.private_data for item in order_items)
 
         # Format message (unified display)
-        msg = InvoiceFormatter.format_complete_order_view(
+        msg = InvoiceFormatterService.format_complete_order_view(
             header_type="order_detail_admin" if entity == BotEntity.ADMIN else "order_detail_user",
             invoice_number=order_data["invoice_number"],
             order_status=order.status,
@@ -316,6 +341,7 @@ class OrderManagementService:
             separate_digital_physical=True,
             show_private_data=True,  # Show keys/codes for both Admin and User
             show_retention_notice=has_private_data and (entity == BotEntity.USER),  # Only show retention notice to users
+            cancellation_reason=order.cancellation_reason,  # Pass stored cancellation reason
             currency_symbol=Localizator.get_currency_symbol(),
             entity=entity
         )
@@ -369,6 +395,23 @@ class OrderManagementService:
                         filter_type=filter_type,
                         page=page
                     ).pack()
+                )
+
+        # User: Show Cancel Order button for pending orders
+        elif entity == BotEntity.USER:
+            # Cancel Order (if allowed)
+            if order.status in [
+                OrderStatus.PENDING_PAYMENT,
+                OrderStatus.PENDING_PAYMENT_AND_ADDRESS,
+                OrderStatus.PENDING_PAYMENT_PARTIAL
+            ]:
+                # Use OrderCallback for user cancellation (not MyProfileCallback)
+                from callbacks import OrderCallback
+                cancel_callback_data = OrderCallback.create(level=4, order_id=order_id).pack()
+                logging.info(f"🟢 Creating Cancel Order button with callback_data: {cancel_callback_data}")
+                kb_builder.button(
+                    text=Localizator.get_text(BotEntity.USER, "cancel_order"),
+                    callback_data=cancel_callback_data
                 )
 
         # Back button
