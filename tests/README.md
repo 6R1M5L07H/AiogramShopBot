@@ -1,154 +1,95 @@
-# Test Suite
+# Test Suite Documentation
 
-Comprehensive testing infrastructure for the Aiogram Shop Bot.
+## Quick Start
 
-## Directory Structure
-
-Tests are organized by feature domain:
-
-```
-tests/
-├── payment/                    # Payment & Invoice Tests
-│   ├── manual/                # Manual testing tools
-│   │   ├── simulate_payment_webhook.py
-│   │   ├── run_payment_scenarios.sh
-│   │   └── requirements.txt
-│   └── unit/                  # Automated unit tests
-│       ├── test_payment_validation.py
-│       └── test_e2e_payment_flow.py
-│
-├── shipment/                  # Shipping & Address Tests
-│   └── manual/
-│       ├── payment-shipment-test-guide.md
-│       ├── test_shop_data.json
-│       └── requirements.txt
-│
-├── cart/                      # Cart & Stock Tests
-│   └── manual/
-│       └── simulate_stock_race_condition.py
-│
-├── data-retention/            # Data Cleanup Tests
-│   └── unit/
-│       └── test_data_retention_cleanup.py
-│
-├── security/                  # Security & Encryption Tests
-│   └── unit/
-│       └── (future tests)
-│
-├── conftest.py               # Pytest fixtures (shared)
-└── README.md                 # This file
-```
-
-## Test Categories
-
-### Unit Tests (`unit/`)
-Automated tests using pytest. Run with:
+### Run All Tests
 ```bash
-pytest tests/
+python tests/run_all_tests.py
 ```
 
-### Manual Tests (`manual/`)
-Interactive testing tools for scenarios requiring bot runtime or external services:
-- **Payment Webhook Simulator**: Simulates KryptoExpress payment callbacks
-- **Stock Race Condition Simulator**: Tests concurrent order creation
-- **Payment Scenarios Runner**: Automated manual test suite
-
-## Running Tests
-
-### All Automated Tests
+### Run Tests (Fast Mode - Skip Dependency Installation)
 ```bash
-# From project root
-pytest tests/
-
-# Specific feature
-pytest tests/payment/unit/
-pytest tests/data-retention/unit/
+python tests/run_all_tests.py --fast
 ```
 
-### Manual Payment Testing
+### Run Specific Tests Only
 ```bash
-# 1. Start bot in separate terminal
-python run.py
-
-# 2. Simulate payment webhook
-cd tests/payment/manual
-python simulate_payment_webhook.py 2025-ABC123
-
-# 3. Or run full scenario suite
-./run_payment_scenarios.sh
+python tests/run_all_tests.py --specific payment   # Only payment tests
+python tests/run_all_tests.py --specific order     # Only order tests
+python tests/run_all_tests.py --specific security  # Only security tests
 ```
 
-### Manual Stock Race Condition Testing
+### Run with Coverage Report
 ```bash
-cd tests/cart/manual
-python simulate_stock_race_condition.py
+python tests/run_all_tests.py --coverage
+# Opens htmlcov/index.html for detailed coverage report
 ```
 
-## Test Data
-
-- `shipment/manual/test_shop_data.json`: Sample product catalog for testing
-- `payment/manual/`: Payment webhook simulation data
-- Test fixtures defined in `conftest.py`
-
-## Requirements
-
-Install test dependencies:
+### Include Manual Test Scripts
 ```bash
-pip install -r tests/payment/manual/requirements.txt
-pip install -r tests/shipment/manual/requirements.txt
+python tests/run_all_tests.py --manual
 ```
 
-Or install all:
+### List All Available Tests
 ```bash
-pip install pytest pytest-asyncio requests
+python tests/run_all_tests.py --list
 ```
 
-## Documentation
+## Test Organization
 
-- **Payment/Shipment Testing Guide**: `shipment/manual/payment-shipment-test-guide.md`
-- **Test Checklist**: `../TEST_CHECKLIST.md` (project root)
-- **Manual Test Scenarios**: `../tests/manual/TESTING_GUIDE.md`
+### Automated Tests (pytest)
 
-## Adding New Tests
+**Architecture Tests** (`tests/architecture/`)
+- `test_bot_singleton.py` - Bot instance singleton pattern
+- `test_config_lazy_init.py` - Configuration lazy initialization
+- `test_payment_dto_lazy_init.py` - Payment DTO lazy initialization
 
-### Unit Test (Automated)
-1. Create file in appropriate `unit/` directory
-2. Name file `test_*.py`
-3. Use pytest fixtures from `conftest.py`
-4. Run with `pytest tests/`
+**Payment Tests** (`tests/payment/unit/`)
+- `test_e2e_payment_flow.py` - End-to-end payment workflow
+- `test_payment_validation.py` - Payment amount validation logic
 
-### Manual Test Tool
-1. Create file in appropriate `manual/` directory
-2. Add usage documentation to file docstring
-3. Update this README with usage instructions
+**Admin Tests** (`tests/admin/`)
+- `test_shipping_integration.py` - Admin shipping management integration
 
-## Best Practices
+**Security Tests** (`tests/security/`)
+- `test_html_escape.py` - HTML injection prevention
 
-- **Feature Isolation**: Keep tests in their respective feature directories
-- **Naming Convention**:
-  - Unit tests: `test_*.py`
-  - Manual tools: `simulate_*.py`, `run_*.sh`
-- **Dependencies**: Each manual test directory has its own `requirements.txt`
-- **Shared Fixtures**: Use `conftest.py` for shared pytest fixtures
-- **Documentation**: Update test guides when adding new manual tools
+**Data Retention Tests** (`tests/data-retention/unit/`)
+- `test_data_retention_cleanup.py` - GDPR data cleanup
 
-## CI/CD Integration
+**Exception Handling Tests** (`tests/exception-handling/`)
+- `test_handler_exception_handling.py` - Handler error recovery
+- `test_item_exceptions.py` - Item-related exceptions
+- `test_item_grouping.py` - Item grouping logic
+- `test_order_exceptions.py` - Order-related exceptions
 
-Unit tests run automatically on:
-- Pull requests
-- Commits to `develop` and `master`
-- Manual test tools require bot runtime and are not automated
+**Configuration Tests**
+- `test_config_patch.py` - Test configuration patching
+- `test_config_safe.py` - Safe config operations
+- `test_error_handler.py` - Error handler utilities
+- `test_permission_utils.py` - Permission validation
 
-## Status
+### Manual Test Scripts
 
-- ✅ Payment validation tests
-- ✅ Payment webhook simulation
-- ✅ Data retention cleanup tests
-- ✅ Stock race condition simulation
-- ⏳ Shipment address validation (TODO)
-- ⏳ Cart cleanup tests (TODO)
-- ⏳ Security/encryption tests (TODO)
+**Cart Tests** (`tests/cart/manual/`)
+- `simulate_stock_race_condition.py` - Concurrent order race condition simulation
 
----
+**Payment Tests** (`tests/payment/manual/`)
+- `simulate_payment_webhook.py` - KryptoExpress webhook simulation
 
-**Last Updated**: 2025-10-26
+**Pricing Tests** (`tests/pricing/manual/`)
+- `verify_tier_breakdown_storage.py` - Tiered pricing JSON storage verification
+
+## Troubleshooting
+
+**Tests fail with "Module not found"**
+```bash
+# Install test dependencies
+python tests/run_all_tests.py  # Automatically installs deps
+```
+
+**Tests fail with "Database locked"**
+```bash
+# Clear test database
+rm -f test_shop.db
+```

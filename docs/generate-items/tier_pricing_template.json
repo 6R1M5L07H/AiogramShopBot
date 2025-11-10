@@ -1,0 +1,71 @@
+{
+  "template": {
+    "license_key_pattern": "LICENSE-{{YEAR}}-{{RANDOM_8}}",
+    "admin_telegram_username": "YOUR_ADMIN_USERNAME"
+  },
+  "categories": [
+    {"name": "Digital"},
+    {"name": "Electronics"},
+    {"name": "Clothing"}
+  ],
+  "subcategories": [
+    {"name": "Steam Game Keys", "category": "Digital"},
+    {"name": "Software Licenses", "category": "Digital"},
+    {"name": "Smartphones", "category": "Electronics"},
+    {"name": "T-Shirts", "category": "Clothing"}
+  ],
+  "items": [
+    {
+      "quantity": 50,
+      "category": "Digital",
+      "subcategory": "Steam Game Keys",
+      "private_data": "Game Key: STEAM-{{RANDOM_16}}",
+      "description": "Popular AAA Game - Steam Key",
+      "is_physical": false,
+      "shipping_cost": 0.0,
+      "allows_packstation": false,
+      "price_tiers": [
+        {"min_quantity": 1, "unit_price": 11.00},
+        {"min_quantity": 5, "unit_price": 10.00},
+        {"min_quantity": 10, "unit_price": 9.00}
+      ]
+    },
+    {
+      "quantity": 30,
+      "category": "Digital",
+      "subcategory": "Software Licenses",
+      "private_data": "License: {{LICENSE_KEY}}",
+      "description": "Premium Software License - 1 Year",
+      "is_physical": false,
+      "shipping_cost": 0.0,
+      "allows_packstation": false,
+      "price": 49.99
+    },
+    {
+      "quantity": 20,
+      "category": "Electronics",
+      "subcategory": "Smartphones",
+      "private_data": "IMEI: {{RANDOM_DIGITS_15}}",
+      "description": "Premium Smartphone - 128GB",
+      "is_physical": true,
+      "shipping_cost": 15.00,
+      "allows_packstation": true,
+      "price_tiers": [
+        {"min_quantity": 1, "unit_price": 599.99},
+        {"min_quantity": 3, "unit_price": 549.99},
+        {"min_quantity": 10, "unit_price": 499.99}
+      ]
+    },
+    {
+      "quantity": 100,
+      "category": "Clothing",
+      "subcategory": "T-Shirts",
+      "private_data": "SKU: TSHIRT-M-{{INDEX:03d}}",
+      "description": "Cotton T-Shirt - Size M",
+      "is_physical": true,
+      "shipping_cost": 5.00,
+      "allows_packstation": true,
+      "price": 29.99
+    }
+  ]
+}

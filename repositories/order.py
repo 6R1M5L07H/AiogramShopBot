@@ -223,6 +223,12 @@ class OrderRepository:
         await session_execute(stmt, session)
 
     @staticmethod
+    async def update_cancellation_reason(order_id: int, reason: str, session: Session | AsyncSession):
+        """Updates the cancellation reason for an order"""
+        stmt = update(Order).where(Order.id == order_id).values(cancellation_reason=reason)
+        await session_execute(stmt, session)
+
+    @staticmethod
     async def get_expired_orders(session: Session | AsyncSession) -> list[OrderDTO]:
         """Gets all expired orders (for timeout job)"""
         stmt = (
