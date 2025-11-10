@@ -73,7 +73,8 @@ class ItemRepository:
     @staticmethod
     async def update(item_dto_list: list[ItemDTO], session: Session | AsyncSession):
         for item in item_dto_list:
-            stmt = update(Item).where(Item.id == item.id).values(**item.model_dump())
+            # Exclude price_tiers (relationship) and only dump set fields
+            stmt = update(Item).where(Item.id == item.id).values(**item.model_dump(exclude={'price_tiers'}, exclude_unset=True))
             await session_execute(stmt, session)
 
     @staticmethod
@@ -103,8 +104,42 @@ class ItemRepository:
 
     @staticmethod
     async def add_many(items: list[ItemDTO], session: Session | AsyncSession):
-        items = [Item(**item.model_dump()) for item in items]
-        session.add_all(items)
+        from db import session_flush
+        from repositories.price_tier import PriceTierRepository
+
+        # Convert DTOs to ORM models and add to session
+        # Track which models have price_tiers
+        tiers_to_add = []
+        for item_dto in items:
+            # Extract and remove price_tiers before creating ORM model
+            price_tiers = None
+            if hasattr(item_dto, 'price_tiers') and item_dto.price_tiers:
+                price_tiers = item_dto.price_tiers
+
+            # Exclude price_tiers from model_dump (it's not a database column)
+            item_dict = item_dto.model_dump(exclude={'price_tiers'})
+            item_model = Item(**item_dict)
+            session.add(item_model)
+
+            # Store model and tiers together for later
+            if price_tiers:
+                tiers_to_add.append((item_model, price_tiers))
+
+        # Flush to get item IDs if any items have tiers
+        if tiers_to_add:
+            await session_flush(session)
+
+            # Now add price tiers with correct item_id
+            for item_model, tiers in tiers_to_add:
+                tier_dicts = [
+                    {
+                        'item_id': item_model.id,
+                        'min_quantity': tier['min_quantity'],
+                        'unit_price': tier['unit_price']
+                    }
+                    for tier in tiers
+                ]
+                await PriceTierRepository.add_many(tier_dicts, session)
 
     @staticmethod
     async def get_new(session: Session | AsyncSession) -> list[ItemDTO]:

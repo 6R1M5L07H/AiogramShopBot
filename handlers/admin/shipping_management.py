@@ -4,6 +4,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.fsm.context import FSMContext
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
+import logging
 
 from callbacks import ShippingManagementCallback, AdminMenuCallback
 from db import session_commit
@@ -95,7 +96,14 @@ async def show_awaiting_shipment_orders(**kwargs):
 
 
 async def show_order_details(**kwargs):
-    """Level 2: Shows order details with shipping address"""
+    """
+    Level 2: Shows order details with shipping address.
+
+    Uses unified OrderManagementService for consistent display with tier breakdown support.
+    """
+    from services.order_management import OrderManagementService
+    from exceptions.order import OrderNotFoundException
+
     callback = kwargs.get("callback")
     session = kwargs.get("session")
     callback_data = kwargs.get("callback_data")
@@ -104,10 +112,17 @@ async def show_order_details(**kwargs):
     filter_type = callback_data.filter_type if callback_data else None
     page = callback_data.page if callback_data else 0
 
-    # Get order details (via Service with error handling)
+    # Get unified order detail view (includes tier breakdown if available)
     try:
-        details = await ShippingService.get_order_details_data(order_id, session)
-    except ValueError:
+        message_text, kb_builder = await OrderManagementService.get_order_detail_view(
+            order_id=order_id,
+            session=session,
+            entity=BotEntity.ADMIN,
+            callback_factory=ShippingManagementCallback,
+            filter_type=filter_type,
+            page=page
+        )
+    except OrderNotFoundException:
         # Order not found - show error and return to list
         error_text = Localizator.get_text(BotEntity.ADMIN, "error_order_not_found")
         kb_builder = InlineKeyboardBuilder()
@@ -118,62 +133,15 @@ async def show_order_details(**kwargs):
         await callback.message.edit_text(error_text, reply_markup=kb_builder.as_markup())
         return
 
-    # Extract data from service response
-    order = details["order"]
-    invoice_number = details["invoice_number"]
-    username = details["username"]
-    user_id = details["user_id"]
-    shipping_address = details["shipping_address"]
-    digital_items = details["digital_items"]
-    physical_items = details["physical_items"]
+    # Get order and items for payment history section and button logic
+    from repositories.order import OrderRepository
+    from repositories.item import ItemRepository
+    order = await OrderRepository.get_by_id(order_id, session)
+    order_items = await ItemRepository.get_by_order_id(order_id, session)
 
-    # Format order details using InvoiceFormatter
-    from services.invoice_formatter import InvoiceFormatter
-
-    message_text = InvoiceFormatter.format_admin_order_view(
-        invoice_number=invoice_number,
-        username=username,
-        user_id=user_id,
-        digital_items=digital_items if digital_items else None,
-        physical_items=physical_items if physical_items else None,
-        shipping_cost=order.shipping_cost,
-        total_price=order.total_price,
-        shipping_address=shipping_address,
-        currency_symbol=Localizator.get_currency_symbol()
-    )
-
-    # Add Order Status section
-    message_text += "\n\n─────────────────────\n"
-    message_text += "📊 <b>BESTELLSTATUS</b>\n\n"
-
-    # Map OrderStatus to localized string (UPPERCASE keys)
-    status_map = {
-        OrderStatus.PENDING_PAYMENT: "order_status_PENDING_PAYMENT",
-        OrderStatus.PENDING_PAYMENT_AND_ADDRESS: "order_status_PENDING_PAYMENT_AND_ADDRESS",
-        OrderStatus.PENDING_PAYMENT_PARTIAL: "order_status_PENDING_PAYMENT_PARTIAL",
-        OrderStatus.PAID: "order_status_PAID",
-        OrderStatus.PAID_AWAITING_SHIPMENT: "order_status_PAID_AWAITING_SHIPMENT",
-        OrderStatus.SHIPPED: "order_status_SHIPPED",
-        OrderStatus.CANCELLED_BY_USER: "order_status_CANCELLED_BY_USER",
-        OrderStatus.CANCELLED_BY_ADMIN: "order_status_CANCELLED_BY_ADMIN",
-        OrderStatus.CANCELLED_BY_SYSTEM: "order_status_CANCELLED_BY_SYSTEM",
-        OrderStatus.TIMEOUT: "order_status_TIMEOUT",
-    }
-
-    status_key = status_map.get(order.status, "order_status_PENDING_PAYMENT")
-    status_text = Localizator.get_text(BotEntity.COMMON, status_key)
-    message_text += f"<b>Status:</b> {status_text}\n"
-
-    # Add timestamps based on status
-    if order.paid_at:
-        paid_at_str = order.paid_at.strftime("%d.%m.%Y %H:%M:%S")
-        message_text += f"<b>Bezahlt am:</b> {paid_at_str}\n"
-    if order.shipped_at:
-        shipped_at_str = order.shipped_at.strftime("%d.%m.%Y %H:%M:%S")
-        message_text += f"<b>Versendet am:</b> {shipped_at_str}\n"
-    if order.cancelled_at:
-        cancelled_at_str = order.cancelled_at.strftime("%d.%m.%Y %H:%M:%S")
-        message_text += f"<b>Storniert am:</b> {cancelled_at_str}\n"
+    # Determine item types for button logic
+    has_physical_items = any(item.is_physical for item in order_items)
+    has_digital_items = any(not item.is_physical for item in order_items)
 
     # Add Payment History section (if order is paid)
     if order.status in [OrderStatus.PAID, OrderStatus.PAID_AWAITING_SHIPMENT, OrderStatus.SHIPPED]:
@@ -249,11 +217,8 @@ async def show_order_details(**kwargs):
             import logging
             logging.warning(f"Failed to load payment history for order {order_id}: {e}")
 
-    # Determine item types
-    has_physical_items = bool(physical_items)
-    has_digital_items = bool(digital_items)
-
-    # Build action buttons based on order type and status
+    # Override kb_builder from OrderManagementService with custom button logic
+    # that considers physical/digital item types for more granular control
     kb_builder = InlineKeyboardBuilder()
 
     # "Mark as Shipped" button: Only for physical items awaiting shipment
@@ -264,8 +229,9 @@ async def show_order_details(**kwargs):
         )
 
     # "Cancel Order" button: Logic based on status and item types
-    # - Always show for PENDING_* statuses (not yet paid/delivered)
-    # - For PAID/PAID_AWAITING_SHIPMENT: Only if NO digital items (digital = already delivered, non-refundable)
+    # - PENDING_* statuses: ALWAYS show (items not paid = not delivered, regardless of type)
+    # - PAID status: Only if NO digital items (digital items are immediately delivered, non-refundable)
+    # - PAID_AWAITING_SHIPMENT: Only if NO digital items (physical items not shipped yet)
     pending_statuses = [
         OrderStatus.PENDING_PAYMENT,
         OrderStatus.PENDING_PAYMENT_AND_ADDRESS,
@@ -274,9 +240,14 @@ async def show_order_details(**kwargs):
 
     show_cancel = False
     if order.status in pending_statuses:
-        show_cancel = True  # Not paid yet, can always cancel
+        # PENDING orders: ALWAYS cancellable (nothing delivered yet, even digital items)
+        show_cancel = True
+    elif order.status == OrderStatus.PAID and not has_digital_items:
+        # PAID with only physical items: Cancellable if not shipped yet
+        show_cancel = True
     elif order.status == OrderStatus.PAID_AWAITING_SHIPMENT and not has_digital_items:
-        show_cancel = True  # Only physical items, not yet shipped, can cancel
+        # PAID_AWAITING_SHIPMENT: Only if NO digital items (they're already delivered)
+        show_cancel = True
 
     if show_cancel:
         kb_builder.button(

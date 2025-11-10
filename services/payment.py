@@ -27,22 +27,50 @@ class PaymentService:
         if unexpired_payments_count >= 5:
             return Localizator.get_text(BotEntity.USER, "too_many_payment_request")
         else:
-            payment_dto = ProcessingPaymentDTO(
-                paymentType=PaymentType.DEPOSIT,
-                fiatCurrency=config.CURRENCY,
-                cryptoCurrency=cryptocurrency
+            # Check if API keys are configured (not placeholders)
+            use_mock = (
+                not config.KRYPTO_EXPRESS_API_KEY or
+                config.KRYPTO_EXPRESS_API_KEY.startswith("${") or
+                config.KRYPTO_EXPRESS_API_KEY == ""
             )
-            headers = {
-                "X-Api-Key": config.KRYPTO_EXPRESS_API_KEY,
-                "Content-Type": "application/json"
-            }
-            payment_dto = await CryptoApiWrapper.fetch_api_request(
-                f"{config.KRYPTO_EXPRESS_API_URL}/payment",
-                method="POST",
-                data=payment_dto.model_dump_json(exclude_none=True),
-                headers=headers
-            )
-            payment_dto = ProcessingPaymentDTO.model_validate(payment_dto, from_attributes=True)
+
+            if use_mock:
+                # MOCK MODE: Generate fake payment data for testing
+                from services.invoice import InvoiceService
+                # Use fixed amount for wallet top-up (user can send any amount they want)
+                mock_fiat_amount = 50.0  # Default top-up amount for mock
+                payment_dto = InvoiceService._generate_mock_payment_response(
+                    mock_fiat_amount,
+                    config.CURRENCY,
+                    cryptocurrency
+                )
+                # Override paymentType to DEPOSIT (top-up, not order payment)
+                payment_dto.paymentType = PaymentType.DEPOSIT
+                payment_dto.fiatAmount = None  # DEPOSIT has no fixed fiat amount
+            else:
+                # REAL API MODE: Call KryptoExpress
+                payment_dto = ProcessingPaymentDTO(
+                    paymentType=PaymentType.DEPOSIT,
+                    fiatCurrency=config.CURRENCY,
+                    cryptoCurrency=cryptocurrency
+                )
+                headers = {
+                    "X-Api-Key": config.KRYPTO_EXPRESS_API_KEY,
+                    "Content-Type": "application/json"
+                }
+                response_data = await CryptoApiWrapper.fetch_api_request(
+                    f"{config.KRYPTO_EXPRESS_API_URL}/payment",
+                    method="POST",
+                    data=payment_dto.model_dump_json(exclude_none=True),
+                    headers=headers
+                )
+
+                # Check if API returned valid data
+                if response_data is None:
+                    logging.error("KryptoExpress API returned None for wallet top-up payment")
+                    return Localizator.get_text(BotEntity.USER, "wallet_topup_api_error")
+
+                payment_dto = ProcessingPaymentDTO.model_validate(response_data)
             if payment_dto:
                 topup_ref = await PaymentRepository.create(payment_dto.id, user.id, message.message_id, session)
                 await session_commit(session)
@@ -224,7 +252,8 @@ class PaymentService:
             raise OrderNotFoundException(order_id)
 
         # Get all invoices for this order (may have multiple for partial payments)
-        invoices = await InvoiceRepository.get_by_order_id(order_id, session)
+        # Include inactive invoices for complete payment history
+        invoices = await InvoiceRepository.get_all_by_order_id(order_id, session, include_inactive=True)
 
         # Get all payment transactions for this order
         transactions = await PaymentTransactionRepository.get_by_order_id(order_id, session)

@@ -2,6 +2,7 @@ from aiogram.types import CallbackQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
+import logging
 
 import config
 from callbacks import MyProfileCallback
@@ -76,21 +77,45 @@ class BuyService:
         if not order:
             raise OrderNotFoundException(items[0].order_id if items and items[0].order_id else unpacked_cb.args_for_action)
 
-        from services.invoice_formatter import InvoiceFormatter
+        from services.invoice_formatter import InvoiceFormatterService
         from services.order import OrderService
+        from repositories.subcategory import SubcategoryRepository
 
-        # Build unified items list with private_data
+        # Parse tier breakdown from order (NO recalculation!)
+        tier_breakdown_list = OrderService._parse_tier_breakdown_from_order(order)
+
+        # Get subcategory information
+        subcategory_ids = list({item.subcategory_id for item in items})
+        subcategories_dict = await SubcategoryRepository.get_by_ids(subcategory_ids, session)
+
+        # Fallback: If tier_breakdown_json not available (old orders), recalculate
+        if not tier_breakdown_list:
+            logging.warning(f"Order {order.id} has no tier_breakdown_json, falling back to recalculation")
+            tier_breakdown_list = await OrderService._group_items_with_tier_pricing(
+                items, subcategories_dict, session
+            )
+
+        # Build unified items list with private_data and tier_breakdown
         items_raw = []
         for item in items:
+            # Find corresponding tier breakdown from tier_breakdown_list
+            tier_breakdown = None
+            for tier_item in tier_breakdown_list:
+                subcategory = subcategories_dict.get(item.subcategory_id)
+                if subcategory and tier_item['subcategory_name'] == subcategory.name:
+                    tier_breakdown = tier_item.get('breakdown')
+                    break
+
             items_raw.append({
                 'name': item.description,
                 'price': item.price,
                 'quantity': 1,  # Each item is already individual
                 'is_physical': item.is_physical,
-                'private_data': item.private_data
+                'private_data': item.private_data,
+                'tier_breakdown': tier_breakdown
             })
 
-        # Group items by (name, price, is_physical, private_data)
+        # Group items by (name, price, is_physical, private_data) while preserving tier_breakdown
         items_list = OrderService._group_items_for_display(items_raw)
 
         # Calculate subtotal (total - shipping)
@@ -100,7 +125,7 @@ class BuyService:
         invoice_numbers_formatted = "\n".join(invoice_numbers)
 
         # Use InvoiceFormatter for consistent formatting
-        msg = InvoiceFormatter.format_complete_order_view(
+        msg = InvoiceFormatterService.format_complete_order_view(
             header_type="purchase_history",
             invoice_number=invoice_numbers_formatted,
             order_status=order.status,

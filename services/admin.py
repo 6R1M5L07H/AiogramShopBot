@@ -504,9 +504,16 @@ class AdminService:
             case StatisticsEntity.USERS:
                 users, users_count = await UserRepository.get_by_timedelta(unpacked_cb.timedelta, unpacked_cb.page,
                                                                            session)
-                [kb_builder.button(text=user.telegram_username, url=f't.me/{user.telegram_username}') for user in
-                 users
-                 if user.telegram_username]
+                # Build user list for message text
+                user_list = []
+                for user in users:
+                    if user.telegram_username:
+                        # Add as clickable button
+                        kb_builder.button(text=f"@{user.telegram_username}", url=f't.me/{user.telegram_username}')
+                    else:
+                        # Add to text list (no button due to privacy restrictions)
+                        user_list.append(f"• User {user.telegram_id}")
+
                 kb_builder.adjust(1)
                 kb_builder = await add_pagination_buttons(
                     kb_builder,
@@ -514,10 +521,16 @@ class AdminService:
                     UserRepository.get_max_page_by_timedelta(unpacked_cb.timedelta, session),
                     None)
                 kb_builder.row(AdminConstants.back_to_main_button, unpacked_cb.get_back_button())
-                return Localizator.get_text(BotEntity.ADMIN, "new_users_msg").format(
+
+                # Build message with user list if any users without username
+                msg = Localizator.get_text(BotEntity.ADMIN, "new_users_msg").format(
                     users_count=users_count,
                     timedelta=unpacked_cb.timedelta.value
-                ), kb_builder
+                )
+                if user_list:
+                    msg += "\n\n<b>Users without username:</b>\n" + "\n".join(user_list)
+
+                return msg, kb_builder
             case StatisticsEntity.BUYS:
                 buys = await BuyRepository.get_by_timedelta(unpacked_cb.timedelta, session)
                 total_profit = 0.0

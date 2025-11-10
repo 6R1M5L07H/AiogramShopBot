@@ -419,32 +419,29 @@ class CartService:
 
     @staticmethod
     async def __create_checkout_msg(cart_items: list[CartItemDTO], session: AsyncSession | Session) -> str:
+        import json
+        from services.invoice_formatter import InvoiceFormatterService
+
         message_text = Localizator.get_text(BotEntity.USER, "cart_confirm_checkout_process")
-        message_text += "<b>\n\n"
+        message_text += "\n\n"
+
         items_total = 0.0
         max_shipping_cost = 0.0
         has_physical_items = False
+        currency_sym = Localizator.get_currency_symbol()
 
         # Batch-load all subcategories (eliminates N+1 queries)
         subcategory_ids = list({cart_item.subcategory_id for cart_item in cart_items})
         subcategories_dict = await SubcategoryRepository.get_by_ids(subcategory_ids, session)
 
+        # Collect items and categorize
+        multi_tier_items = []  # Items with tier breakdown (>1 tier)
+        all_items_summary = []  # All items for phase 2 compact list
+
         for cart_item in cart_items:
-            item_dto = ItemDTO(category_id=cart_item.category_id, subcategory_id=cart_item.subcategory_id)
-            price = await ItemRepository.get_price(item_dto, session)
             subcategory = subcategories_dict.get(cart_item.subcategory_id)
             if not subcategory:
                 continue
-            line_item_total = price * cart_item.quantity
-            cart_line_item = Localizator.get_text(BotEntity.USER, "cart_line_item_checkout").format(
-                qty=cart_item.quantity,
-                subcategory_name=subcategory.name,
-                price=price,
-                total=line_item_total,
-                currency_sym=Localizator.get_currency_symbol()
-            )
-            items_total += line_item_total
-            message_text += cart_line_item
 
             # Calculate shipping cost for physical items
             try:
@@ -456,27 +453,116 @@ class CartService:
                     if sample_item.shipping_cost > max_shipping_cost:
                         max_shipping_cost = sample_item.shipping_cost
             except:
-                # If no items available, skip shipping calculation
                 pass
 
-        # Show breakdown with shipping
-        message_text += "\n"
-        message_text += Localizator.get_text(BotEntity.USER, "cart_separator") + "\n"
-        message_text += Localizator.get_text(BotEntity.USER, "cart_items_total").format(
-            items_total=items_total, currency_sym=Localizator.get_currency_symbol()
-        ) + "\n"
+            # Use tier breakdown if available
+            if cart_item.tier_breakdown:
+                try:
+                    tier_breakdown = json.loads(cart_item.tier_breakdown)
+
+                    # Check if multi-tier (more than 1 breakdown entry)
+                    is_multi_tier = len(tier_breakdown) > 1
+
+                    # Calculate total for this item
+                    line_total = sum(item['total'] for item in tier_breakdown)
+                    items_total += line_total
+
+                    if is_multi_tier:
+                        # Store for phase 1 (detailed breakdown)
+                        multi_tier_items.append({
+                            'name': subcategory.name,
+                            'breakdown': tier_breakdown,
+                            'total': line_total
+                        })
+                        # Store for phase 2 (summary)
+                        all_items_summary.append({
+                            'name': subcategory.name,
+                            'total': line_total,
+                            'is_tier': True
+                        })
+                    else:
+                        # Single tier - only in phase 2 with calculation
+                        item = tier_breakdown[0]
+                        all_items_summary.append({
+                            'name': subcategory.name,
+                            'qty': item['quantity'],
+                            'unit_price': item['unit_price'],
+                            'total': line_total,
+                            'is_tier': False
+                        })
+
+                except (json.JSONDecodeError, KeyError):
+                    # Fallback to flat pricing (no tier breakdown)
+                    item_dto = ItemDTO(category_id=cart_item.category_id, subcategory_id=cart_item.subcategory_id)
+                    price = await ItemRepository.get_price(item_dto, session)
+                    line_item_total = price * cart_item.quantity
+                    items_total += line_item_total
+                    all_items_summary.append({
+                        'name': subcategory.name,
+                        'qty': cart_item.quantity,
+                        'unit_price': price,
+                        'total': line_item_total,
+                        'is_tier': False
+                    })
+            else:
+                # Flat pricing (no tier breakdown stored)
+                item_dto = ItemDTO(category_id=cart_item.category_id, subcategory_id=cart_item.subcategory_id)
+                price = await ItemRepository.get_price(item_dto, session)
+                line_item_total = price * cart_item.quantity
+                items_total += line_item_total
+                all_items_summary.append({
+                    'name': subcategory.name,
+                    'qty': cart_item.quantity,
+                    'unit_price': price,
+                    'total': line_item_total,
+                    'is_tier': False
+                })
+
+        # === PHASE 1: Multi-Tier Detailed Breakdowns ===
+        if multi_tier_items:
+            message_text += f"<b>{Localizator.get_text(BotEntity.USER, 'cart_tier_calculations_header')}</b>\n\n"
+            for item in multi_tier_items:
+                message_text += f"<b>{item['name']}:</b>\n"
+                for breakdown_item in item['breakdown']:
+                    qty = breakdown_item['quantity']
+                    unit_price = breakdown_item['unit_price']
+                    total = breakdown_item['total']
+                    message_text += f" {qty:>2} × {unit_price:>6.2f} {currency_sym} = {total:>8.2f} {currency_sym}\n"
+
+                # Calculate average
+                total_qty = sum(b['quantity'] for b in item['breakdown'])
+                avg_price = item['total'] / total_qty if total_qty > 0 else 0
+
+                message_text += "─" * 30 + "\n"
+                unit_text = Localizator.get_text(BotEntity.USER, 'unit_per_piece')
+                message_text += f"{'':>17}Σ {item['total']:>7.2f} {currency_sym}  (Ø {avg_price:.2f} {currency_sym}{unit_text})\n\n"
+
+            message_text += "═" * 30 + "\n\n"
+
+        # === PHASE 2: Compact Item Summary ===
+        message_text += f"<b>{Localizator.get_text(BotEntity.USER, 'cart_items_in_cart_header')}</b>\n"
+        for item in all_items_summary:
+            if item['is_tier']:
+                # Multi-tier item - show only result
+                message_text += f"{item['name']}: {item['total']:.2f} {currency_sym}\n"
+            else:
+                # Single-tier or legacy - show calculation
+                message_text += f"{item['name']}: {item['qty']} × {item['unit_price']:.2f} {currency_sym} = {item['total']:.2f} {currency_sym}\n"
+
+        # === PHASE 3: Totals ===
+        message_text += "\n" + "═" * 30 + "\n"
+        subtotal_label = Localizator.get_text(BotEntity.USER, 'cart_subtotal_label')
+        message_text += f"{subtotal_label} {items_total:>8.2f} {currency_sym}\n"
 
         if has_physical_items and max_shipping_cost > 0:
-            message_text += Localizator.get_text(BotEntity.USER, "cart_shipping_cost").format(
-                shipping_cost=max_shipping_cost, currency_sym=Localizator.get_currency_symbol()
-            ) + "\n"
+            shipping_label = Localizator.get_text(BotEntity.USER, 'cart_shipping_max_label')
+            message_text += f"{shipping_label}  {max_shipping_cost:>7.2f} {currency_sym}\n"
 
-        message_text += Localizator.get_text(BotEntity.USER, "cart_separator") + "\n"
+        message_text += "═" * 30 + "\n"
         cart_grand_total = items_total + max_shipping_cost
-        message_text += Localizator.get_text(BotEntity.USER, "cart_total_with_shipping").format(
-            total=cart_grand_total, currency_sym=Localizator.get_currency_symbol()
-        )
-        message_text += "</b>"
+        total_label = Localizator.get_text(BotEntity.USER, 'cart_total_label')
+        message_text += f"<b>{total_label}        {cart_grand_total:>8.2f} {currency_sym}</b>"
+
         return message_text
 
     @staticmethod

@@ -60,6 +60,55 @@ This defines global settings that can be reused in items.
 | `{{LICENSE_KEY}}` | Uses pattern from template | LICENSE-2025-ABCDEFGH |
 | `{{ADMIN_TELEGRAM}}` | Admin username from template | YOUR_ADMIN_USERNAME |
 
+## Tiered Pricing
+
+Items can use **legacy flat pricing** OR **tiered bulk pricing** for quantity discounts.
+
+### Legacy Pricing (Flat Rate)
+
+```json
+{
+  "price": 49.99
+}
+```
+
+All quantities use the same unit price.
+
+### Tiered Pricing (Bulk Discounts)
+
+```json
+{
+  "price_tiers": [
+    {"min_quantity": 1, "unit_price": 11.00},
+    {"min_quantity": 5, "unit_price": 10.00},
+    {"min_quantity": 10, "unit_price": 9.00}
+  ]
+}
+```
+
+**How It Works:**
+- Each tier defines a minimum quantity and unit price
+- Customers get discounts when buying in bulk
+- Bot uses **dynamic programming** to find optimal price combination
+
+**Example:** Buying 12 items with tiers above:
+- 10 items @ €9.00 = €90.00
+- 2 items @ €11.00 = €22.00
+- **Total: €112.00** (avg €9.33/item, saves €20 vs flat rate)
+
+**Best Practices:**
+- First tier must have `min_quantity: 1` (base price)
+- Tiers must be sorted by `min_quantity` (ascending)
+- Unit prices should decrease as quantity increases
+- Use **EITHER** `price` OR `price_tiers`, not both
+
+**Output Format:**
+Items with `price_tiers` include both:
+- `price`: Base price (from first tier)
+- `price_tiers`: Full tier array
+
+The bot's parser automatically creates `PriceTier` database entries.
+
 ## Examples
 
 ### Example 1: Simple Duplication
@@ -111,6 +160,43 @@ Creates 100 software license items, each with a unique key like:
 - `LICENSE-2025-ABCDEFGH`
 - `LICENSE-2025-XYZWQRST`
 - etc.
+
+### Example 3: Tiered Pricing for Bulk Discounts
+
+```json
+{
+  "template": {
+    "license_key_pattern": "LICENSE-{{YEAR}}-{{RANDOM_8}}"
+  },
+  "items": [
+    {
+      "quantity": 100,
+      "category_id": 4,
+      "subcategory_id": 7,
+      "private_data": "License Key: {{LICENSE_KEY}}",
+      "description": "Premium Software License - Key: {{LICENSE_KEY}}",
+      "is_physical": false,
+      "shipping_cost": 0.0,
+      "allows_packstation": false,
+      "price_tiers": [
+        {"min_quantity": 1, "unit_price": 49.99},
+        {"min_quantity": 10, "unit_price": 44.99},
+        {"min_quantity": 25, "unit_price": 39.99}
+      ]
+    }
+  ]
+}
+```
+
+Creates 100 software license items with bulk discounts:
+- 1-9 licenses: €49.99 each
+- 10-24 licenses: €44.99 each (10% discount)
+- 25+ licenses: €39.99 each (20% discount)
+
+**Example Cart Calculation:**
+- Customer adds 30 licenses to cart
+- Bot calculates: 25 @ €39.99 + 5 @ €49.99 = €1,249.70
+- Customer saves €250.00 compared to flat pricing
 
 ## Output
 
@@ -175,13 +261,24 @@ Important Notes:
 
 ### Telegram Deep Links with Pre-filled Messages
 
-To open a chat with a pre-filled message, use:
+To open a chat with a pre-filled message, use one of these formats:
 
 ```
 https://t.me/USERNAME?text=YOUR_MESSAGE
+tg://resolve?domain=USERNAME&text=YOUR_MESSAGE
 ```
 
 **URL Encoding:** Spaces become `%20`, `#` becomes `%23`
+
+**Supported Protocols:**
+- `https://t.me/` - Standard web link (works in browser and Telegram)
+- `t.me/` - Short format (automatically converted to `https://`)
+- `tg://` - Native Telegram protocol (opens directly in app)
+
+**Query Parameters:**
+- `text=MESSAGE` - Pre-filled message text
+- `start=PAYLOAD` - Bot start parameter (for bots)
+- Combine: `?start=PAYLOAD&text=MESSAGE` - Both parameters
 
 **Examples:**
 
@@ -191,21 +288,24 @@ https://t.me/USERNAME?text=YOUR_MESSAGE
 | `https://t.me/username?text=Hello` | "Hello" pre-filled |
 | `https://t.me/username?text=Order%20%23123` | "Order #123" pre-filled |
 | `https://t.me/username?text=License%20%23{{LICENSE_KEY}}` | "License #LICENSE-2025-ABCDEFGH" |
+| `tg://resolve?domain=username&text=Hello` | Same as above (native app) |
+| `https://t.me/bot?start=ABC&text=Help` | Start bot with payload and message |
 
 ### Complete Example
 
+**Option 1: HTTPS Link (works in browser and app)**
 ```json
 {
   "template": {
     "license_key_pattern": "LICENSE-{{YEAR}}-{{RANDOM_8}}",
-    "telegram_username": "yourshopbot"
+    "admin_telegram_username": "yourshopbot"
   },
   "items": [
     {
       "quantity": 50,
       "category_id": 4,
       "subcategory_id": 7,
-      "private_data": "  <b>License Key:</b> <code>{{LICENSE_KEY}}</code>\n\n<a href=\"https://t.me/{{TELEGRAM_USERNAME}}?text=License%20%23{{LICENSE_KEY}}\">  Contact Support</a>\n\n<b>Features:</b>\n• Valid for 1 year\n• Free updates\n• Email support\n\n<i>Please provide your key when contacting support.</i>",
+      "private_data": "<b>License Key:</b> <code>{{LICENSE_KEY}}</code>\n\n<a href=\"https://t.me/{{ADMIN_TELEGRAM}}?text=License%20%23{{LICENSE_KEY}}\">📱 Contact Support</a>\n\n<b>Features:</b>\n• Valid for 1 year\n• Free updates\n• Email support\n\n<i>Please provide your key when contacting support.</i>",
       "price": 49.99,
       "description": "Premium Software License - Key: {{LICENSE_KEY}}",
       "is_physical": false,
@@ -216,11 +316,20 @@ https://t.me/USERNAME?text=YOUR_MESSAGE
 }
 ```
 
+**Option 2: Native Telegram Protocol (opens directly in app)**
+```json
+{
+  "private_data": "<b>License Key:</b> <code>{{LICENSE_KEY}}</code>\n\n<a href=\"tg://resolve?domain={{ADMIN_TELEGRAM}}&text=License%20%23{{LICENSE_KEY}}\">📱 Contact Support</a>"
+}
+```
+
 This will show the user a clickable button that:
-1. Opens Telegram
+1. Opens Telegram app directly (tg://) or in browser/app (https://)
 2. Starts a chat with `@yourshopbot`
 3. Pre-fills the message: "License #LICENSE-2025-ABCDEFGH"
 4. User clicks "Send" to contact support
+
+**Important:** The link itself and parameters are NOT visible to the user. Only the clickable text "📱 Contact Support" is shown.
 
 ### Important Notes
 

@@ -1,0 +1,50 @@
+[
+  {
+    "category": "Digital",
+    "subcategory": "Steam Game Keys",
+    "private_data": "Game Key: STEAM-ABCD-EFGH-1234",
+    "description": "Popular AAA Game - Steam Key",
+    "is_physical": false,
+    "shipping_cost": 0.0,
+    "allows_packstation": false,
+    "price_tiers": [
+      {"min_quantity": 1, "unit_price": 11.00},
+      {"min_quantity": 5, "unit_price": 10.00},
+      {"min_quantity": 10, "unit_price": 9.00}
+    ]
+  },
+  {
+    "category": "Digital",
+    "subcategory": "Software Licenses",
+    "private_data": "License: LICENSE-2025-XYZ789",
+    "description": "Premium Software License - 1 Year",
+    "is_physical": false,
+    "shipping_cost": 0.0,
+    "allows_packstation": false,
+    "price": 49.99
+  },
+  {
+    "category": "Electronics",
+    "subcategory": "Smartphones",
+    "private_data": "IMEI: 123456789012345",
+    "description": "Premium Smartphone - 128GB",
+    "is_physical": true,
+    "shipping_cost": 15.00,
+    "allows_packstation": true,
+    "price_tiers": [
+      {"min_quantity": 1, "unit_price": 599.99},
+      {"min_quantity": 3, "unit_price": 549.99},
+      {"min_quantity": 10, "unit_price": 499.99}
+    ]
+  },
+  {
+    "category": "Clothing",
+    "subcategory": "T-Shirts",
+    "private_data": "SKU: TSHIRT-M-001",
+    "description": "Cotton T-Shirt - Size M",
+    "is_physical": true,
+    "shipping_cost": 5.00,
+    "allows_packstation": true,
+    "price": 29.99
+  }
+]
