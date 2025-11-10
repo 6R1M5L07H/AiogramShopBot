@@ -62,6 +62,10 @@ class InvoiceService:
                 headers=headers
             )
 
+            # Check if API returned valid data
+            if response_data is None:
+                raise ValueError("KryptoExpress API returned no data. Please check API configuration and network connectivity.")
+
             payment_response = ProcessingPaymentDTO.model_validate(response_data)
 
         # Normalize crypto amount to prevent floating-point precision errors
@@ -257,6 +261,10 @@ class InvoiceService:
                 data=payment_dto.model_dump_json(exclude_none=True),
                 headers=headers
             )
+
+            # Check if API returned valid data
+            if response_data is None:
+                raise ValueError("KryptoExpress API returned no data. Please check API configuration and network connectivity.")
 
             payment_response = ProcessingPaymentDTO.model_validate(response_data)
 

@@ -66,8 +66,8 @@ class OrderService:
         user_id = cart_dto.user_id
         cart_items = cart_dto.items
 
-        # 1. Calculate total price (items + MAX shipping cost)
-        total_price_with_shipping, max_shipping_cost = await OrderService._calculate_order_totals(
+        # 1. Calculate total price (items + MAX shipping cost) AND build tier breakdown JSON
+        total_price_with_shipping, max_shipping_cost, tier_breakdown_json = await OrderService._calculate_order_totals(
             cart_items, session
         )
 
@@ -81,7 +81,8 @@ class OrderService:
             shipping_cost=max_shipping_cost,
             currency=config.CURRENCY,
             expires_at=expires_at,
-            wallet_used=0.0  # Will be set later by orchestrate_payment_processing
+            wallet_used=0.0,  # Will be set later by orchestrate_payment_processing
+            tier_breakdown_json=tier_breakdown_json  # Store tier pricing breakdown for historical accuracy
         )
 
         order_id = await OrderRepository.create(order_dto, session)
@@ -95,22 +96,83 @@ class OrderService:
             cart_items, order_id, session
         )
 
-        # 4. If stock adjustments: Recalculate price and update order
+        # 4. If stock adjustments: Recalculate price with tier pricing and update order
         if stock_adjustments:
             # Recalculate total with ACTUAL reserved quantities
+            # CRITICAL: Use tier pricing for recalculation!
             actual_total_price = 0.0
             actual_max_shipping_cost = 0.0
+            adjusted_tier_breakdown_list = []
 
+            # Group reserved items by subcategory to recalculate tier prices
+            from collections import defaultdict
+            reserved_by_subcategory = defaultdict(list)
             for reserved_item in reserved_items:
-                actual_total_price += reserved_item.price
-                if reserved_item.is_physical:
-                    actual_max_shipping_cost = max(actual_max_shipping_cost, reserved_item.shipping_cost)
+                reserved_by_subcategory[reserved_item.subcategory_id].append(reserved_item)
+
+            # Recalculate price for each subcategory with tier pricing
+            from services.pricing import PricingService
+            for subcategory_id, items in reserved_by_subcategory.items():
+                actual_quantity = len(items)
+                subcategory = await SubcategoryRepository.get_by_id(subcategory_id, session)
+
+                # Recalculate tier price with ACTUAL quantity
+                try:
+                    pricing_result = await PricingService.calculate_optimal_price(
+                        subcategory_id=subcategory_id,
+                        quantity=actual_quantity,
+                        session=session
+                    )
+                    actual_total_price += pricing_result.total
+
+                    # Add to adjusted tier breakdown
+                    adjusted_tier_breakdown_list.append({
+                        'subcategory_id': subcategory_id,
+                        'subcategory_name': subcategory.name if subcategory else 'Unknown',
+                        'quantity': actual_quantity,
+                        'total': pricing_result.total,
+                        'average_unit_price': pricing_result.average_unit_price,
+                        'breakdown': [
+                            {
+                                'quantity': item.quantity,
+                                'unit_price': item.unit_price,
+                                'total': item.total
+                            }
+                            for item in pricing_result.breakdown
+                        ]
+                    })
+
+                    logging.info(f"Recalculated tier price for subcategory {subcategory_id}: {actual_quantity} items = {pricing_result.total:.2f} EUR")
+                except Exception as e:
+                    logging.warning(f"Tier pricing recalculation failed for subcategory {subcategory_id}: {e}, using flat pricing")
+                    # Fallback: sum individual item prices
+                    item_total = 0.0
+                    for item in items:
+                        item_total += item.price
+                        actual_total_price += item.price
+
+                    # Add flat pricing to breakdown
+                    adjusted_tier_breakdown_list.append({
+                        'subcategory_id': subcategory_id,
+                        'subcategory_name': subcategory.name if subcategory else 'Unknown',
+                        'quantity': actual_quantity,
+                        'total': item_total,
+                        'average_unit_price': item_total / actual_quantity if actual_quantity > 0 else 0,
+                        'breakdown': None
+                    })
+
+                # Update shipping cost (use MAX)
+                for item in items:
+                    if item.is_physical:
+                        actual_max_shipping_cost = max(actual_max_shipping_cost, item.shipping_cost)
 
             actual_total_with_shipping = actual_total_price + actual_max_shipping_cost
 
-            # Update order with actual amounts
+            # Update order with actual amounts AND adjusted tier breakdown
+            import json
             order_dto.total_price = actual_total_with_shipping
             order_dto.shipping_cost = actual_max_shipping_cost
+            order_dto.tier_breakdown_json = json.dumps(adjusted_tier_breakdown_list) if adjusted_tier_breakdown_list else None
             await OrderRepository.update(order_dto, session)
 
             logging.info(
@@ -249,9 +311,12 @@ class OrderService:
         3. Shipping cost: Refundable if physical items cancelled
         4. Penalty: Applied only to refundable amount (physical + shipping)
 
+        IMPORTANT: Uses order_total (with tier pricing) as source of truth,
+        NOT item.price sum (which has original prices).
+
         Args:
             items: List of ItemDTOs in the order
-            order_total: Total order amount (items + shipping)
+            order_total: Total order amount (items + shipping) WITH TIER PRICING
             shipping_cost: Shipping cost for physical items
             reason: Cancellation reason (affects penalty)
             within_grace_period: True if within grace period (no penalty)
@@ -273,22 +338,26 @@ class OrderService:
         """
         from services.payment_validator import PaymentValidator
 
+        # Calculate digital item total (digital items don't have tier pricing, use item.price)
+        # Calculate physical item total by subtraction to preserve tier pricing accuracy
         digital_total = 0.0
-        physical_total = 0.0
         has_digital = False
         has_physical = False
 
         for item in items:
-            # Each item represents 1 unit (no quantity field in ItemDTO)
-            item_total = item.price
             if item.is_physical:
-                physical_total += item_total
                 has_physical = True
             else:
-                digital_total += item_total
+                # Digital items: Use item.price (no tier pricing)
+                digital_total += item.price
                 has_digital = True
 
         is_mixed = has_digital and has_physical
+
+        # Use order_total (with tier pricing) as source of truth
+        # Calculate physical items by subtraction (preserves tier pricing)
+        items_total = order_total - shipping_cost  # Subtract shipping to get items-only total
+        physical_total = items_total - digital_total  # Remainder after digital items
 
         # Shipping cost only refunded if physical items present
         refundable_base = physical_total
@@ -377,6 +446,23 @@ class OrderService:
 
         if not order:
             raise OrderNotFoundException(order_id)
+
+        # Check if order is already cancelled/completed
+        already_cancelled_statuses = [
+            OrderStatus.TIMEOUT,
+            OrderStatus.CANCELLED_BY_USER,
+            OrderStatus.CANCELLED_BY_ADMIN,
+            OrderStatus.CANCELLED_BY_SYSTEM,
+            OrderStatus.SHIPPED
+        ]
+
+        if order.status in already_cancelled_statuses:
+            # Order is already cancelled/completed - return friendly message instead of exception
+            logging.info(f"Order {order_id} is already in terminal state {order.status.value}, cannot cancel")
+            from utils.localizator import Localizator
+            from enums.bot_entity import BotEntity
+            msg = Localizator.get_text(BotEntity.USER, "error_order_already_cancelled")
+            return (True, msg)
 
         # Determine which statuses can be cancelled
         cancellable_statuses = [
@@ -499,16 +585,25 @@ class OrderService:
         # Case 1: Payment was made (wallet or crypto) - refund with/without penalty
         logging.info(f"💰 REFUND CHECK for Order {order_id} (Invoice: {invoice_number}): refund_wallet={refund_wallet}, refundable_amount={refundable_amount}€, total_paid_fiat={total_paid_fiat}€, apply_penalty={apply_penalty}")
 
-        if refund_wallet and refundable_amount > 0:
+        # CRITICAL: Only refund if payment was actually made
+        # Check total_paid_fiat instead of refundable_amount to prevent refunding unpaid orders
+        if refund_wallet and total_paid_fiat > 0:
             logging.info(f"💰 ENTERING CASE 1: Refund wallet with payment made")
             # For mixed orders: Penalty already calculated in partial_refund_info
             # For non-mixed orders: Calculate penalty here
             if partial_refund_info['is_mixed_order']:
                 # Mixed order: Use pre-calculated values from partial_refund_info
+                # CRITICAL: Cap refund at actual amount paid (tier pricing may cause mismatch)
                 penalty_amount = partial_refund_info['penalty_amount']
-                refund_amount = partial_refund_info['final_refund']
+                refund_amount = min(partial_refund_info['final_refund'], total_paid_fiat)
                 penalty_percent = partial_refund_info['penalty_percent']
-                base_amount = partial_refund_info['refundable_base']
+                base_amount = min(partial_refund_info['refundable_base'], total_paid_fiat)
+
+                if refund_amount < partial_refund_info['final_refund']:
+                    logging.warning(
+                        f"⚠️ Refund capped: calculated={partial_refund_info['final_refund']}€, "
+                        f"but only {total_paid_fiat}€ was paid (tier pricing mismatch)"
+                    )
             elif apply_penalty:
                 # Non-mixed order with penalty: Calculate now
                 from services.payment_validator import PaymentValidator
@@ -670,6 +765,18 @@ class OrderService:
 
         # UPDATE ORDER STATUS
         await OrderRepository.update_status(order_id, new_status, session)
+
+        # STORE CANCELLATION REASON (if provided)
+        if custom_reason:
+            await OrderRepository.update_cancellation_reason(order_id, custom_reason, session)
+            logging.info(f"📝 Stored cancellation reason for order {order_id}: '{custom_reason[:50]}...'")
+            # Will be committed with transaction at the end
+
+        # MARK INVOICES AS INACTIVE (soft delete for audit trail)
+        if invoices:
+            for invoice in invoices:
+                await InvoiceRepository.mark_as_inactive(invoice.id, session)
+            logging.info(f"🗑️ Marked {len(invoices)} invoice(s) as inactive for order {order_id}")
 
         # RELEASE ITEMS AND RESTORE STOCK
         items = await ItemRepository.get_by_order_id(order_id, session)
@@ -1343,35 +1450,52 @@ class OrderService:
         """
         from repositories.item import ItemRepository
         from repositories.subcategory import SubcategoryRepository
-        from services.invoice_formatter import InvoiceFormatter
+        from services.invoice_formatter import InvoiceFormatterService
 
         # Get order items
         order_items = await ItemRepository.get_by_order_id(order.id, session)
 
-        # Batch-load all subcategories (eliminates N+1 queries)
+        # Parse tier breakdown from order (NO recalculation!)
+        tier_breakdown_list = OrderService._parse_tier_breakdown_from_order(order)
+
+        # Get subcategory information
         subcategory_ids = list({item.subcategory_id for item in order_items})
         subcategories_dict = await SubcategoryRepository.get_by_ids(subcategory_ids, session)
 
-        # Build unified items list
+        # Fallback: If tier_breakdown_json not available (old orders), recalculate
+        if not tier_breakdown_list:
+            logging.warning(f"Order {order.id} has no tier_breakdown_json, falling back to recalculation")
+            tier_breakdown_list = await OrderService._group_items_with_tier_pricing(
+                order_items, subcategories_dict, session
+            )
+
+        # Build items list with tier_breakdown
         items_raw = []
         for item in order_items:
-            subcategory = subcategories_dict.get(item.subcategory_id)
-            if subcategory:
-                items_raw.append({
-                    'name': subcategory.name,
-                    'price': item.price,
-                    'quantity': 1,
-                    'is_physical': item.is_physical,
-                    'private_data': None
-                })
+            # Find corresponding tier breakdown from tier_breakdown_list
+            tier_breakdown = None
+            for tier_item in tier_breakdown_list:
+                subcategory = subcategories_dict.get(item.subcategory_id)
+                if subcategory and tier_item['subcategory_name'] == subcategory.name:
+                    tier_breakdown = tier_item.get('breakdown')
+                    break
 
-        # Group items by (name, price, is_physical, private_data)
+            items_raw.append({
+                'name': item.description,
+                'price': item.price,
+                'quantity': 1,  # Each item is already individual
+                'is_physical': item.is_physical,
+                'private_data': item.private_data,
+                'tier_breakdown': tier_breakdown
+            })
+
+        # Group items by (name, price, is_physical, private_data) while preserving tier_breakdown
         items_list = OrderService._group_items_for_display(items_raw)
 
         # Format crypto amount with currency
         crypto_amount_display = f"{invoice.payment_amount_crypto} {invoice.payment_crypto_currency.value}"
 
-        return InvoiceFormatter.format_complete_order_view(
+        return InvoiceFormatterService.format_complete_order_view(
             header_type="payment_screen",
             invoice_number=invoice.invoice_number,
             expires_at=order.expires_at,
@@ -1393,28 +1517,85 @@ class OrderService:
     async def _calculate_order_totals(
         cart_items: list[CartItemDTO],
         session: AsyncSession | Session
-    ) -> tuple[float, float]:
+    ) -> tuple[float, float, str]:
         """
         Calculate order totals: item prices + max shipping cost.
+        Also builds tier_breakdown_json for historical accuracy.
 
         Args:
             cart_items: List of cart items
             session: Database session
 
         Returns:
-            Tuple of (total_price_with_shipping, max_shipping_cost)
+            Tuple of (total_price_with_shipping, max_shipping_cost, tier_breakdown_json)
         """
+        from repositories.subcategory import SubcategoryRepository
+
         total_price = 0.0
         max_shipping_cost = 0.0  # Use MAX shipping cost, not SUM!
+        tier_breakdown_list = []  # List of tier breakdowns for JSON
 
         for cart_item in cart_items:
-            # Get price
-            item_dto = ItemDTO(
-                category_id=cart_item.category_id,
-                subcategory_id=cart_item.subcategory_id
-            )
-            price = await ItemRepository.get_price(item_dto, session)
-            total_price += price * cart_item.quantity
+            # Get subcategory info for tier breakdown
+            subcategory = await SubcategoryRepository.get_by_id(cart_item.subcategory_id, session)
+
+            # SECURITY: Always recompute tier pricing server-side, never trust cart data
+            # This prevents price manipulation via direct database access or session tampering
+            from services.pricing import PricingService
+
+            try:
+                # Attempt to calculate tier pricing
+                pricing_result = await PricingService.calculate_optimal_price(
+                    subcategory_id=cart_item.subcategory_id,
+                    quantity=cart_item.quantity,
+                    session=session
+                )
+
+                item_total = pricing_result.total
+                average_unit_price = pricing_result.average_unit_price
+                breakdown = [
+                    {
+                        'quantity': item.quantity,
+                        'unit_price': item.unit_price,
+                        'total': item.total
+                    }
+                    for item in pricing_result.breakdown
+                ]
+
+                total_price += item_total
+
+                # Add to tier breakdown list for JSON storage
+                tier_breakdown_list.append({
+                    'subcategory_id': cart_item.subcategory_id,
+                    'subcategory_name': subcategory.name if subcategory else 'Unknown',
+                    'quantity': cart_item.quantity,
+                    'total': item_total,
+                    'average_unit_price': average_unit_price,
+                    'breakdown': breakdown
+                })
+
+                logging.debug(f"Computed tier price for {cart_item.subcategory_id}: {item_total:.2f} EUR")
+
+            except Exception as e:
+                logging.warning(f"Failed to calculate tier pricing for cart_item {cart_item.id}: {e}, falling back to flat pricing")
+                # Fallback to flat pricing
+                item_dto = ItemDTO(
+                    category_id=cart_item.category_id,
+                    subcategory_id=cart_item.subcategory_id
+                )
+                price = await ItemRepository.get_price(item_dto, session)
+                item_total = price * cart_item.quantity
+                total_price += item_total
+
+                # Add flat pricing to breakdown
+                tier_breakdown_list.append({
+                    'subcategory_id': cart_item.subcategory_id,
+                    'subcategory_name': subcategory.name if subcategory else 'Unknown',
+                    'quantity': cart_item.quantity,
+                    'total': item_total,
+                    'average_unit_price': price,
+                    'breakdown': None  # No tier breakdown for flat pricing
+                })
 
             # Get shipping cost (only for physical items)
             # Note: We use MAX shipping cost across all items, not SUM
@@ -1429,13 +1610,17 @@ class OrderService:
         # Add shipping cost to total
         total_price_with_shipping = total_price + max_shipping_cost
 
+        # Serialize tier breakdown to JSON
+        import json
+        tier_breakdown_json = json.dumps(tier_breakdown_list) if tier_breakdown_list else None
+
         logging.info(
             f"📦 Order totals: Items={total_price:.2f} EUR | "
             f"Shipping={max_shipping_cost:.2f} EUR (MAX) | "
             f"Total={total_price_with_shipping:.2f} EUR"
         )
 
-        return total_price_with_shipping, max_shipping_cost
+        return total_price_with_shipping, max_shipping_cost, tier_breakdown_json
 
     @staticmethod
     async def _reserve_items_with_adjustments(
@@ -1524,7 +1709,7 @@ class OrderService:
         """
         from repositories.item import ItemRepository
         from repositories.subcategory import SubcategoryRepository
-        from services.invoice_formatter import InvoiceFormatter
+        from services.invoice_formatter import InvoiceFormatterService
 
         # Get order items
         order_items = await ItemRepository.get_by_order_id(order.id, session)
@@ -1534,26 +1719,42 @@ class OrderService:
         has_digital_items = any(not item.is_physical for item in order_items)
         is_mixed_order = has_physical_items and has_digital_items
 
+        # Parse tier breakdown from order (NO recalculation!)
+        tier_breakdown_list = OrderService._parse_tier_breakdown_from_order(order)
+
         # Batch-load all subcategories (eliminates N+1 queries)
         subcategory_ids = list({item.subcategory_id for item in order_items})
         subcategories_dict = await SubcategoryRepository.get_by_ids(subcategory_ids, session)
 
-        # Build unified items list WITH private_data (keys/codes for digital items)
-        items = []
-        for item in order_items:
-            subcategory = subcategories_dict.get(item.subcategory_id)
-            if subcategory:
-                items.append({
-                    'name': subcategory.name,
-                    'price': item.price,
-                    'quantity': 1,
-                    'is_physical': item.is_physical,
-                    'private_data': item.private_data  # Include keys/codes for digital items
-                })
+        # Fallback: If tier_breakdown_json not available (old orders), recalculate
+        if not tier_breakdown_list:
+            logging.warning(f"Order {order.id} has no tier_breakdown_json, falling back to recalculation")
+            tier_breakdown_list = await OrderService._group_items_with_tier_pricing(
+                order_items, subcategories_dict, session
+            )
 
-        # Group items by (name, price, is_physical, private_data)
-        # Items with identical private_data get grouped, unique ones stay separate
-        items_list = OrderService._group_items_for_display(items)
+        # Build items list with private_data (ungrouped for individual keys/codes)
+        items_raw = []
+        for item in order_items:
+            # Find corresponding tier breakdown from tier_breakdown_list
+            tier_breakdown = None
+            for tier_item in tier_breakdown_list:
+                subcategory = subcategories_dict.get(item.subcategory_id)
+                if subcategory and tier_item['subcategory_name'] == subcategory.name:
+                    tier_breakdown = tier_item.get('breakdown')
+                    break
+
+            items_raw.append({
+                'name': subcategories_dict[item.subcategory_id].name if item.subcategory_id in subcategories_dict else 'Unknown',
+                'price': item.price,  # Keep for fallback, but tier_breakdown takes precedence
+                'quantity': 1,
+                'is_physical': item.is_physical,
+                'private_data': item.private_data,
+                'tier_breakdown': tier_breakdown  # Add tier breakdown to each item
+            })
+
+        # Group items by (name, price, is_physical, private_data) while preserving tier_breakdown
+        items_list = OrderService._group_items_for_display(items_raw)
 
         # Choose footer based on item type
         if has_physical_items:
@@ -1561,7 +1762,7 @@ class OrderService:
         else:
             footer_text = Localizator.get_text(BotEntity.USER, "order_completed_wallet_only_digital_footer")
 
-        return InvoiceFormatter.format_complete_order_view(
+        return InvoiceFormatterService.format_complete_order_view(
             header_type="wallet_payment",
             invoice_number=invoice.invoice_number,
             items=items_list,
@@ -1578,6 +1779,126 @@ class OrderService:
         )
 
     @staticmethod
+    def _parse_tier_breakdown_from_order(order: OrderDTO) -> list[dict] | None:
+        """
+        Parse tier_breakdown_json from order.
+
+        This eliminates redundant tier pricing recalculations by using
+        the stored breakdown from order creation.
+
+        Args:
+            order: OrderDTO with tier_breakdown_json field
+
+        Returns:
+            List of tier breakdown dicts or None if not available
+
+        Example return format:
+            [
+                {
+                    'subcategory_id': 8,
+                    'subcategory_name': 'Schwarzer Tee',
+                    'quantity': 30,
+                    'total': 270.0,
+                    'average_unit_price': 9.0,
+                    'breakdown': [
+                        {'quantity': 25, 'unit_price': 9.0, 'total': 225.0},
+                        {'quantity': 5, 'unit_price': 9.0, 'total': 45.0}
+                    ]
+                },
+                ...
+            ]
+        """
+        if not order.tier_breakdown_json:
+            return None
+
+        import json
+        try:
+            return json.loads(order.tier_breakdown_json)
+        except (json.JSONDecodeError, TypeError) as e:
+            logging.warning(f"Failed to parse tier_breakdown_json for order {order.id}: {e}")
+            return None
+
+    @staticmethod
+    async def _group_items_with_tier_pricing(
+        order_items: list,
+        subcategories_dict: dict,
+        session: AsyncSession | Session
+    ) -> list[dict]:
+        """
+        Group order items by subcategory and calculate tier pricing.
+
+        DEPRECATED: This is a fallback for old orders without tier_breakdown_json.
+        New orders should use _parse_tier_breakdown_from_order() instead.
+
+        Args:
+            order_items: List of Item objects from order
+            subcategories_dict: Dict of {subcategory_id: SubcategoryDTO}
+            session: Database session
+
+        Returns:
+            List of tier breakdown dicts (same format as _parse_tier_breakdown_from_order)
+        """
+        from services.pricing import PricingService
+        from exceptions.item import TierPricingCalculationException, ItemNotFoundException
+        from collections import defaultdict
+
+        # Group items by subcategory
+        items_by_subcategory = defaultdict(list)
+        for item in order_items:
+            items_by_subcategory[item.subcategory_id].append(item)
+
+        # Build result list with tier pricing (same format as JSON)
+        result = []
+        for subcategory_id, items in items_by_subcategory.items():
+            subcategory = subcategories_dict.get(subcategory_id)
+            if not subcategory:
+                continue
+
+            quantity = len(items)
+            sample_item = items[0]
+
+            # Calculate tier pricing
+            try:
+                pricing_result = await PricingService.calculate_optimal_price(
+                    subcategory_id=subcategory_id,
+                    quantity=quantity,
+                    session=session
+                )
+
+                breakdown = [
+                    {
+                        'quantity': item.quantity,
+                        'unit_price': item.unit_price,
+                        'total': item.total
+                    }
+                    for item in pricing_result.breakdown
+                ]
+
+                # Return same format as _parse_tier_breakdown_from_order
+                result.append({
+                    'subcategory_id': subcategory_id,
+                    'subcategory_name': subcategory.name,
+                    'quantity': quantity,
+                    'total': pricing_result.total,
+                    'average_unit_price': pricing_result.average_unit_price,
+                    'breakdown': breakdown
+                })
+            except (ItemNotFoundException, TierPricingCalculationException) as e:
+                # Fallback to flat pricing if tier calculation fails
+                logging.warning(f"Tier pricing failed for subcategory {subcategory_id}: {e}")
+                # Still return entry but with None breakdown (will use flat pricing)
+                result.append({
+                    'subcategory_id': subcategory_id,
+                    'subcategory_name': subcategory.name,
+                    'quantity': quantity,
+                    'total': sample_item.price * quantity,
+                    'average_unit_price': sample_item.price,
+                    'breakdown': None
+                })
+
+        return result
+
+    @staticmethod
     def _group_items_for_display(items: list[dict]) -> list[dict]:
         """
         Group items for display based on (name, price, is_physical, private_data).
@@ -1586,12 +1907,13 @@ class OrderService:
         Items with unique private_data remain separate.
 
         Args:
-            items: List of item dicts with keys: name, price, quantity, is_physical, private_data
+            items: List of item dicts with keys: name, price, quantity, is_physical, private_data, tier_breakdown (optional)
 
         Returns:
             List of grouped items with updated quantities
         """
         grouped = {}
+        tier_breakdown_map = {}  # Store tier_breakdown for each group
 
         for item in items:
             # Group by all attributes including private_data
@@ -1606,6 +1928,8 @@ class OrderService:
 
             if key not in grouped:
                 grouped[key] = 0
+                # Store tier_breakdown for first item in group
+                tier_breakdown_map[key] = item.get('tier_breakdown')
             grouped[key] += item.get('quantity', 1)
 
         # Build result list
@@ -1615,7 +1939,8 @@ class OrderService:
                 'price': price,
                 'quantity': quantity,
                 'is_physical': is_physical,
-                'private_data': private_data
+                'private_data': private_data,
+                'tier_breakdown': tier_breakdown_map.get((name, price, is_physical, private_data))
             }
             for (name, price, is_physical, private_data), quantity in grouped.items()
         ]

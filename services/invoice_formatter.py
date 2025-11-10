@@ -17,14 +17,97 @@ from utils.localizator import Localizator
 from utils.html_escape import safe_html
 
 
-class InvoiceFormatter:
+class InvoiceFormatterService:
     """Centralized invoice formatting service"""
+
+    @staticmethod
+    def _format_private_data(private_data: str) -> str:
+        """
+        Format private_data based on its content type.
+
+        Args:
+            private_data: Raw private data string
+
+        Returns:
+            Formatted HTML string
+        """
+        # Check if private_data contains HTML tags (already formatted)
+        if any(tag in private_data for tag in ['<b>', '<i>', '<a>', '<code>', '<pre>', '<u>', '<s>']):
+            # Already HTML formatted - render directly with indentation on first line only
+            lines = private_data.split('\n')
+            result = f"   {lines[0]}\n"
+            if len(lines) > 1:
+                result += '\n'.join(lines[1:]) + '\n'
+            return result
+        # Check if private_data is a URL (for Telegram deep links)
+        elif private_data.startswith(('http://', 'https://', 't.me/')):
+            # Render as clickable link
+            if private_data.startswith('t.me/'):
+                private_data = f"https://{private_data}"
+            return f"   <a href=\"{private_data}\">📱 Beratung starten</a>\n"
+        else:
+            # Render as code (for vouchers, keys, etc.)
+            return f"   <code>{private_data}</code>\n"
+
+    @staticmethod
+    def _format_items_section(
+        items: list,
+        section_label: str,
+        currency_symbol: str,
+        show_private_data: bool,
+        entity: BotEntity
+    ) -> str:
+        """
+        Format a section of items (digital or physical).
+
+        Args:
+            items: List of item dicts
+            section_label: Section header (e.g., "Digital Items:")
+            currency_symbol: Currency symbol
+            show_private_data: Whether to show private_data
+            entity: BotEntity for localization
+
+        Returns:
+            Formatted HTML string
+        """
+        if not items:
+            return ""
+
+        qty_unit = Localizator.get_text(BotEntity.COMMON, "quantity_unit_short")
+        message = f"<b>{section_label}:</b>\n"
+
+        for item in items:
+            # Check if item has tier breakdown
+            if item.get('tier_breakdown'):
+                # Use tier breakdown formatting
+                tier_text, _ = InvoiceFormatterService.format_items_with_tier_breakdown(
+                    item_name=item['name'],
+                    tier_breakdown=item['tier_breakdown'],
+                    currency_symbol=currency_symbol,
+                    entity=entity
+                )
+                message += tier_text + "\n"
+            else:
+                # Flat pricing (no tier breakdown)
+                line_total = item['price'] * item['quantity']
+                if item['quantity'] == 1:
+                    message += f"{item['quantity']} {qty_unit} {item['name']} {currency_symbol}{item['price']:.2f}\n"
+                else:
+                    message += f"{item['quantity']} {qty_unit} {item['name']} {currency_symbol}{item['price']:.2f} = {currency_symbol}{line_total:.2f}\n"
+
+            # Show private data if applicable
+            if show_private_data and item.get('private_data'):
+                message += InvoiceFormatterService._format_private_data(item['private_data'])
+
+        message += "\n"
+        return message
 
     @staticmethod
     def format_items_list(
         items_dict: dict,
         currency_symbol: str,
-        show_line_totals: bool = True
+        show_line_totals: bool = True,
+        entity: BotEntity = BotEntity.USER
     ) -> tuple[str, float]:
         """
         Format items list with optional line totals.
@@ -33,23 +116,80 @@ class InvoiceFormatter:
             items_dict: Dict of {(name, price): quantity}
             currency_symbol: Currency symbol (e.g., "€")
             show_line_totals: Show line totals for qty > 1
+            entity: BotEntity for localization
 
         Returns:
             Tuple of (formatted_string, total_amount)
         """
         items_text = ""
         total = 0.0
+        qty_unit = Localizator.get_text(BotEntity.COMMON, "quantity_unit_short")
 
         for (name, price), qty in items_dict.items():
             line_total = price * qty
             total += line_total
 
             if qty == 1 or not show_line_totals:
-                items_text += f"{qty} Stk. {name} {currency_symbol}{price:.2f}\n"
+                items_text += f"{qty} {qty_unit} {name} {currency_symbol}{price:.2f}\n"
             else:
-                items_text += f"{qty} Stk. {name} {currency_symbol}{price:.2f} = {currency_symbol}{line_total:.2f}\n"
+                items_text += f"{qty} {qty_unit} {name} {currency_symbol}{price:.2f} = {currency_symbol}{line_total:.2f}\n"
 
         return items_text, total
+
+    @staticmethod
+    def format_items_with_tier_breakdown(
+        item_name: str,
+        tier_breakdown: list[dict],
+        currency_symbol: str = "€",
+        entity: BotEntity = BotEntity.USER
+    ) -> tuple[str, float]:
+        """
+        Format items list with tier breakdown display.
+
+        Args:
+            item_name: Name of the item
+            tier_breakdown: List of dicts with keys: quantity, unit_price, total
+                           Example: [{"quantity": 10, "unit_price": 9.00, "total": 90.00}]
+            currency_symbol: Currency symbol
+            entity: BotEntity for localization
+
+        Returns:
+            Tuple of (formatted_string, total_amount)
+
+        Example output:
+            USB-Stick SanDisk 32GB
+            Tier Pricing: (or Staffelpreise: in German)
+             10 ×  9,00 € =   90,00 €
+              5 × 10,00 € =   50,00 €
+              2 × 11,00 € =   22,00 €
+            ───────────────────────────
+                       Σ  162,00 €
+        """
+        tier_label = Localizator.get_text(BotEntity.COMMON, "tier_breakdown_label")
+
+        lines = [f"<b>{safe_html(item_name)}</b>"]
+        lines.append(f"<b>{tier_label}:</b>")
+
+        total = 0.0
+        for item in tier_breakdown:
+            qty = item["quantity"]
+            unit_price = item["unit_price"]
+            line_total = item["total"]
+            total += line_total
+
+            qty_str = f"{qty:>3}"
+            price_str = f"{unit_price:>6.2f}"
+            total_str = f"{line_total:>8.2f}"
+            lines.append(f" {qty_str} × {price_str} {currency_symbol} = {total_str} {currency_symbol}")
+
+        # Separator
+        lines.append("─" * 30)
+
+        # Total
+        total_str = f"{total:>8.2f}"
+        lines.append(f"{'':>17}Σ {total_str} {currency_symbol}")
+
+        return "\n".join(lines), total
 
     @staticmethod
     def format_order_invoice(
@@ -102,18 +242,20 @@ class InvoiceFormatter:
 
         # Digital items section
         if show_digital_section and digital_items:
-            message += "<b>Digital:</b>\n"
-            items_text, digital_total = InvoiceFormatter.format_items_list(
-                digital_items, currency_symbol
+            digital_label = Localizator.get_text(entity, "digital_items_label")
+            message += f"<b>{digital_label}:</b>\n"
+            items_text, digital_total = InvoiceFormatterService.format_items_list(
+                digital_items, currency_symbol, entity=entity
             )
             message += items_text
             message += "\n"
 
         # Physical items section
         if show_physical_section and physical_items:
-            message += "<b>Versandartikel:</b>\n"
-            items_text, physical_total = InvoiceFormatter.format_items_list(
-                physical_items, currency_symbol
+            physical_label = Localizator.get_text(entity, "physical_items_label")
+            message += f"<b>{physical_label}:</b>\n"
+            items_text, physical_total = InvoiceFormatterService.format_items_list(
+                physical_items, currency_symbol, entity=entity
             )
             message += items_text
             message += "\n"
@@ -123,10 +265,12 @@ class InvoiceFormatter:
 
         # Shipping line
         if show_shipping and shipping_cost > 0:
-            message += f"Versand {currency_symbol}{shipping_cost:.2f}\n"
+            shipping_label = Localizator.get_text(BotEntity.COMMON, "shipping_label")
+            message += f"{shipping_label} {currency_symbol}{shipping_cost:.2f}\n"
 
         # Wallet usage line
         if show_wallet_line and wallet_used > 0:
+            # "Wallet-Guthaben" is in payment_wallet_line localization key
             message += f"Wallet-Guthaben -{currency_symbol}{wallet_used:.2f}\n"
 
         # Total
@@ -180,7 +324,7 @@ class InvoiceFormatter:
         )
 
         # Build invoice
-        message = InvoiceFormatter.format_order_invoice(
+        message = InvoiceFormatterService.format_order_invoice(
             invoice_number=invoice_number,
             digital_items=digital_items,
             physical_items=physical_items,
@@ -365,7 +509,6 @@ class InvoiceFormatter:
         elif header_type == "order_detail_user" or header_type == "purchase_history":
             # User order detail / purchase history header with status
             if order_status:
-                from enums.bot_entity import BotEntity
                 # Get status using enum value directly (UPPERCASE)
                 status = Localizator.get_text(BotEntity.COMMON, f"order_status_{order_status.value}")
 
@@ -425,33 +568,27 @@ class InvoiceFormatter:
                 digital_items = [item for item in items if not item.get('is_physical', False)]
                 physical_items = [item for item in items if item.get('is_physical', False)]
 
+                qty_unit = Localizator.get_text(BotEntity.COMMON, "quantity_unit_short")
+
                 if digital_items:
                     digital_label = Localizator.get_text(entity, "digital_items_label")
-                    message += f"<b>{digital_label}:</b>\n"
-                    for item in digital_items:
-                        line_total = item['price'] * item['quantity']
-                        if item['quantity'] == 1:
-                            message += f"{item['quantity']} Stk. {item['name']} {currency_symbol}{item['price']:.2f}\n"
-                        else:
-                            message += f"{item['quantity']} Stk. {item['name']} {currency_symbol}{item['price']:.2f} = {currency_symbol}{line_total:.2f}\n"
-                        # Show private data indented (keys/codes for digital items)
-                        if show_private_data and item.get('private_data'):
-                            message += f"   <code>{item['private_data']}</code>\n"
-                    message += "\n"
+                    message += InvoiceFormatterService._format_items_section(
+                        items=digital_items,
+                        section_label=digital_label,
+                        currency_symbol=currency_symbol,
+                        show_private_data=show_private_data,
+                        entity=entity
+                    )
 
                 if physical_items:
                     physical_label = Localizator.get_text(entity, "physical_items_label")
-                    message += f"<b>{physical_label}:</b>\n"
-                    for item in physical_items:
-                        line_total = item['price'] * item['quantity']
-                        if item['quantity'] == 1:
-                            message += f"{item['quantity']} Stk. {item['name']} {currency_symbol}{item['price']:.2f}\n"
-                        else:
-                            message += f"{item['quantity']} Stk. {item['name']} {currency_symbol}{item['price']:.2f} = {currency_symbol}{line_total:.2f}\n"
-                        # Physical items don't have private_data, but check anyway for consistency
-                        if show_private_data and item.get('private_data'):
-                            message += f"   <code>{item['private_data']}</code>\n"
-                    message += "\n"
+                    message += InvoiceFormatterService._format_items_section(
+                        items=physical_items,
+                        section_label=physical_label,
+                        currency_symbol=currency_symbol,
+                        show_private_data=show_private_data,
+                        entity=entity
+                    )
 
             else:
                 # Unified items list with optional spacing alignment (payment screens)
@@ -542,11 +679,16 @@ class InvoiceFormatter:
             expires_time = expires_at.strftime("%H:%M") if expires_at else "N/A"
             time_remaining = (expires_at - datetime.now()).total_seconds() / 60 if expires_at else 0
 
-            message += f"\n<b>Zahlungsadresse:</b>\n"
+            payment_address_label = Localizator.get_text(entity, "invoice_payment_address_label")
+            payment_amount_label = Localizator.get_text(entity, "invoice_payment_amount_label")
+            payment_deadline = Localizator.get_text(entity, "invoice_payment_deadline").format(expires_time=expires_time)
+            time_remaining_text = Localizator.get_text(entity, "invoice_time_remaining").format(time_remaining=int(time_remaining))
+
+            message += f"\n<b>{payment_address_label}:</b>\n"
             message += f"<code>{payment_address}</code>\n\n"
-            message += f"<b>Betrag:</b> {payment_amount_crypto}\n\n"
-            message += f"⏰ <b>Zahlung erforderlich bis {expires_time} Uhr</b>\n"
-            message += f"({int(time_remaining)} Minuten verbleibend)\n"
+            message += f"<b>{payment_amount_label}:</b> {payment_amount_crypto}\n\n"
+            message += f"⏰ <b>{payment_deadline}</b>\n"
+            message += f"({time_remaining_text})\n"
 
         # === PARTIAL CANCELLATION DETAILS ===
         if header_type == "partial_cancellation" and partial_refund_info:
@@ -609,9 +751,15 @@ class InvoiceFormatter:
                 message += f"{Localizator.get_text(entity, 'cancellation_full_refund').format(refund_amount=f'{refund_amount:.2f}', currency_symbol=currency_symbol)}\n\n"
 
         # === CANCELLATION REASON ===
+        import logging
+        logging.info(f"🟢 Cancellation reason check: cancellation_reason='{cancellation_reason}', header_type='{header_type}'")
+        logging.info(f"🟢 Condition evaluates to: {bool(cancellation_reason and header_type in ['admin_cancellation', 'cancellation_refund', 'partial_cancellation'])}")
+
         if cancellation_reason and header_type in ["admin_cancellation", "cancellation_refund", "partial_cancellation"]:
+            logging.info(f"🟢 ENTERING cancellation reason block for header_type='{header_type}'")
             if header_type == "admin_cancellation":
                 # Admin cancellation uses custom reason label
+                logging.info(f"🟢 Adding admin cancellation reason: '{cancellation_reason}'")
                 message += f"\n<b>{Localizator.get_text(entity, 'admin_cancel_reason_label')}</b>\n"
                 message += f"{cancellation_reason}\n\n"
             else:
@@ -642,7 +790,19 @@ class InvoiceFormatter:
 
         if header_type == "admin_cancellation":
             message += f"{Localizator.get_text(entity, 'admin_cancel_notice')}\n\n"
+
+            # Display custom reason if provided
+            if cancellation_reason:
+                message += f"<b>{Localizator.get_text(entity, 'admin_cancel_reason_label')}</b>\n"
+                message += f"{cancellation_reason}\n\n"
+
             message += f"{Localizator.get_text(entity, 'admin_cancel_contact_support')}"
+
+        # Display cancellation reason in order history detail view (for CANCELLED_BY_ADMIN status)
+        if header_type in ["order_detail_admin", "order_detail_user"] and cancellation_reason:
+            if order_status == OrderStatus.CANCELLED_BY_ADMIN:
+                message += f"\n\n<b>{Localizator.get_text(entity, 'admin_cancel_reason_label')}</b>\n"
+                message += f"{cancellation_reason}"
 
         if show_retention_notice:
             import config
