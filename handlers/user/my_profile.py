@@ -160,6 +160,9 @@ async def create_payment(**kwargs):
 
 @my_profile_router.callback_query(MyProfileCallback.filter(), IsUserExistFilterIncludingBanned())
 async def navigate(callback: CallbackQuery, callback_data: MyProfileCallback, session: AsyncSession | Session):
+    import logging
+    logging.info(f"🟣 MY PROFILE ROUTER TRIGGERED - Level: {callback_data.level}, Callback data: {callback.data}")
+
     current_level = callback_data.level
 
     levels = {

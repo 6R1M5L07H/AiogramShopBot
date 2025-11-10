@@ -34,11 +34,30 @@ class ItemService:
                 subcategory = await SubcategoryRepository.get_or_create(item['subcategory'], session)
                 item.pop('category')
                 item.pop('subcategory')
-                items_list.append(ItemDTO(
+
+                # Extract price_tiers if present (will be handled separately)
+                price_tiers = item.pop('price_tiers', None)
+
+                # If price_tiers exist, derive price from first tier (min_quantity=1)
+                if price_tiers:
+                    # Find tier with min_quantity=1 or use first tier as fallback
+                    base_tier = next((t for t in price_tiers if t['min_quantity'] == 1), price_tiers[0])
+                    item['price'] = base_tier['unit_price']
+
+                # Ensure private_data is never None (DB constraint: NOT NULL)
+                if item.get('private_data') is None:
+                    item['private_data'] = ''
+
+                item_dto = ItemDTO(
                     category_id=category.id,
                     subcategory_id=subcategory.id,
                     **item
-                ))
+                )
+
+                # Attach price_tiers for later storage
+                item_dto.price_tiers = price_tiers
+
+                items_list.append(item_dto)
             return items_list
 
     @staticmethod

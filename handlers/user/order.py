@@ -10,6 +10,7 @@ import config
 from callbacks import CartCallback, OrderCallback
 from db import session_commit
 from enums.bot_entity import BotEntity
+from enums.order_status import OrderStatus
 from models.cart import CartDTO
 from models.user import UserDTO
 from repositories.cartItem import CartItemRepository
@@ -254,13 +255,12 @@ async def create_order(**kwargs):
             return
 
         # 7. UI Fork: Digital items → Redirect directly to payment
-        msg, kb_builder = await process_payment(
+        await process_payment(
             callback=callback,
             session=session,
             state=state,
             order_id=order.id
         )
-        await callback.message.edit_text(text=msg, reply_markup=kb_builder.as_markup())
 
     except ValueError as e:
         # All items out of stock
@@ -509,20 +509,40 @@ async def process_payment(**kwargs):
             callback_data=CartCallback.create(0)  # Back to Cart (cross-domain)
         )
         msg = Localizator.get_text(BotEntity.USER, "order_not_found_error")
-        return msg, kb_builder
+        await callback.message.edit_text(text=msg, reply_markup=kb_builder.as_markup())
+        return
 
-    # 2. Check if invoice already exists
-    existing_invoice = await InvoiceRepository.get_by_order_id(order_id, session)
+    # 2. Check order status - abort if already finalized
+    order = await OrderRepository.get_by_id(order_id, session)
+    if order.status not in [
+        OrderStatus.PENDING_PAYMENT,
+        OrderStatus.PENDING_PAYMENT_AND_ADDRESS,
+        OrderStatus.PENDING_PAYMENT_PARTIAL
+    ]:
+        # Order already finalized (TIMEOUT, CANCELLED, PAID, etc.)
+        # Redirect to cart - order cannot be processed anymore
+        kb_builder = InlineKeyboardBuilder()
+        kb_builder.button(
+            text=Localizator.get_text(BotEntity.USER, "back_to_cart"),
+            callback_data=CartCallback.create(0)
+        )
+        msg = Localizator.get_text(BotEntity.USER, "error_order_expired")
+        await callback.message.edit_text(text=msg, reply_markup=kb_builder.as_markup())
+        return
+
+    # 3. Check if active invoice already exists (excludes expired/cancelled)
+    existing_invoice = await InvoiceRepository.get_by_order_id(order_id, session, include_inactive=False)
     if existing_invoice:
+        # Order still valid - show existing invoice
         msg, kb_builder = await _handle_existing_invoice(order_id, existing_invoice, session)
-        return msg, kb_builder
+        await callback.message.edit_text(text=msg, reply_markup=kb_builder.as_markup())
+        return
 
-    # 3. Check if crypto already selected
+    # 4. Check if crypto already selected
     crypto_selected = unpacked_cb and unpacked_cb.cryptocurrency and unpacked_cb.cryptocurrency != Cryptocurrency.PENDING_SELECTION
 
-    # 4. Mode A/B: First visit - Check wallet balance
+    # 5. Mode A/B: First visit - Check wallet balance
     if not crypto_selected:
-        order = await OrderRepository.get_by_id(order_id, session)
         user = await UserRepository.get_by_id(order.user_id, session)
         wallet_balance = user.top_up_amount
         order_total = order.total_price
@@ -530,21 +550,24 @@ async def process_payment(**kwargs):
         # Mode A: Wallet covers everything
         if wallet_balance >= order_total:
             msg, kb_builder = await _process_wallet_only_payment(order_id, order, state, session)
-            return msg, kb_builder
+            await callback.message.edit_text(text=msg, reply_markup=kb_builder.as_markup())
+            return
 
         # Mode B: Wallet insufficient - Show crypto selection
         else:
             msg, kb_builder = await CartService._show_crypto_selection(order_id)
-            return msg, kb_builder
+            await callback.message.edit_text(text=msg, reply_markup=kb_builder.as_markup())
+            return
 
-    # 5. Mode C: Crypto selected - Process payment
+    # 6. Mode C: Crypto selected - Process payment
     if not unpacked_cb or not unpacked_cb.cryptocurrency:
         # Should never happen (crypto_selected would be False), but safety check
         msg, kb_builder = await CartService._show_crypto_selection(order_id)
-        return msg, kb_builder
+        await callback.message.edit_text(text=msg, reply_markup=kb_builder.as_markup())
+        return
 
     msg, kb_builder = await _process_crypto_payment(order_id, unpacked_cb.cryptocurrency, state, session)
-    return msg, kb_builder
+    await callback.message.edit_text(text=msg, reply_markup=kb_builder.as_markup())
 
 
 async def confirm_shipping_address(**kwargs):
@@ -587,12 +610,26 @@ async def cancel_order(**kwargs):
     - Check grace period
     - Warn about penalties if applicable
     """
+    import logging
+    logging.info("🔴 CANCEL ORDER HANDLER TRIGGERED (Level 4)")
+
     callback = kwargs.get("callback")
     session = kwargs.get("session")
     state = kwargs.get("state")
 
-    msg, kb_builder = await OrderService.cancel_order_handler(callback, session, state)
-    await callback.message.edit_text(text=msg, reply_markup=kb_builder.as_markup())
+    logging.info(f"🔴 Callback data: {callback.data}")
+
+    try:
+        msg, kb_builder = await OrderService.cancel_order_handler(callback, session, state)
+        logging.info(f"🔴 Message to display (first 200 chars): {msg[:200]}")
+        logging.info(f"🔴 Keyboard buttons: {len(kb_builder.as_markup().inline_keyboard)} rows")
+
+        await callback.message.edit_text(text=msg, reply_markup=kb_builder.as_markup())
+        await callback.answer()  # Stop the "glowing" animation
+        logging.info("✅ Cancel order confirmation displayed")
+    except Exception as e:
+        logging.exception(f"❌ Error in cancel_order handler: {e}")
+        await callback.answer("❌ Fehler beim Laden der Stornierungsbestätigung", show_alert=True)
 
 
 async def execute_cancel_order(**kwargs):
@@ -652,6 +689,9 @@ async def navigate_order_process(
     Order process router.
     Routes callbacks to appropriate level handlers.
     """
+    import logging
+    logging.info(f"🔵 ORDER ROUTER TRIGGERED - Level: {callback_data.level}, Order ID: {callback_data.order_id}")
+
     current_level = callback_data.level
 
     levels = {

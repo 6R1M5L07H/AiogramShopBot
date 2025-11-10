@@ -16,7 +16,7 @@
       "quantity": 100,
       "category": "Digital Products",
       "subcategory": "Software Licenses",
-      "private_data": "License Key: {{LICENSE_KEY}}\n\nActivation Instructions:\n1. Download software from official website\n2. Enter license key during installation\n3. Activate within 30 days\n\nFor support contact: https://t.me/{{ADMIN_USERNAME}}",
+      "private_data": "✅ <b>License activated!</b>\n\n<b>Your License Key:</b>\n<code>{{LICENSE_KEY}}</code>\n\n📋 <b>Activation Instructions:</b>\n\n1️⃣ Download software from official website\n2️⃣ Enter license key during installation\n3️⃣ Activate within 30 days\n\n💬 <b>Support:</b>\n\nhttps://t.me/{{ADMIN_USERNAME}}\n\n<i>Valid for 1 year from activation</i>",
       "price": 49.99,
       "description": "Premium Software License - 1 Year",
       "is_physical": false,

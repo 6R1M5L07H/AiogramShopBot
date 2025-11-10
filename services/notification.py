@@ -286,7 +286,7 @@ class NotificationService:
             from repositories.subcategory import SubcategoryRepository
             from repositories.order import OrderRepository
             from repositories.invoice import InvoiceRepository
-            from services.invoice_formatter import InvoiceFormatter
+            from services.invoice_formatter import InvoiceFormatterService
             from enums.order_status import OrderStatus
 
             # Get order and items
@@ -299,29 +299,48 @@ class NotificationService:
                 has_digital_items = any(not item.is_physical for item in items)
                 is_mixed_order = has_physical_items and has_digital_items
 
+                # Parse tier breakdown from order (NO recalculation!)
+                from services.order import OrderService
+                tier_breakdown_list = OrderService._parse_tier_breakdown_from_order(order)
+
                 # Batch-load all subcategories (eliminates N+1 queries)
                 subcategory_ids = list({item.subcategory_id for item in items})
                 subcategories_dict = await SubcategoryRepository.get_by_ids(subcategory_ids, session)
 
-                # Build items list with private_data
+                # Fallback: If tier_breakdown_json not available (old orders), recalculate
+                if not tier_breakdown_list:
+                    logging.warning(f"Order {order_id} has no tier_breakdown_json, falling back to recalculation")
+                    tier_breakdown_list = await OrderService._group_items_with_tier_pricing(
+                        items, subcategories_dict, session
+                    )
+
+                # Build items list with private_data (ungrouped for individual keys/codes)
                 items_raw = []
                 for item in items:
+                    # Find corresponding tier breakdown from tier_breakdown_list
+                    tier_breakdown = None
+                    for tier_item in tier_breakdown_list:
+                        subcategory = subcategories_dict.get(item.subcategory_id)
+                        if subcategory and tier_item['subcategory_name'] == subcategory.name:
+                            tier_breakdown = tier_item.get('breakdown')
+                            break
+
                     subcategory = subcategories_dict.get(item.subcategory_id)
                     if subcategory:
                         items_raw.append({
                             'name': subcategory.name,
-                            'price': item.price,
+                            'price': item.price,  # Keep for fallback, but tier_breakdown takes precedence
                             'quantity': 1,
                             'is_physical': item.is_physical,
-                            'private_data': item.private_data
+                            'private_data': item.private_data,
+                            'tier_breakdown': tier_breakdown  # Add tier breakdown
                         })
 
-                # Group items by (name, price, is_physical, private_data)
-                from services.order import OrderService
+                # Group items by (name, price, is_physical, private_data) while preserving tier_breakdown
                 items_list = OrderService._group_items_for_display(items_raw)
 
                 # Format message with InvoiceFormatter
-                msg = InvoiceFormatter.format_complete_order_view(
+                msg = InvoiceFormatterService.format_complete_order_view(
                     header_type="payment_success",
                     invoice_number=invoice_number,
                     order_status=order.status,
@@ -384,7 +403,7 @@ class NotificationService:
         Returns:
             Formatted message string (does NOT send)
         """
-        from services.invoice_formatter import InvoiceFormatter
+        from services.invoice_formatter import InvoiceFormatterService
 
         original_amount = refund_info['original_amount']
         penalty_amount = refund_info['penalty_amount']
@@ -398,27 +417,50 @@ class NotificationService:
         items_list = None
         if is_mixed_order and order:
             from repositories.item import ItemRepository
+            from repositories.subcategory import SubcategoryRepository
             from services.order import OrderService
             order_items = await ItemRepository.get_by_order_id(order.id, session)
 
+            # Parse tier breakdown from order (NO recalculation!)
+            tier_breakdown_list = OrderService._parse_tier_breakdown_from_order(order)
+
+            # Batch-load all subcategories
+            subcategory_ids = list({item.subcategory_id for item in order_items})
+            subcategories_dict = await SubcategoryRepository.get_by_ids(subcategory_ids, session)
+
+            # Fallback: If tier_breakdown_json not available (old orders), recalculate
+            if not tier_breakdown_list:
+                logging.warning(f"Order {order.id} has no tier_breakdown_json, falling back to recalculation")
+                tier_breakdown_list = await OrderService._group_items_with_tier_pricing(
+                    order_items, subcategories_dict, session
+                )
+
             # Build items list (no private_data for cancellation messages)
-            items_raw = [
-                {
+            items_raw = []
+            for item in order_items:
+                # Find corresponding tier breakdown from tier_breakdown_list
+                tier_breakdown = None
+                for tier_item in tier_breakdown_list:
+                    subcategory = subcategories_dict.get(item.subcategory_id)
+                    if subcategory and tier_item['subcategory_name'] == subcategory.name:
+                        tier_breakdown = tier_item.get('breakdown')
+                        break
+
+                items_raw.append({
                     'name': item.description,
-                    'price': item.price,
+                    'price': item.price,  # Keep for fallback, but tier_breakdown takes precedence
                     'quantity': 1,
                     'is_physical': item.is_physical,
-                    'private_data': None  # Don't show private_data in cancellation
-                }
-                for item in order_items
-            ]
+                    'private_data': None,  # Don't show private_data in cancellation
+                    'tier_breakdown': tier_breakdown  # Add tier breakdown
+                })
 
-            # Group items by (name, price, is_physical, private_data)
+            # Group items by (name, price, is_physical, private_data) while preserving tier_breakdown
             items_list = OrderService._group_items_for_display(items_raw)
 
         if is_mixed_order and partial_refund_details:
             # Mixed order cancellation - show digital items kept, physical items refunded
-            return InvoiceFormatter.format_complete_order_view(
+            return InvoiceFormatterService.format_complete_order_view(
                 header_type="partial_cancellation",
                 invoice_number=invoice_number,
                 items=items_list,
@@ -434,7 +476,7 @@ class NotificationService:
             )
         elif penalty_amount > 0:
             # Regular cancellation with processing fee and strike - use InvoiceFormatter
-            return InvoiceFormatter.format_complete_order_view(
+            return InvoiceFormatterService.format_complete_order_view(
                 header_type="cancellation_refund",
                 invoice_number=invoice_number,
                 items=None,  # No items shown for penalty cancellations
@@ -484,9 +526,12 @@ class NotificationService:
         Returns:
             Formatted message string (does NOT send)
         """
-        from services.invoice_formatter import InvoiceFormatter
+        from services.invoice_formatter import InvoiceFormatterService
         from utils.localizator import Localizator
         from enums.bot_entity import BotEntity
+        import logging
+
+        logging.info(f"🔵 build_order_cancelled_by_admin_message: custom_reason='{custom_reason}', order={order is not None}, session={session is not None}")
 
         # If order info available, show full invoice format
         if order and session:
@@ -519,13 +564,16 @@ class NotificationService:
             from services.order import OrderService
             items_list = OrderService._group_items_for_display(items_raw)
 
-            return InvoiceFormatter.format_complete_order_view(
+            escaped_reason = safe_html(custom_reason)
+            logging.info(f"🔵 Passing to formatter: cancellation_reason='{escaped_reason}' (from custom_reason='{custom_reason}')")
+
+            return InvoiceFormatterService.format_complete_order_view(
                 header_type="admin_cancellation",
                 invoice_number=invoice_number,
                 items=items_list,
                 shipping_cost=order.shipping_cost,
                 total_price=order.total_price,
-                cancellation_reason=safe_html(custom_reason),
+                cancellation_reason=escaped_reason,
                 use_spacing_alignment=True,
                 currency_symbol=currency_sym,
                 entity=BotEntity.USER
@@ -577,7 +625,7 @@ class NotificationService:
         from repositories.order import OrderRepository
         from repositories.item import ItemRepository
         from repositories.subcategory import SubcategoryRepository
-        from services.invoice_formatter import InvoiceFormatter
+        from services.invoice_formatter import InvoiceFormatterService
 
         user = await UserRepository.get_by_id(user_id, session)
         order = await OrderRepository.get_by_id(order_id, session)
@@ -605,7 +653,7 @@ class NotificationService:
         items_list = OrderService._group_items_for_display(items_raw)
 
         # Format with InvoiceFormatter
-        msg = InvoiceFormatter.format_complete_order_view(
+        msg = InvoiceFormatterService.format_complete_order_view(
             header_type="order_shipped",
             invoice_number=invoice_number,
             order_status=order.status,

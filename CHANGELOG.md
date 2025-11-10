@@ -2,6 +2,40 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2025-11-09
+
+### Tiered Pricing System (Phase 1)
+
+**Core Features**
+- Quantity-based tiered pricing with automatic optimal price calculation
+- Item generator supports tiered pricing via JSON import (price_tiers array)
+- Tier breakdown display throughout purchase flow: cart, checkout, order history
+- Stored tier breakdown in orders eliminates redundant recalculation
+
+**User Experience**
+- Cart shows tier preview with savings calculation for bulk purchases
+- Order history displays tier breakdown for transparency
+- Item detail view shows available price tiers before adding to cart
+- Clickable Telegram deep links in private_data for digital products (consultation vouchers, support)
+
+**Technical Infrastructure**
+- New PriceTier model with foreign key relationship to Item
+- PricingService calculates optimal prices across quantity ranges
+- InvoiceFormatterService supports tier breakdown rendering
+- HTML-formatted private_data with automatic link detection (plain URL, HTML anchor tags)
+- Unified database access pattern (session_execute, session_commit) for dual-mode support
+- Comprehensive test suite for invoice lifecycle and tier pricing
+
+**Admin Tools**
+- Tier pricing support in admin order management
+- Order cancellation respects tier pricing for refunds
+- Unified order display service for admin and user contexts
+
+**Documentation**
+- Comprehensive tier pricing documentation in item generator README
+- E2E test plan for tier pricing verification
+- Invoice lifecycle test plan with edge cases
+
 ## 2025-11-06
 
 ### Unified Order Management System

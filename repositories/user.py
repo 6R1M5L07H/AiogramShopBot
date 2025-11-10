@@ -101,7 +101,7 @@ class UserRepository:
         timedelta = datetime.timedelta(days=timedelta.value)
         time_interval = current_time - timedelta
         users_stmt = (select(User)
-                      .where(User.registered_at >= time_interval, User.telegram_username != None)
+                      .where(User.registered_at >= time_interval)
                       .limit(config.PAGE_ENTRIES)
                       .offset(config.PAGE_ENTRIES * page))
         users_count_stmt = select(func.count(User.id)).where(User.registered_at >= time_interval)
@@ -115,8 +115,7 @@ class UserRepository:
         current_time = datetime.datetime.now()
         timedelta = datetime.timedelta(days=timedelta.value)
         time_interval = current_time - timedelta
-        stmt = select(func.count(User.id)).where(User.registered_at >= time_interval,
-                                                 User.telegram_username != None)
+        stmt = select(func.count(User.id)).where(User.registered_at >= time_interval)
         users = await session_execute(stmt, session)
         users = users.scalar_one()
         if users % config.PAGE_ENTRIES == 0:

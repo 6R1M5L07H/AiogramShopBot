@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from pydantic import BaseModel
-from sqlalchemy import Column, Integer, Float, DateTime, ForeignKey, func, CheckConstraint, Enum as SQLEnum
+from sqlalchemy import Column, Integer, Float, DateTime, ForeignKey, func, CheckConstraint, Enum as SQLEnum, Text
 from sqlalchemy.orm import relationship
 
 from enums.currency import Currency
@@ -32,6 +32,17 @@ class Order(Base):
     original_expires_at = Column(DateTime, nullable=True)  # Original deadline (before extension)
     wallet_used = Column(Float, nullable=False, default=0.0)  # Wallet balance used for this order
 
+    # Tier Pricing Breakdown (JSON)
+    # Stores complete tier calculation for historical accuracy and audit trail
+    # Format: [{"subcategory_id": 8, "subcategory_name": "Tea", "quantity": 30, "total": 270.0,
+    #           "average_unit_price": 9.0, "breakdown": [{"quantity": 25, "unit_price": 9.0, "total": 225.0}, ...]}]
+    tier_breakdown_json = Column(Text, nullable=True)
+
+    # Cancellation Reason (for admin cancellations)
+    # Stores custom reason text provided by admin when cancelling order
+    # Displayed in order history detail view
+    cancellation_reason = Column(Text, nullable=True)
+
     # Relations
     user = relationship('User', backref='orders')
     items = relationship('Item', backref='order')
@@ -60,3 +71,5 @@ class OrderDTO(BaseModel):
     retry_count: int | None = None
     original_expires_at: datetime | None = None
     wallet_used: float | None = None
+    tier_breakdown_json: str | None = None  # JSON string with tier pricing breakdown
+    cancellation_reason: str | None = None  # Custom reason for admin cancellations

@@ -34,8 +34,76 @@ class CartRepository:
         old_cart_records = old_cart_records.scalar()
 
         if old_cart_records is None:
+            # New item: Calculate tier breakdown for cart_item.quantity
+            from services.pricing import PricingService
+            import json
+
+            pricing_result = await PricingService.calculate_optimal_price(
+                subcategory_id=cart_item.subcategory_id,
+                quantity=cart_item.quantity,
+                session=session
+            )
+            cart_item.tier_breakdown = json.dumps([
+                {"quantity": item.quantity, "unit_price": item.unit_price, "total": item.total}
+                for item in pricing_result.breakdown
+            ])
+
             await CartItemRepository.create(cart_item, session)
         elif old_cart_records is not None:
-            quantity_update_stmt = (update(CartItem).where(CartItem.cart_id == cart.id)
-                                    .values(quantity=CartItem.quantity + cart_item.quantity))
+            # Existing item: Get current quantity and calculate new tier breakdown
+            from services.pricing import PricingService
+            import json
+
+            get_cart_item_stmt = select(CartItem).where(
+                CartItem.cart_id == cart.id,
+                CartItem.subcategory_id == cart_item.subcategory_id
+            )
+            result = await session_execute(get_cart_item_stmt, session)
+            existing_cart_item = result.scalar()
+
+            new_total_quantity = existing_cart_item.quantity + cart_item.quantity
+
+            pricing_result = await PricingService.calculate_optimal_price(
+                subcategory_id=cart_item.subcategory_id,
+                quantity=new_total_quantity,
+                session=session
+            )
+
+            tier_breakdown_json = json.dumps([
+                {"quantity": item.quantity, "unit_price": item.unit_price, "total": item.total}
+                for item in pricing_result.breakdown
+            ])
+
+            quantity_update_stmt = (update(CartItem).where(
+                CartItem.cart_id == cart.id,
+                CartItem.subcategory_id == cart_item.subcategory_id
+            ).values(
+                quantity=new_total_quantity,
+                tier_breakdown=tier_breakdown_json
+            ))
             await session_execute(quantity_update_stmt, session)
+
+    @staticmethod
+    async def get_items_by_subcategory(
+        cart_id: int,
+        subcategory_id: int,
+        session: AsyncSession | Session
+    ) -> list[CartItemDTO]:
+        """
+        Get all cart items for a specific subcategory.
+
+        Args:
+            cart_id: ID of the cart
+            subcategory_id: ID of the subcategory
+            session: Database session
+
+        Returns:
+            List of CartItemDTO for the subcategory (usually 0 or 1 item)
+        """
+        stmt = select(CartItem).where(
+            CartItem.cart_id == cart_id,
+            CartItem.subcategory_id == subcategory_id
+        )
+        result = await session_execute(stmt, session)
+        items = result.scalars().all()
+        return [CartItemDTO.model_validate(item, from_attributes=True) for item in items]
