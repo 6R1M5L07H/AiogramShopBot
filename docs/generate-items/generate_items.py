@@ -42,6 +42,34 @@ Items can use legacy flat pricing OR tiered bulk pricing:
     {"min_quantity": 10, "unit_price": 9.00}
   ]
 
+Shipping Tiers Support:
+-----------------------
+Subcategories can define quantity-based shipping type selection:
+
+**Legacy shipping (flat rate per item):**
+  "shipping_cost": 5.00
+
+**Dynamic shipping tiers (quantity-based):**
+  "shipping_tiers": [
+    {"min_quantity": 1, "max_quantity": 5, "shipping_type": "maxibrief"},
+    {"min_quantity": 6, "max_quantity": 10, "shipping_type": "paeckchen"},
+    {"min_quantity": 11, "max_quantity": null, "shipping_type": "paket_2kg"}
+  ]
+
+How Shipping Tiers Work:
+- Defined at subcategory level (all items in subcategory share same logic)
+- Automatically selects shipping type based on cart quantity
+- References shipping types from shipping_types/{country}.json
+- Example: 1-5 items → Maxibrief, 6-10 → Päckchen, 11+ → Paket 2kg
+- Only for physical items (is_physical: true)
+
+Best Practices:
+- First tier should start with min_quantity: 1
+- Last tier should have max_quantity: null (unlimited)
+- No gaps or overlaps in quantity ranges
+- shipping_type must exist in shipping_types/de.json
+- Use EITHER shipping_cost OR shipping_tiers, not both
+
 How Tiered Pricing Works:
 - Each tier defines a minimum quantity and unit price
 - When customers buy multiple items, the bot applies the best discount
@@ -130,37 +158,54 @@ Example Template JSON:
 
 Output:
 -------
-Generates a flat JSON array compatible with the bot's parser:
-[
-  {
-    "category": "Hardware Products",
-    "subcategory": "USB Storage Devices",
-    "private_data": "",
-    "price": 29.99,
-    "description": "USB 3.0 Flash Drive - 64GB",
-    "is_physical": true,
-    "shipping_cost": 5.00,
-    "allows_packstation": true
-  },
-  {
-    "category": "Digital Products",
-    "subcategory": "Software Licenses",
-    "private_data": "License Key: LICENSE-2025-ABCD1234",
-    "price": 49.99,
-    "description": "Premium Software License",
-    "is_physical": false,
-    "shipping_cost": 0.0,
-    "allows_packstation": false,
-    "price_tiers": [
-      {"min_quantity": 1, "unit_price": 49.99},
-      {"min_quantity": 10, "unit_price": 44.99},
-      {"min_quantity": 25, "unit_price": 39.99}
-    ]
-  }
-]
+Generates a structured JSON with items and subcategories:
 
-Note: Items with price_tiers will include both "price" (base price from first tier)
-and "price_tiers" array in the output. The bot's parser handles this automatically.
+{
+  "items": [
+    {
+      "category": "Hardware Products",
+      "subcategory": "USB Storage Devices",
+      "private_data": "",
+      "price": 29.99,
+      "description": "USB 3.0 Flash Drive - 64GB",
+      "is_physical": true,
+      "shipping_cost": 5.00,
+      "allows_packstation": true
+    },
+    {
+      "category": "Digital Products",
+      "subcategory": "Software Licenses",
+      "private_data": "License Key: LICENSE-2025-ABCD1234",
+      "price": 49.99,
+      "description": "Premium Software License",
+      "is_physical": false,
+      "shipping_cost": 0.0,
+      "allows_packstation": false,
+      "price_tiers": [
+        {"min_quantity": 1, "unit_price": 49.99},
+        {"min_quantity": 10, "unit_price": 44.99},
+        {"min_quantity": 25, "unit_price": 39.99}
+      ]
+    }
+  ],
+  "subcategories": [
+    {
+      "name": "USB Storage Devices",
+      "category": "Hardware Products",
+      "shipping_tiers": [
+        {"min_quantity": 1, "max_quantity": 5, "shipping_type": "maxibrief"},
+        {"min_quantity": 6, "max_quantity": 10, "shipping_type": "paeckchen"},
+        {"min_quantity": 11, "max_quantity": null, "shipping_type": "paket_2kg"}
+      ]
+    }
+  ]
+}
+
+Notes:
+- Items with price_tiers include both "price" (base) and "price_tiers" array
+- Subcategories with shipping_tiers are output separately (subcategory-level)
+- The bot's parser handles both structures automatically
+- shipping_tiers are only included if defined in the template
 """
 
 import json
@@ -303,20 +348,51 @@ class ItemGenerator:
 
         return items
 
-    def generate_all(self) -> list[dict]:
+    def generate_all(self) -> dict:
         """
-        Generate all items from all templates.
+        Generate all items and subcategories from templates.
 
         Returns:
-            Flat list of items (parser-compatible format)
+            Dict with 'items' (list) and 'subcategories' (list with shipping_tiers)
         """
         # Generate flat items array with category/subcategory names
         all_items = []
+
+        # Track subcategories with their shipping_tiers
+        subcategories_with_tiers = {}
+
         for template in self.template_items:
-            items = self.generate_items_from_template(template.copy())
+            # Extract shipping_tiers if present (subcategory-level)
+            shipping_tiers = template.get("shipping_tiers")
+            subcategory_name = template.get("subcategory")
+
+            # Store shipping_tiers for this subcategory
+            if shipping_tiers and subcategory_name:
+                if subcategory_name not in subcategories_with_tiers:
+                    subcategories_with_tiers[subcategory_name] = {
+                        "name": subcategory_name,
+                        "category": template.get("category"),
+                        "shipping_tiers": shipping_tiers
+                    }
+
+            # Remove shipping_tiers before generating items (item-level doesn't have this)
+            template_copy = template.copy()
+            if "shipping_tiers" in template_copy:
+                del template_copy["shipping_tiers"]
+
+            items = self.generate_items_from_template(template_copy)
             all_items.extend(items)
 
-        return all_items
+        # Build output structure
+        output = {
+            "items": all_items
+        }
+
+        # Add subcategories with shipping_tiers if any exist
+        if subcategories_with_tiers:
+            output["subcategories"] = list(subcategories_with_tiers.values())
+
+        return output
 
 
 def main():
@@ -352,20 +428,33 @@ def main():
         json.dump(output_data, f, indent=2, ensure_ascii=False)
 
     # Print statistics
-    total_items = len(output_data)
+    items = output_data.get("items", [])
+    subcategories = output_data.get("subcategories", [])
+
+    total_items = len(items)
+    total_subcategories_with_tiers = len(subcategories)
 
     print(f"✓ Successfully generated {total_items} items")
+    if total_subcategories_with_tiers > 0:
+        print(f"✓ Generated {total_subcategories_with_tiers} subcategories with shipping tiers")
     print(f"✓ Output written to: {output_file}")
 
     # Breakdown by category
     category_counts = {}
-    for item in output_data:
+    for item in items:
         cat_name = item.get("category")
         category_counts[cat_name] = category_counts.get(cat_name, 0) + 1
 
     print("\nBreakdown by category:")
     for cat_name, count in sorted(category_counts.items()):
         print(f"  {cat_name}: {count} items")
+
+    # Show shipping tier subcategories
+    if subcategories:
+        print("\nSubcategories with shipping tiers:")
+        for subcat in subcategories:
+            tier_count = len(subcat.get("shipping_tiers", []))
+            print(f"  {subcat['name']}: {tier_count} tiers")
 
 
 if __name__ == "__main__":

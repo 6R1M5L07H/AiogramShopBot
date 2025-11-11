@@ -23,11 +23,13 @@ from repositories.cartItem import CartItemRepository
 from repositories.item import ItemRepository
 from repositories.order import OrderRepository
 from repositories.subcategory import SubcategoryRepository
+from repositories.shipping_tier import ShippingTierRepository
 from repositories.user import UserRepository
 from services.message import MessageService
 from services.notification import NotificationService
 from services.order import OrderService
 from utils.localizator import Localizator
+from utils.shipping_validation import get_shipping_type_for_quantity
 
 
 def format_crypto_amount(amount: float) -> str:
@@ -421,13 +423,12 @@ class CartService:
     async def __create_checkout_msg(cart_items: list[CartItemDTO], session: AsyncSession | Session) -> str:
         import json
         from services.invoice_formatter import InvoiceFormatterService
+        from services.cart_shipping import CartShippingService
 
         message_text = Localizator.get_text(BotEntity.USER, "cart_confirm_checkout_process")
         message_text += "\n\n"
 
         items_total = 0.0
-        max_shipping_cost = 0.0
-        has_physical_items = False
         currency_sym = Localizator.get_currency_symbol()
 
         # Batch-load all subcategories (eliminates N+1 queries)
@@ -442,18 +443,6 @@ class CartService:
             subcategory = subcategories_dict.get(cart_item.subcategory_id)
             if not subcategory:
                 continue
-
-            # Calculate shipping cost for physical items
-            try:
-                sample_item = await ItemRepository.get_single(
-                    cart_item.category_id, cart_item.subcategory_id, session
-                )
-                if sample_item and sample_item.is_physical:
-                    has_physical_items = True
-                    if sample_item.shipping_cost > max_shipping_cost:
-                        max_shipping_cost = sample_item.shipping_cost
-            except:
-                pass
 
             # Use tier breakdown if available
             if cart_item.tier_breakdown:
@@ -549,12 +538,20 @@ class CartService:
                 # Single-tier or legacy - show calculation
                 message_text += f"{item['name']}: {item['qty']} × {item['unit_price']:.2f} {currency_sym} = {item['total']:.2f} {currency_sym}\n"
 
-        # === PHASE 3: Totals ===
+        # === PHASE 3: Shipping & Totals ===
+        # Get shipping cost using new CartShippingService
+        max_shipping_cost = await CartShippingService.get_max_shipping_cost(cart_items, session)
+
         message_text += "\n" + "═" * 30 + "\n"
         subtotal_label = Localizator.get_text(BotEntity.USER, 'cart_subtotal_label')
         message_text += f"{subtotal_label} {items_total:>8.2f} {currency_sym}\n"
 
-        if has_physical_items and max_shipping_cost > 0:
+        if max_shipping_cost > 0:
+            # Get detailed shipping summary
+            shipping_summary = await CartShippingService.get_shipping_summary_text(cart_items, session)
+            if shipping_summary:
+                message_text += "\n" + shipping_summary + "\n"
+
             shipping_label = Localizator.get_text(BotEntity.USER, 'cart_shipping_max_label')
             message_text += f"{shipping_label}  {max_shipping_cost:>7.2f} {currency_sym}\n"
 

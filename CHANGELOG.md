@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2025-11-11
+
+### Dynamic Shipping Tiers and Incremental Pricing
+
+**Shipping System**
+- Quantity-based shipping type selection per subcategory
+- Automatic shipping type upgrade as cart quantity increases
+- Country-specific shipping configuration (shipping_types/de.json)
+- Shipping cost display in cart checkout with detailed breakdown
+- Support for unlimited tier ranges (51+ items)
+
+**Pricing System Enhancement**
+- Incremental tiered pricing (each tier applies only to its quantity range)
+- Price tier validation prevents duplicate or increasing prices
+- Average unit price calculation for transparent bulk pricing
+- Item generator validates price tier configurations during import
+
 ## 2025-11-09
 
 ### Tiered Pricing System (Phase 1)
