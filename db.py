@@ -21,6 +21,7 @@ For more information see https://stackoverflow.com/questions/7478403/sqlalchemy-
 """
 from models.item import Item
 from models.price_tier import PriceTier
+from models.shipping_tier import ShippingTier
 from models.cart import Cart
 from models.cartItem import CartItem
 from models.user import User

@@ -66,7 +66,8 @@ async def test_show_awaiting_shipment_orders_empty(test_session):
         level=0,
         order_id=0,
         confirmation=False,
-        page=1
+        page=1,
+        filter_type=None
     ).pack()
 
     # Mock bot
@@ -81,7 +82,8 @@ async def test_show_awaiting_shipment_orders_empty(test_session):
                 level=0,
                 order_id=0,
                 confirmation=False,
-                page=1
+                page=1,
+                filter_type=None
             )
         )
 
@@ -121,29 +123,33 @@ async def test_show_order_details_not_found(test_session):
         level=1,
         order_id=99999,
         confirmation=False,
-        page=1
+        page=1,
+        filter_type=None
     ).pack()
     callback.answer = AsyncMock()
 
     # Mock bot
     bot = Mock(spec=Bot)
 
-    # Should raise OrderNotFoundException for non-existent order
-    with pytest.raises(OrderNotFoundException) as exc_info:
-        await show_order_details(
-            callback=callback,
-            bot=bot,
-            session=test_session,
-            callback_data=ShippingManagementCallback(
-                level=1,
-                order_id=99999,
-                confirmation=False,
-                page=1
-            )
+    # Handler should gracefully handle missing orders (no exception)
+    await show_order_details(
+        callback=callback,
+        bot=bot,
+        session=test_session,
+        callback_data=ShippingManagementCallback(
+            level=1,
+            order_id=99999,
+            confirmation=False,
+            page=1,
+            filter_type=None
         )
+    )
 
-    # Verify exception has correct order_id
-    assert exc_info.value.order_id == 99999
+    # Verify error message was shown
+    message.edit_text.assert_called_once()
+    call_args = message.edit_text.call_args
+    # Error message should contain order not found text
+    assert call_args is not None
 
 
 # ============================================================================

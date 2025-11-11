@@ -201,7 +201,7 @@ class OrderRepository:
             order_dto_dict.pop(k)
 
         stmt = update(Order).where(Order.id == order_dto.id).values(**order_dto_dict)
-        await session.execute(stmt)
+        await session_execute(stmt, session)
 
     @staticmethod
     async def update_status(order_id: int, status: OrderStatus, session: Session | AsyncSession):

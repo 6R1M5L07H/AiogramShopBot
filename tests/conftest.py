@@ -28,7 +28,33 @@ config_mock.REFERRAL_DATA_RETENTION_DAYS = 365
 config_mock.DB_URL = "sqlite+aiosqlite:///:memory:"  # In-memory test database
 config_mock.BOT_LANGUAGE = "en"  # For Localizator
 config_mock.ADMIN_ID_LIST = [123456789]  # Test admin ID
+config_mock.SHIPPING_ADDRESS_SECRET = "test_shipping_secret_1234567890abcdef1234567890abcdef"  # Test secret for shipping
+config_mock.SHIPPING_COUNTRY = "DE"  # Test shipping country
+config_mock.WEBHOOK_PATH = "/webhook/"  # Test webhook path
+config_mock.MAX_STRIKES_BEFORE_BAN = 3  # Test max strikes
+config_mock.TELEGRAM_TOKEN = "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"  # Test bot token
+config_mock.TOKEN = "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"  # Test bot token (alternative name)
+
+# Mock Currency enum that mimics Currency enum behavior
+from enum import Enum
+class MockCurrency(str, Enum):
+    EUR = "EUR"
+    USD = "USD"
+
+    @property
+    def value(self):
+        return str.__str__(self)
+
+config_mock.CURRENCY = MockCurrency.EUR
+
 sys.modules['config'] = config_mock
+
+# Mock config validator to prevent validation failures during tests
+validator_mock = MagicMock()
+validator_mock.validate_or_exit = MagicMock(return_value=None)
+validator_mock.validate_startup_config = MagicMock(return_value=None)
+validator_mock.ConfigValidationError = Exception
+sys.modules['utils.config_validator'] = validator_mock
 
 
 # ============================================================================

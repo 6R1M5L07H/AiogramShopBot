@@ -90,7 +90,8 @@ class InvoiceService:
             fiat_currency=fiat_currency
         )
 
-        await InvoiceRepository.create(invoice_dto, session)
+        invoice_id = await InvoiceRepository.create(invoice_dto, session)
+        invoice_dto.id = invoice_id
 
         return invoice_dto
 
@@ -129,7 +130,8 @@ class InvoiceService:
             fiat_currency=fiat_currency
         )
 
-        await InvoiceRepository.create(invoice_dto, session)
+        invoice_id = await InvoiceRepository.create(invoice_dto, session)
+        invoice_dto.id = invoice_id
 
         return invoice_dto
 

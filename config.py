@@ -84,6 +84,7 @@ DB_NAME = os.environ.get("DB_NAME")
 DB_PASS = os.environ.get("DB_PASS")
 PAGE_ENTRIES = int(os.environ.get("PAGE_ENTRIES"))
 BOT_LANGUAGE = os.environ.get("BOT_LANGUAGE", "en")  # Default to English
+SHIPPING_COUNTRY = os.environ.get("SHIPPING_COUNTRY", "de")  # Default to Germany
 MULTIBOT = os.environ.get("MULTIBOT", False) == 'true'
 CURRENCY = Currency(os.environ.get("CURRENCY"))
 KRYPTO_EXPRESS_API_KEY = os.environ.get("KRYPTO_EXPRESS_API_KEY")

@@ -17,6 +17,34 @@ validate_or_exit(config)
 config.initialize_webhook_config()
 logging.info(f"[Init] Webhook configuration initialized: {config.WEBHOOK_URL}")
 
+# Load shipping types configuration for selected country
+from utils.shipping_types_loader import load_shipping_types
+try:
+    _SHIPPING_TYPES = load_shipping_types(config.SHIPPING_COUNTRY)
+    logging.info(f"[Init] Loaded shipping types for country: {config.SHIPPING_COUNTRY}")
+except FileNotFoundError as e:
+    logging.error(f"[Init] ❌ {e}")
+    logging.error(f"[Init] ❌ Bot cannot start without shipping types configuration")
+    exit(1)
+except Exception as e:
+    logging.error(f"[Init] ❌ Failed to load shipping types: {e}")
+    exit(1)
+
+
+def get_shipping_types() -> dict:
+    """
+    Get loaded shipping types configuration.
+
+    Returns:
+        dict: Shipping types for configured country
+
+    Example:
+        from bot import get_shipping_types
+        shipping_types = get_shipping_types()
+        maxibrief = shipping_types["maxibrief"]
+    """
+    return _SHIPPING_TYPES
+
 from aiogram import Bot, Dispatcher
 from aiogram.enums import ParseMode
 from fastapi import FastAPI, Request, status, HTTPException

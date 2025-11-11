@@ -31,8 +31,12 @@
       "price": 29.99,
       "description": "USB 3.0 Flash Drive - 64GB",
       "is_physical": true,
-      "shipping_cost": 5.00,
-      "allows_packstation": true
+      "allows_packstation": true,
+      "shipping_tiers": [
+        {"min_quantity": 1, "max_quantity": 5, "shipping_type": "maxibrief"},
+        {"min_quantity": 6, "max_quantity": 10, "shipping_type": "paeckchen"},
+        {"min_quantity": 11, "max_quantity": null, "shipping_type": "paket_2kg"}
+      ]
     },
     {
       "quantity": 50,
@@ -42,8 +46,12 @@
       "price": 49.99,
       "description": "USB 3.0 Flash Drive - 128GB",
       "is_physical": true,
-      "shipping_cost": 5.00,
-      "allows_packstation": true
+      "allows_packstation": true,
+      "shipping_tiers": [
+        {"min_quantity": 1, "max_quantity": 5, "shipping_type": "maxibrief"},
+        {"min_quantity": 6, "max_quantity": 10, "shipping_type": "paeckchen"},
+        {"min_quantity": 11, "max_quantity": null, "shipping_type": "paket_2kg"}
+      ]
     }
   ]
 }
