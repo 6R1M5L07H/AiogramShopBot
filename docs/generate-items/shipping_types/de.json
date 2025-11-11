@@ -1,0 +1,84 @@
+{
+  "maxibrief": {
+    "name": "Maxibrief",
+    "base_cost": 0.00,
+    "allows_packstation": false,
+    "has_tracking": false,
+    "max_weight_grams": 1000,
+    "max_dimensions_cm": {
+      "length": 60,
+      "width": 30,
+      "height": 5
+    },
+    "description": "Deutsche Post Maxibrief",
+    "upgrade": {
+      "type": "maxibrief_einwurf",
+      "delta_cost": 2.35,
+      "name": "Mit Sendungsverfolgung absichern",
+      "description": "Einwurfeinschreiben mit Sendungsverfolgung"
+    }
+  },
+  "maxibrief_einwurf": {
+    "name": "Maxibrief + Einwurfeinschreiben",
+    "base_cost": 2.35,
+    "allows_packstation": false,
+    "has_tracking": true,
+    "max_weight_grams": 1000,
+    "max_dimensions_cm": {
+      "length": 60,
+      "width": 30,
+      "height": 5
+    },
+    "description": "Maxibrief mit Sendungsverfolgung",
+    "upgrade": null
+  },
+  "paeckchen": {
+    "name": "Päckchen",
+    "base_cost": 0.00,
+    "allows_packstation": true,
+    "has_tracking": false,
+    "max_weight_grams": 2000,
+    "max_dimensions_cm": {
+      "length": 60,
+      "width": 30,
+      "height": 15
+    },
+    "description": "DHL Päckchen",
+    "upgrade": {
+      "type": "paket_2kg",
+      "delta_cost": 1.50,
+      "name": "Versichert versenden",
+      "description": "Versichertes Paket bis 500€ mit Sendungsverfolgung"
+    }
+  },
+  "paket_2kg": {
+    "name": "Versichertes Paket (2kg)",
+    "base_cost": 1.50,
+    "allows_packstation": true,
+    "has_tracking": true,
+    "max_weight_grams": 2000,
+    "insurance_amount": 500,
+    "description": "DHL Paket bis 2kg",
+    "upgrade": null
+  },
+  "paket_5kg": {
+    "name": "Paket 5kg",
+    "base_cost": 0.00,
+    "allows_packstation": true,
+    "has_tracking": true,
+    "max_weight_grams": 5000,
+    "insurance_amount": 500,
+    "description": "DHL Paket bis 5kg",
+    "upgrade": null
+  },
+  "paket_10kg": {
+    "name": "Paket 10kg",
+    "base_cost": 0.00,
+    "allows_packstation": true,
+    "has_tracking": true,
+    "max_weight_grams": 10000,
+    "insurance_amount": 500,
+    "description": "DHL Paket bis 10kg",
+    "upgrade": null
+  }
+}

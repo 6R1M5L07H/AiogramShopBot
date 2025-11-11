@@ -470,6 +470,10 @@
     "quantity_unit_short": "pcs.",
     "tier_breakdown_label": "Tier Pricing",
     "shipping_label": "Shipping",
-    "wallet_topup_api_error": "❌ <b>Payment Processing Error</b>\n\nConnection to payment API failed. Please try again later or contact support."
+    "wallet_topup_api_error": "❌ <b>Payment Processing Error</b>\n\nConnection to payment API failed. Please try again later or contact support.",
+    "shipping_legacy_flat": "Standard Shipping",
+    "shipping_summary_header": "Shipping",
+    "shipping_cost_free": "free",
+    "shipping_max_cost_label": "Max shipping cost"
   }
 }
