@@ -269,11 +269,11 @@ class AdminService:
                 )
                 message += user_info
 
-                # Add unban button for this user
+                # Add detail view button for this user
                 kb_builder.button(
                     text=Localizator.get_text(BotEntity.ADMIN, "unban_user_button").format(user_display=user_display),
                     callback_data=UserManagementCallback.create(
-                        level=4,  # New level for unban confirmation
+                        level=3,  # Level 3: banned user detail view
                         operation=UserManagementOperation.UNBAN_USER,
                         page=user.id  # Store user_id in page field
                     )
@@ -282,6 +282,61 @@ class AdminService:
         kb_builder.adjust(1)
         kb_builder.row(unpacked_cb.get_back_button())
         return message, kb_builder
+
+    @staticmethod
+    async def unban_confirmation(callback: CallbackQuery, session: AsyncSession | Session) -> tuple[str, InlineKeyboardBuilder]:
+        """
+        Show confirmation dialog before unbanning a user.
+
+        Args:
+            callback: Callback with user_id in page field
+            session: Database session
+
+        Returns:
+            tuple: (confirmation message, keyboard builder)
+        """
+        from repositories.user import UserRepository
+
+        unpacked_cb = UserManagementCallback.unpack(callback.data)
+        user_id = unpacked_cb.page
+
+        # Get user data
+        user = await UserRepository.get_by_id(user_id, session)
+
+        if not user:
+            kb_builder = InlineKeyboardBuilder()
+            kb_builder.button(
+                text=Localizator.get_text(BotEntity.COMMON, "back_button"),
+                callback_data=UserManagementCallback.create(level=2, operation=UserManagementOperation.UNBAN_USER)
+            )
+            return Localizator.get_text(BotEntity.ADMIN, "user_not_found"), kb_builder
+
+        # Build confirmation message
+        if user.telegram_username:
+            user_display = f"@{safe_html(user.telegram_username)}"
+        else:
+            user_display = f"ID: {user.telegram_id}"
+
+        msg = Localizator.get_text(BotEntity.ADMIN, "unban_confirmation").format(
+            user_display=user_display,
+            telegram_id=user.telegram_id,
+            strike_count=user.strike_count
+        )
+
+        # Build keyboard with confirmation
+        unpacked_cb.confirmation = True
+        kb_builder = InlineKeyboardBuilder()
+        kb_builder.button(
+            text=Localizator.get_text(BotEntity.COMMON, "confirm"),
+            callback_data=unpacked_cb
+        )
+        kb_builder.button(
+            text=Localizator.get_text(BotEntity.COMMON, "cancel"),
+            callback_data=UserManagementCallback.create(level=3, operation=UserManagementOperation.UNBAN_USER, page=user_id)
+        )
+        kb_builder.adjust(1)
+
+        return msg, kb_builder
 
     @staticmethod
     async def unban_user(callback: CallbackQuery, session: AsyncSession | Session) -> str:
@@ -337,6 +392,69 @@ class AdminService:
             user_display=user_display,
             strike_count=user.strike_count
         )
+
+    @staticmethod
+    async def get_banned_user_detail_data(user_id: int, session: AsyncSession | Session) -> dict | None:
+        """
+        Get data for banned user detail view.
+
+        Business logic: Fetch user, strikes, format data for display.
+        No Telegram objects, no keyboard building - pure data preparation.
+
+        Args:
+            user_id: User ID to fetch details for
+            session: Database session
+
+        Returns:
+            dict with user data and strikes, or None if user not found/not banned
+            {
+                "user_id": int,
+                "telegram_id": int,
+                "telegram_username": str | None,
+                "strike_count": int,
+                "blocked_at": datetime | None,
+                "blocked_reason": str | None,
+                "strikes": list[dict]  # [{created_at, strike_type, order_invoice_id, reason}]
+            }
+        """
+        from repositories.user_strike import UserStrikeRepository
+
+        # Get user
+        user = await UserRepository.get_by_id(user_id, session)
+
+        if not user or not user.is_blocked:
+            return None
+
+        # Get all strikes for this user (with eager loading to avoid lazy loading issues)
+        strikes = await UserStrikeRepository.get_by_user_id(user_id, session, eager_load_order=True)
+        strikes_sorted = sorted(strikes, key=lambda s: s.created_at, reverse=True)
+
+        # Build strikes list (max 10 to avoid message length issues)
+        strikes_data = []
+        for strike in strikes_sorted[:10]:
+            # Get order invoice number if available (from first invoice)
+            invoice_number = None
+            if strike.order_id and strike.order and strike.order.invoices:
+                # Get first invoice (main invoice for the order)
+                invoice_number = strike.order.invoices[0].invoice_number
+
+            strikes_data.append({
+                "created_at": strike.created_at,
+                "strike_type": strike.strike_type.value,  # Convert enum to string
+                "order_invoice_id": invoice_number,
+                "reason": strike.reason
+            })
+
+        return {
+            "user_id": user.id,
+            "telegram_id": user.telegram_id,
+            "telegram_username": user.telegram_username,
+            "strike_count": user.strike_count,
+            "blocked_at": user.blocked_at,
+            "blocked_reason": user.blocked_reason,
+            "strikes": strikes_data,
+            "total_strike_count": len(strikes_sorted)  # For truncation message
+        }
 
     @staticmethod
     async def request_user_entity(callback: CallbackQuery, state: FSMContext):
