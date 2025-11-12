@@ -43,29 +43,45 @@ Dynamic pricing and shipping system that:
 
 **Configuration:**
 - Stock: 100 units
-- Price Tiers: 1-4 (€11), 5-9 (€10), 10-24 (€9), 25-49 (€8), 50+ (€7)
+- Price Tiers: 1-4 (€11), 5-15 (€10), 16-25 (€9), 26-49 (€8), 50+ (€7)
 - Shipping Tiers:
   - 1-5 units: Warensendung (€0.00) or Einschreiben (+€2.50)
   - 6-20 units: Päckchen (€0.00) or Paket Klein Versichert (+€3.50)
   - 21+ units: Paket Mittel (€0.00) or Paket Mittel Versichert (+€4.50)
 - Upsells: Frustration-free packaging (+€4.00)
 
-**Customer Journey:**
-1. Customer selects 17 units
-2. System calculates optimal price:
+**IMPORTANT: Pricing Strategy Change (2025-11-12)**
+
+We are transitioning from **incremental tiered pricing** to **classic tiered pricing**:
+
+**OLD (Incremental):** Each tier applies only to its quantity range
+- Example: 17 units → 4×11€ + 11×10€ + 2×9€ = 162€ (Ø 9.53€/unit)
+- Complex calculation, harder to understand for customers
+
+**NEW (Classic):** All units receive the lowest reached tier price
+- Example: 24 units → 24×9€ = 216€ (all at 9€/unit)
+- Simple calculation: find minimum tier reached, apply to all units
+- Standard e-commerce behavior, easier to understand
+- Stronger incentive to buy more (clear jumps, not gradual)
+
+**Implementation Impact:**
+- `PricingService.calculate_optimal_price()` needs refactoring
+- Cart display simplified (no tier breakdown, just unit price + quantity)
+- Invoice formatting simplified (no complex tier tables)
+- Upselling incentives clearer: "Buy 16 for 9€/unit instead of 10€/unit!"
+
+**Customer Journey (NEW):**
+1. Customer selects 24 units
+2. System calculates price:
    ```
-   10 ×  9,00 €  =   90,00 €
-    5 × 10,00 €  =   50,00 €
-    2 × 11,00 €  =   22,00 €
-   ─────────────────────────────
-   17 × USB-Stick = 162,00 €
-   Ø 9,53 €/unit
+   24 × 9,00 €  = 216,00 €
+   (Tier: 16-25 units → 9€/unit)
    ```
 3. Upselling screen shows:
    - Frustration-free packaging: +€4.00
    - Insured shipping (Paket Klein): +€3.50
    - Customer status: "Als Erstkäufer: 50% Refund bei Verlust"
-4. Customer sees incentive: "Buy 20 units for only €18 more (Ø €9.00/unit)!"
+4. Customer sees incentive: "Buy 26 units for 8€/unit (save 26€)!"
 
 ---
 
