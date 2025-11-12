@@ -11,7 +11,7 @@ from typing import List
 
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from enums.strike_type import StrikeType
 from models.user_strike import UserStrike, UserStrikeDTO
@@ -45,23 +45,31 @@ class UserStrikeRepository:
         return strike
 
     @staticmethod
-    async def get_by_user_id(user_id: int, session: AsyncSession | Session) -> List[UserStrike]:
+    async def get_by_user_id(user_id: int, session: AsyncSession | Session, eager_load_order: bool = False) -> List[UserStrike]:
         """
         Get all strikes for a user
 
         Args:
             user_id: User ID
             session: Database session
+            eager_load_order: If True, eagerly load order and invoice relationships
 
         Returns:
             List of UserStrike instances
         """
         if isinstance(session, AsyncSession):
-            result = await session.execute(
-                select(UserStrike)
-                .where(UserStrike.user_id == user_id)
-                .order_by(UserStrike.created_at.desc())
-            )
+            query = select(UserStrike).where(UserStrike.user_id == user_id)
+
+            # Eager load order and invoices to avoid lazy loading issues
+            if eager_load_order:
+                from models.order import Order
+                from models.invoice import Invoice
+                query = query.options(
+                    selectinload(UserStrike.order).selectinload(Order.invoices)
+                )
+
+            query = query.order_by(UserStrike.created_at.desc())
+            result = await session.execute(query)
             return list(result.scalars().all())
         else:
             return session.query(UserStrike).filter(UserStrike.user_id == user_id).order_by(UserStrike.created_at.desc()).all()

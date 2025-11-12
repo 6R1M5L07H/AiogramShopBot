@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2025-11-12
+
+### Strike History Detail View
+
+**Admin Features**
+- Banned user detail view shows complete strike history with timestamps, types, reasons, and linked order invoice IDs
+- Strike list limited to 10 most recent entries with truncation indicator showing remaining count
+- Confirmation dialog before unbanning users displays user details and strike count with warning
+- Invoice resolution from order relationships for traceability
+
+**User Interface**
+- User display handles missing usernames gracefully (shows Telegram ID as fallback)
+- HTML escaping prevents XSS attacks in user-provided data (usernames, ban reasons, custom text)
+- Back button navigation returns to banned users list correctly
+- Bilingual support (German/English) for all strike history text
+
 ## 2025-11-11
 
 ### Dynamic Shipping Tiers and Incremental Pricing
