@@ -19,22 +19,25 @@ class PricingService:
         session: Session | AsyncSession
     ) -> TierPricingResultDTO:
         """
-        Calculate optimal tier combination using dynamic programming.
+        Calculate price using incremental tiered pricing.
 
-        The DP algorithm guarantees the minimum total cost for any quantity
-        by considering all possible tier combinations, not just greedy choices.
-        This prevents overcharging users when non-canonical tier structures exist.
+        Incremental pricing means each tier applies only to items within its quantity range,
+        not to all items retroactively. This is the original design.
 
         Algorithm:
-        1. Build dp[i] = (min_cost, breakdown) for quantities 0..quantity
-        2. For each quantity q, try all tier combinations
-        3. Select the combination with minimum total cost
-        4. Merge consecutive tiers with same unit_price for cleaner display
+        1. Sort tiers by min_quantity ascending
+        2. For each tier, calculate how many items fall into that tier
+        3. Apply tier's unit_price only to items in that tier's range
+        4. Sum up all tier costs
 
-        Example:
-            6 items with tiers [1→€10, 3→€7/item, 5→€9/item]:
-            - Greedy would choose: 1×5 + 1×1 = €45 + €10 = €55
-            - Optimal DP chooses: 2×3 = €21 + €21 = €42 (saves €13!)
+        Example with 17 items and tiers [1→€11, 5→€10, 10→€9]:
+            - Items 1-4:   4 × €11 = €44  (Tier 1)
+            - Items 5-9:   5 × €10 = €50  (Tier 2)
+            - Items 10-17: 8 × €9  = €72  (Tier 3)
+            - Total: €166, Average: €9.76/item
+
+        Contrast with "classic" staffelpreise (all 17 × €9 = €153):
+            Incremental rewards bulk buyers while charging full price for initial items.
 
         Args:
             subcategory_id: ID of the subcategory
@@ -42,7 +45,7 @@ class PricingService:
             session: Database session
 
         Returns:
-            TierPricingResultDTO with optimal total, average, and breakdown
+            TierPricingResultDTO with total, average, and breakdown per tier
 
         Raises:
             ItemNotFoundException: If no items exist in subcategory
@@ -85,73 +88,61 @@ class PricingService:
                 )]
             )
 
-        # Dynamic Programming: Find optimal combination
-        # dp[i] = (min_cost, breakdown) for quantity i
-        dp = [None] * (quantity + 1)
-        dp[0] = (0.0, [])
-
+        # Incremental Tiered Pricing Algorithm
         sorted_tiers = sorted(tiers, key=lambda t: t.min_quantity)
 
-        for q in range(1, quantity + 1):
-            best_cost = float('inf')
-            best_breakdown = []
+        breakdown = []
+        total_cost = 0.0
+        remaining_qty = quantity
+        current_item_index = 1  # Track which item number we're on
 
-            # Try each tier
-            for tier in sorted_tiers:
-                if tier.min_quantity <= q:
-                    # Try using this tier for different quantities
-                    for tier_qty in range(tier.min_quantity, q + 1, tier.min_quantity):
-                        remaining = q - tier_qty
-                        if dp[remaining] is not None:
-                            prev_cost, prev_breakdown = dp[remaining]
-                            tier_cost = tier_qty * tier.unit_price
-                            total_cost = prev_cost + tier_cost
+        for i, tier in enumerate(sorted_tiers):
+            # Determine how many items fall into this tier
+            tier_start = tier.min_quantity
 
-                            if total_cost < best_cost:
-                                best_cost = total_cost
-                                # Deep copy breakdown to avoid mutating shared DTO instances
-                                new_breakdown = [
-                                    TierBreakdownItemDTO(
-                                        quantity=item.quantity,
-                                        unit_price=item.unit_price,
-                                        total=item.total
-                                    )
-                                    for item in prev_breakdown
-                                ]
+            # Find tier end (next tier's start - 1, or infinity for last tier)
+            if i < len(sorted_tiers) - 1:
+                tier_end = sorted_tiers[i + 1].min_quantity - 1
+            else:
+                # Last tier - takes all remaining items
+                tier_end = None  # Unbounded
 
-                                # Merge with existing tier if same unit_price
-                                merged = False
-                                for item in new_breakdown:
-                                    if abs(item.unit_price - tier.unit_price) < 0.01:
-                                        item.quantity += tier_qty
-                                        item.total = round(item.quantity * item.unit_price, 2)
-                                        merged = True
-                                        break
+            # Calculate items in this tier
+            if current_item_index < tier_start:
+                # We haven't reached this tier yet, skip to it
+                current_item_index = tier_start
 
-                                if not merged:
-                                    new_breakdown.append(TierBreakdownItemDTO(
-                                        quantity=tier_qty,
-                                        unit_price=round(tier.unit_price, 2),
-                                        total=round(tier_cost, 2)
-                                    ))
+            # How many items are priced at this tier?
+            if tier_end is None:
+                # Last tier - all remaining items
+                items_in_tier = quantity - current_item_index + 1
+            else:
+                # Limited tier - don't exceed tier_end
+                items_in_tier = min(quantity - current_item_index + 1, tier_end - current_item_index + 1)
 
-                                best_breakdown = new_breakdown
+            # Stop if no more items to process
+            if items_in_tier <= 0:
+                break
 
-            dp[q] = (best_cost, best_breakdown) if best_cost != float('inf') else None
+            # Calculate cost for this tier
+            tier_cost = items_in_tier * tier.unit_price
+            total_cost += tier_cost
 
-        if dp[quantity] is None:
-            # Fallback: use smallest tier for all items
-            smallest_tier = sorted_tiers[0]
-            breakdown = [TierBreakdownItemDTO(
-                quantity=quantity,
-                unit_price=round(smallest_tier.unit_price, 2),
-                total=round(quantity * smallest_tier.unit_price, 2)
-            )]
-            total = breakdown[0].total
-        else:
-            total, breakdown = dp[quantity]
-            total = round(total, 2)
+            # Add to breakdown
+            breakdown.append(TierBreakdownItemDTO(
+                quantity=items_in_tier,
+                unit_price=round(tier.unit_price, 2),
+                total=round(tier_cost, 2)
+            ))
 
+            # Move to next items
+            current_item_index += items_in_tier
+
+            # Stop if we've processed all items
+            if current_item_index > quantity:
+                break
+
+        total = round(total_cost, 2)
         average_unit_price = round(total / quantity, 2)
 
         return TierPricingResultDTO(

@@ -455,6 +455,10 @@
     "quantity_unit_short": "Stk.",
     "tier_breakdown_label": "Staffelpreise",
     "shipping_label": "Versand",
-    "wallet_topup_api_error": "❌ <b>Fehler bei der Zahlungsverarbeitung</b>\n\nDie Verbindung zur Zahlungs-API ist fehlgeschlagen. Bitte versuche es später erneut oder kontaktiere den Support."
+    "wallet_topup_api_error": "❌ <b>Fehler bei der Zahlungsverarbeitung</b>\n\nDie Verbindung zur Zahlungs-API ist fehlgeschlagen. Bitte versuche es später erneut oder kontaktiere den Support.",
+    "shipping_legacy_flat": "Standardversand",
+    "shipping_summary_header": "Versand",
+    "shipping_cost_free": "kostenlos",
+    "shipping_max_cost_label": "Höchste Versandkosten"
   }
 }
