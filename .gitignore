@@ -155,6 +155,10 @@ cython_debug/
 # Project specific
 /data/
 
+# Item generation templates (contain business-specific data)
+docs/generate-items/*template*.json
+docs/generate-items/*_template.json
+
 # Local config files
 .env.local
 .env.localvalues
