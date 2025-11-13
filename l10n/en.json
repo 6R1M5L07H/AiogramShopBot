@@ -354,6 +354,7 @@
     "payment_processing_error": "❌ <b>Payment processing error</b>\n\n{error}\n\nPlease try again or contact support.",
     "order_pending": "📋 <b>Your pending order:</b>\n\n📋 <b>Order code:</b> {invoice_number}\n💰 <b>Total price:</b> {currency_sym}{total_price:.2f}\n\n💳 <b>Payment details:</b>\n\n🪙 <b>Amount to pay:</b>\n<code>{crypto_amount}</code> {crypto_currency}\n\n📬 <b>Payment address:</b>\n<code>{payment_address}</code>\n\n⏰ <b>Expires at:</b> {expires_at} ({expires_minutes} minutes remaining)\n\n<i>Please send the exact amount to the provided address. The order will be completed automatically after payment confirmation.</i>",
     "order_expired": "❌ <b>Order expired!</b>\n\n📋 <b>Order code:</b> {invoice_number}\n💰 <b>Total price:</b> {currency_sym}{total_price:.2f}\n\n💳 <b>Payment details:</b>\n\n🪙 <b>Amount to pay:</b>\n<code>{crypto_amount}</code> {crypto_currency}\n\n📬 <b>Payment address:</b>\n<code>{payment_address}</code>\n\n⏰ <b>Expired at:</b> {expires_at}\n\n<i>This order has expired. The reserved items have been released. You can place a new order.</i>",
+    "order_expired_no_invoice": "❌ <b>Order expired!</b>\n\n<i>Your order expired before an invoice was created. The reserved items have been automatically released.</i>\n\n🛒 <b>Your cart is empty.</b>",
     "cancel_order": "❌ Cancel Order",
     "cancel_order_free": "❌ Cancel Order (free)",
     "cancel_order_strike": "⚠️ Cancel Order (Strike!)",

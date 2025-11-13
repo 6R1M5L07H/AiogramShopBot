@@ -150,7 +150,7 @@ async def show_order_details(**kwargs):
             payment_history = await PaymentService.get_payment_history_details(order_id, session)
 
             message_text += "\n\n─────────────────────\n"
-            message_text += f"💳 <b>{Localizator.get_text(BotEntity.ADMIN, 'order_payment_history_title')}</b>\n\n"
+            message_text += f"<b>{Localizator.get_text(BotEntity.ADMIN, 'order_payment_history_title')}</b>\n\n"
 
             # Order timestamps
             created_at_str = payment_history['order_created_at'].strftime("%d.%m.%Y %H:%M:%S")
