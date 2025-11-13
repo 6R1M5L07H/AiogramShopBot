@@ -42,6 +42,25 @@ class AllCategoriesCallback(BaseCallback, prefix="all_categories"):
                                      quantity=quantity, confirmation=confirmation, page=page)
 
 
+class QuantityDialpadCallback(CallbackData, prefix="qty_dial"):
+    """Callback for dialpad quantity input actions."""
+    action: str       # "digit", "backspace", "clear", "confirm", "back"
+    value: int        # For digit action: 0-9
+    item_id: int      # Item being purchased
+    category_id: int  # For back navigation
+    subcategory_id: int  # For back navigation
+
+    @staticmethod
+    def create(action: str, item_id: int, category_id: int, subcategory_id: int, value: int = 0) -> 'QuantityDialpadCallback':
+        return QuantityDialpadCallback(
+            action=action,
+            value=value,
+            item_id=item_id,
+            category_id=category_id,
+            subcategory_id=subcategory_id
+        )
+
+
 class MyProfileCallback(BaseCallback, prefix="my_profile"):
     action: str
     args_for_action: int | str

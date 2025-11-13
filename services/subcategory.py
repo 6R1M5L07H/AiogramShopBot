@@ -93,16 +93,27 @@ class SubcategoryService:
         # Add tier display if available
         if tier_display:
             message_text += "\n\n" + tier_display
-        kb_builder = InlineKeyboardBuilder()
-        for i in range(1, 11):
-            kb_builder.button(text=str(i), callback_data=AllCategoriesCallback.create(
-                unpacked_cb.level + 1,
-                item.category_id,
-                item.subcategory_id,
-                quantity=i
-            ))
-        kb_builder.adjust(3)
-        kb_builder.row(unpacked_cb.get_back_button())
+
+        # Use dialpad for quantity input
+        from utils.keyboard_utils import create_quantity_dialpad
+
+        # Create dialpad message
+        dialpad_message = Localizator.get_text(BotEntity.USER, "quantity_dialpad_prompt").format(
+            item_name=item.description,
+            available=available_qty,
+            current_quantity=""
+        )
+
+        # Combine item details with dialpad prompt
+        message_text += "\n\n" + dialpad_message
+
+        # Create dialpad keyboard
+        kb_builder = create_quantity_dialpad(
+            item_id=item.id,
+            category_id=item.category_id,
+            subcategory_id=item.subcategory_id
+        )
+
         return message_text, kb_builder
 
     @staticmethod

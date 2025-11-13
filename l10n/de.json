@@ -206,6 +206,7 @@
   },
   "common": {
     "back_button": "⬅️ Zurück",
+    "clear_button": "🗑 Löschen",
     "quantity_unit_short": "Stk.",
     "tier_breakdown_label": "Staffelpreise",
     "shipping_label": "Versand",
@@ -313,6 +314,10 @@
     "rate_limit_orders": "⏱️ <b>Rate-Limit überschritten</b>\n\nDu hast in letzter Zeit zu viele Bestellungen erstellt.\nMaximum: <b>{max_count} Bestellungen pro Stunde</b>\n\nBitte warte <b>{reset_minutes} Minuten</b> bevor du eine weitere Bestellung erstellst.\n\n<i>Dieses Limit verhindert Missbrauch und stellt fairen Zugang für alle Nutzer sicher.</i>",
     "select_quantity": "🛒 <b>Kategorie: {category_name}\nUnterkategorie: {subcategory_name}\nPreis: {currency_sym}{price:.2f}\nBeschreibung: {description}\nVerfügbare Menge: {quantity}</b>",
     "select_quantity_with_shipping": "🛒 <b>Kategorie: {category_name}\nUnterkategorie: {subcategory_name}\nPreis: {currency_sym}{price:.2f}\n📦 Versandkosten: {currency_sym}{shipping_cost:.2f}\nBeschreibung: {description}\nVerfügbare Menge: {quantity}</b>",
+    "quantity_dialpad_prompt": "🛒 <b>{item_name}</b>\n\n<b>Verfügbar:</b> {available} Stk.\n\n━━━━━━━━━━━━━━━━━\n📦 <b>MENGE » <code>{current_quantity}</code></b>\n━━━━━━━━━━━━━━━━━\n\nGeben Sie die gewünschte Menge über das Tastenfeld ein:",
+    "quantity_exceeds_stock": "⚠️ Menge kann nicht höher als verfügbarer Bestand sein!",
+    "quantity_cannot_be_zero": "⚠️ Bitte geben Sie eine Menge größer als 0 ein",
+    "quantity_too_large": "⚠️ Maximale Menge: 9999 Stück",
     "subcategory_button": "📦 {subcategory_name}| Preis: {currency_sym}{subcategory_price} | Menge: {available_quantity}",
     "subcategories": "📦 <b>Unterkategorien:</b>",
     "top_up_balance_button": "➕ Guthaben aufladen",
