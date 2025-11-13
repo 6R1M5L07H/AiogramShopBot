@@ -132,15 +132,14 @@ class OrderManagementService:
                 # Short date: DD.MM (without year)
                 created_time = order.created_at.strftime("%d.%m")
 
-                # Short invoice: last 6 chars
-                full_invoice = order.invoices[0].invoice_number if order.invoices else "N/A"
-                short_invoice = full_invoice[-6:]
+                # Full invoice number (e.g., INV-2025-ABCDEF)
+                invoice_number = order.invoices[0].invoice_number if order.invoices else "N/A"
 
                 # Get status text
                 status_text = Localizator.get_text(BotEntity.COMMON, f"order_status_{order.status.value}")
 
-                # Unified button layout: "📦 DD.MM • SHORT_ID • Status"
-                button_text = f"{emoji} {created_time} • {short_invoice} • {status_text}".ljust(40)
+                # Unified button layout: "📦 DD.MM • INV-YYYY-XXXXXX • Status"
+                button_text = f"{emoji} {created_time} • {invoice_number} • {status_text}"
 
                 # Build callback data (different levels for user vs admin)
                 if user_id:

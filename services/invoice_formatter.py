@@ -506,6 +506,27 @@ class InvoiceFormatterService:
                 shipped_label = Localizator.get_text(entity, "shipped_on_label")
                 message += f"<b>{shipped_label}:</b> {shipped_str}\n\n"
 
+        elif header_type == "order_detail_admin":
+            # Admin order detail header with invoice number
+            message += f"<b>📋 Order #{invoice_number}</b>\n\n"
+            if order_status:
+                status = Localizator.get_text(BotEntity.COMMON, f"order_status_{order_status.value}")
+                created_str = created_at.strftime("%d.%m.%Y %H:%M") if created_at else "N/A"
+                message += f"<b>Created:</b> {created_str}\n"
+                message += f"<b>Status:</b> {status}\n"
+
+                # Add paid timestamp if available
+                if paid_at:
+                    paid_str = paid_at.strftime("%d.%m.%Y %H:%M")
+                    message += f"<b>Paid:</b> {paid_str}\n"
+
+                # Add shipped timestamp if available
+                if shipped_at:
+                    shipped_str = shipped_at.strftime("%d.%m.%Y %H:%M")
+                    message += f"<b>Shipped:</b> {shipped_str}\n"
+
+                message += "\n"
+
         elif header_type == "order_detail_user" or header_type == "purchase_history":
             # User order detail / purchase history header with status
             if order_status:
