@@ -1,10 +1,13 @@
 from aiogram import types, Router, F
+from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from callbacks import AllCategoriesCallback
+from callbacks import AllCategoriesCallback, QuantityDialpadCallback
 from enums.bot_entity import BotEntity
+from handlers.user.quantity_states import QuantityInputStates
+from repositories.item import ItemRepository
 from services.cart import CartService
 from services.category import CategoryService
 from services.subcategory import SubcategoryService
@@ -44,8 +47,27 @@ async def show_subcategories_in_category(**kwargs):
 async def select_quantity(**kwargs):
     callback = kwargs.get("callback")
     session = kwargs.get("session")
+    state = kwargs.get("state")
+
     msg, kb_builder = await SubcategoryService.get_select_quantity_buttons(callback, session)
     await callback.message.edit_text(msg, reply_markup=kb_builder.as_markup())
+
+    # Set FSM state for dialpad input
+    unpacked_cb = AllCategoriesCallback.unpack(callback.data)
+
+    # Get item data and cache in FSM state to avoid repeated DB lookups
+    item = await ItemRepository.get_single(unpacked_cb.category_id, unpacked_cb.subcategory_id, session)
+    available_qty = await ItemRepository.get_available_qty(item, session) if item else 0
+
+    await state.set_state(QuantityInputStates.building_quantity)
+    await state.update_data(
+        item_id=item.id if item else None,
+        item_name=item.description if item else "",
+        available_qty=available_qty,
+        category_id=unpacked_cb.category_id,
+        subcategory_id=unpacked_cb.subcategory_id,
+        current_quantity=""
+    )
 
 
 async def add_to_cart_confirmation(**kwargs):
@@ -133,7 +155,7 @@ async def add_to_cart(**kwargs):
 
 @all_categories_router.callback_query(AllCategoriesCallback.filter(), IsUserExistFilter())
 async def navigate_categories(callback: CallbackQuery, callback_data: AllCategoriesCallback,
-                              session: AsyncSession | Session):
+                              session: AsyncSession | Session, state: FSMContext):
     current_level = callback_data.level
 
     levels = {
@@ -149,6 +171,141 @@ async def navigate_categories(callback: CallbackQuery, callback_data: AllCategor
     kwargs = {
         "callback": callback,
         "session": session,
+        "state": state,
     }
 
     await current_level_function(**kwargs)
+
+
+@all_categories_router.callback_query(
+    QuantityDialpadCallback.filter(),
+    QuantityInputStates.building_quantity,
+    IsUserExistFilter()
+)
+async def handle_dialpad_action(
+    callback: CallbackQuery,
+    callback_data: QuantityDialpadCallback,
+    state: FSMContext,
+    session: AsyncSession | Session
+):
+    """Handle dialpad button presses for quantity input."""
+    from utils.keyboard_utils import create_quantity_dialpad
+
+    # Get current state data
+    data = await state.get_data()
+    current_quantity = data.get("current_quantity", "")
+    item_id = callback_data.item_id
+    category_id = callback_data.category_id
+    subcategory_id = callback_data.subcategory_id
+
+    action = callback_data.action
+
+    if action == "digit":
+        # Add digit to current quantity
+        digit = str(callback_data.value)
+        new_quantity = current_quantity + digit
+
+        # Validate max length (4 digits = 9999)
+        if len(new_quantity) > 4:
+            await callback.answer(
+                Localizator.get_text(BotEntity.USER, "quantity_too_large"),
+                show_alert=True
+            )
+            return
+
+        await state.update_data(current_quantity=new_quantity)
+        current_quantity = new_quantity
+        await callback.answer()  # Ack callback to stop spinner
+
+    elif action == "backspace":
+        # Remove last digit
+        if current_quantity:
+            new_quantity = current_quantity[:-1]
+            await state.update_data(current_quantity=new_quantity)
+            current_quantity = new_quantity
+        await callback.answer()  # Ack callback to stop spinner
+
+    elif action == "clear":
+        # Clear all digits
+        await state.update_data(current_quantity="")
+        current_quantity = ""
+        await callback.answer()  # Ack callback to stop spinner
+
+    elif action == "confirm":
+        # Validate and add to cart
+        if not current_quantity or current_quantity == "0":
+            await callback.answer(
+                Localizator.get_text(BotEntity.USER, "quantity_cannot_be_zero"),
+                show_alert=True
+            )
+            return
+
+        quantity = int(current_quantity)
+
+        # Check stock availability
+        item = await ItemRepository.get_by_id(item_id, session)
+        available_qty = await ItemRepository.get_available_qty(item, session)
+
+        if quantity > available_qty:
+            # Auto-correct to maximum available quantity instead of blocking
+            quantity = available_qty
+            await callback.answer(
+                Localizator.get_text(BotEntity.USER, "quantity_exceeds_stock")
+            )
+            # Continue with corrected quantity (no return)
+
+        # Create AllCategoriesCallback to simulate add_to_cart flow
+        from copy import copy
+        cart_callback = AllCategoriesCallback.create(
+            level=4,  # add_to_cart level
+            category_id=category_id,
+            subcategory_id=subcategory_id,
+            quantity=quantity,
+            confirmation=True
+        )
+
+        # Create modified callback with new data
+        modified_callback = copy(callback)
+        object.__setattr__(modified_callback, 'data', cart_callback.pack())
+
+        # Clear FSM state
+        await state.clear()
+
+        # Call add_to_cart
+        await add_to_cart(callback=modified_callback, session=session)
+        return
+
+    elif action == "back":
+        # Clear FSM state and go back to subcategory list
+        await state.clear()
+        await callback.answer()  # Ack callback to stop spinner
+
+        back_callback = AllCategoriesCallback.create(
+            level=1,
+            category_id=category_id
+        )
+        from copy import copy
+        modified_callback = copy(callback)
+        object.__setattr__(modified_callback, 'data', back_callback.pack())
+
+        msg, kb_builder = await SubcategoryService.get_buttons(modified_callback, session)
+        await callback.message.edit_text(msg, reply_markup=kb_builder.as_markup())
+        return
+
+    # Update dialpad display using cached data from FSM state
+    item_name = data.get("item_name", "")
+    available_qty = data.get("available_qty", 0)
+
+    dialpad_message = Localizator.get_text(BotEntity.USER, "quantity_dialpad_prompt").format(
+        item_name=item_name,
+        available=available_qty,
+        current_quantity=current_quantity if current_quantity else "0"
+    )
+
+    kb_builder = create_quantity_dialpad(
+        item_id=item_id,
+        category_id=category_id,
+        subcategory_id=subcategory_id
+    )
+
+    await callback.message.edit_text(dialpad_message, reply_markup=kb_builder.as_markup())

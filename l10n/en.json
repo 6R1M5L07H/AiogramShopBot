@@ -212,6 +212,7 @@
   },
   "common": {
     "back_button": "⬅️ Back",
+    "clear_button": "🗑 Clear",
     "quantity_unit_short": "pcs.",
     "tier_breakdown_label": "Tier Pricing",
     "shipping_label": "Shipping",
@@ -320,6 +321,10 @@
     "rate_limit_orders": "⏱️ <b>Rate Limit Exceeded</b>\n\nYou have created too many orders recently.\nMaximum: <b>{max_count} orders per hour</b>\n\nPlease wait <b>{reset_minutes} minutes</b> before creating another order.\n\n<i>This limit prevents abuse and ensures fair access for all users.</i>",
     "select_quantity": "🛒 <b>Category: {category_name}\nSubcategory: {subcategory_name}\nPrice: {currency_sym}{price:.2f}\nDescription: {description}\nQuantity available: {quantity}</b>",
     "select_quantity_with_shipping": "🛒 <b>Category: {category_name}\nSubcategory: {subcategory_name}\nPrice: {currency_sym}{price:.2f}\n📦 Shipping: {currency_sym}{shipping_cost:.2f}\nDescription: {description}\nQuantity available: {quantity}</b>",
+    "quantity_dialpad_prompt": "🛒 <b>{item_name}</b>\n\n<b>Available:</b> {available} pcs.\n\n━━━━━━━━━━━━━━━━━\n📦 <b>QUANTITY » <code>{current_quantity}</code></b>\n━━━━━━━━━━━━━━━━━\n\nEnter the desired quantity using the keypad:",
+    "quantity_exceeds_stock": "⚠️ Quantity cannot exceed available stock!",
+    "quantity_cannot_be_zero": "⚠️ Please enter a quantity greater than 0",
+    "quantity_too_large": "⚠️ Maximum quantity: 9999 pieces",
     "subcategory_button": "📦 {subcategory_name}| Price: {currency_sym}{subcategory_price:.2f} | Qty: {available_quantity}",
     "subcategories": "📦 <b>Subcategories:</b>",
     "top_up_balance_button": "➕ Top Up Balance",

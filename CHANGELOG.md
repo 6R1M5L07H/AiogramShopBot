@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2025-11-13
+
+### Phone-Style Dialpad for Quantity Input
+
+**User Interface**
+- Phone-style numeric dialpad replaces static 1-10 quantity buttons
+- Support for entering quantities from 1 to 9999 pieces
+- Backspace and clear functions for input correction
+- Visual quantity display with separator lines for clarity
+
 ## 2025-11-12
 
 ### Strike History Detail View
