@@ -16,6 +16,7 @@ from datetime import datetime, timedelta
 import config
 from db import session_commit
 from enums.order_status import OrderStatus
+from enums.violation_type import ViolationType
 from models.payment_transaction import PaymentTransactionDTO
 from repositories.order import OrderRepository
 from repositories.payment_transaction import PaymentTransactionRepository
@@ -24,6 +25,7 @@ from services.cart import format_crypto_amount
 from services.order import OrderService
 from services.payment_validator import PaymentValidator
 from services.notification import NotificationService
+from services.analytics import AnalyticsService
 
 
 def calculate_fiat_from_crypto(crypto_amount: float, invoice) -> float:
@@ -361,6 +363,18 @@ async def _handle_second_underpayment(payment_dto, invoice, order, session):
     # Cancel order and release stock (don't refund wallet - already credited above with penalty)
     from enums.order_cancel_reason import OrderCancelReason
     await OrderService.cancel_order(order.id, OrderCancelReason.TIMEOUT, session, refund_wallet=False)
+
+    # Track violation for analytics (anonymized, no user_id)
+    try:
+        await AnalyticsService.create_violation_record(
+            order_id=order.id,
+            violation_type=ViolationType.UNDERPAYMENT_FINAL,
+            penalty_applied=penalty_amount,
+            session=session
+        )
+    except Exception as e:
+        logging.error(f"Failed to create violation record for order {order.id}: {e}", exc_info=True)
+
     await session_commit(session)
 
     logging.info(f"❌ Order {order.id} cancelled (2nd underpayment) | €{net_amount:.2f} credited to wallet")
@@ -430,6 +444,17 @@ async def _handle_late_payment(payment_dto, invoice, order, session):
     if order.status not in [OrderStatus.TIMEOUT, OrderStatus.CANCELLED_BY_USER, OrderStatus.CANCELLED_BY_ADMIN]:
         from enums.order_cancel_reason import OrderCancelReason
         await OrderService.cancel_order(order.id, OrderCancelReason.TIMEOUT, session, refund_wallet=False)
+
+    # Track violation for analytics (anonymized, no user_id)
+    try:
+        await AnalyticsService.create_violation_record(
+            order_id=order.id,
+            violation_type=ViolationType.LATE_PAYMENT,
+            penalty_applied=penalty_amount,
+            session=session
+        )
+    except Exception as e:
+        logging.error(f"Failed to create violation record for order {order.id}: {e}", exc_info=True)
 
     await session_commit(session)
 
