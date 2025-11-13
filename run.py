@@ -113,9 +113,23 @@ main_router.include_routers(users_routers)
 main_router.message.middleware(DBSessionMiddleware())
 main_router.callback_query.middleware(DBSessionMiddleware())
 
+# Register handlers at module level (not inside if __name__ == '__main__')
+# This ensures handlers are available when uvicorn worker imports this module
+try:
+    logging.info("🔧 [run.py] BEFORE dp.include_router - about to register handlers")
+    logging.info(f"🔧 [run.py] main_router type: {type(main_router)}")
+    logging.info(f"🔧 [run.py] dp type: {type(dp)}")
+    dp.include_router(main_router)
+    logging.info("✅ [run.py] Handlers registered with dispatcher")
+except Exception as e:
+    logging.error(f"❌ [run.py] FAILED to register handlers: {e}")
+    import traceback
+    logging.error(traceback.format_exc())
+
 if __name__ == '__main__':
+    logging.info("🔧 [run.py] Starting bot in __main__ mode")
+
     if config.MULTIBOT:
         main_multibot(main_router)
     else:
-        dp.include_router(main_router)
         main()

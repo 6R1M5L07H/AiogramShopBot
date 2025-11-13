@@ -19,6 +19,9 @@ my_profile_router = Router()
 async def my_profile_text_message(message: types.Message, session: Session | AsyncSession):
     import logging
     logging.info("👤 MY PROFILE BUTTON HANDLER TRIGGERED")
+    logging.info(f"👤 Received text: '{message.text}'")
+    logging.info(f"👤 Expected text: '{Localizator.get_text(BotEntity.USER, 'my_profile')}'")
+    logging.info(f"👤 Match: {message.text == Localizator.get_text(BotEntity.USER, 'my_profile')}")
     await my_profile(message=message, session=session)
 
 

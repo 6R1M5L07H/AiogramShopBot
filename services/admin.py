@@ -13,11 +13,12 @@ from sqlalchemy.orm import Session
 import config
 from callbacks import AdminAnnouncementCallback, AnnouncementType, AdminInventoryManagementCallback, EntityType, \
     AddType, UserManagementCallback, UserManagementOperation, StatisticsCallback, StatisticsEntity, StatisticsTimeDelta, \
-    WalletCallback
+    WalletCallback, AnalyticsV2Callback, AnalyticsV2Entity, AnalyticsV2TimeDelta
 from crypto_api.CryptoApiWrapper import CryptoApiWrapper
 from db import session_commit
 from enums.bot_entity import BotEntity
 from enums.cryptocurrency import Cryptocurrency
+from aiogram.types import InlineKeyboardButton
 from handlers.admin.constants import AdminConstants, AdminInventoryManagementStates, UserManagementStates, WalletStates
 from handlers.common.common import add_pagination_buttons
 from models.withdrawal import WithdrawalDTO
@@ -823,3 +824,131 @@ class AdminService:
         cryptocurrency = Cryptocurrency(state_data['cryptocurrency'])
         regex = address_regex[cryptocurrency]
         return bool(regex.match(message.text))
+
+    # ==================== Analytics v2 Methods ====================
+
+    @staticmethod
+    async def get_analytics_v2_menu() -> tuple[str, InlineKeyboardBuilder]:
+        """Build Analytics v2 main menu."""
+        kb_builder = InlineKeyboardBuilder()
+        kb_builder.button(
+            text=Localizator.get_text(BotEntity.ADMIN, "analytics_v2_sales"),
+            callback_data=AnalyticsV2Callback.create(1, AnalyticsV2Entity.SALES)
+        )
+        kb_builder.button(
+            text=Localizator.get_text(BotEntity.ADMIN, "analytics_v2_violations"),
+            callback_data=AnalyticsV2Callback.create(1, AnalyticsV2Entity.VIOLATIONS)
+        )
+        kb_builder.button(
+            text=Localizator.get_text(BotEntity.ADMIN, "analytics_v2_revenue"),
+            callback_data=AnalyticsV2Callback.create(1, AnalyticsV2Entity.REVENUE)
+        )
+        # NEW: Sales Analytics (Subcategory Report)
+        kb_builder.button(
+            text="💰 Sales Analytics",
+            callback_data=AnalyticsV2Callback.create(level=11).pack()
+        )
+        kb_builder.adjust(1)
+        kb_builder.row(AdminConstants.back_to_main_button)
+        return Localizator.get_text(BotEntity.ADMIN, "analytics_v2_menu"), kb_builder
+
+    @staticmethod
+    async def get_analytics_v2_timedelta_menu(callback: CallbackQuery) -> tuple[str, InlineKeyboardBuilder]:
+        """Build timedelta picker menu."""
+        kb_builder = InlineKeyboardBuilder()
+        unpacked_cb = AnalyticsV2Callback.unpack(callback.data)
+
+        # Get entity name for display
+        entity_names = {
+            AnalyticsV2Entity.SALES: Localizator.get_text(BotEntity.ADMIN, "analytics_v2_sales"),
+            AnalyticsV2Entity.VIOLATIONS: Localizator.get_text(BotEntity.ADMIN, "analytics_v2_violations"),
+            AnalyticsV2Entity.REVENUE: Localizator.get_text(BotEntity.ADMIN, "analytics_v2_revenue"),
+        }
+        entity_name = entity_names.get(unpacked_cb.entity, "")
+
+        kb_builder.button(
+            text=Localizator.get_text(BotEntity.ADMIN, "analytics_v2_7_days"),
+            callback_data=AnalyticsV2Callback.create(2, unpacked_cb.entity, AnalyticsV2TimeDelta.WEEK)
+        )
+        kb_builder.button(
+            text=Localizator.get_text(BotEntity.ADMIN, "analytics_v2_30_days"),
+            callback_data=AnalyticsV2Callback.create(2, unpacked_cb.entity, AnalyticsV2TimeDelta.MONTH)
+        )
+        kb_builder.button(
+            text=Localizator.get_text(BotEntity.ADMIN, "analytics_v2_90_days"),
+            callback_data=AnalyticsV2Callback.create(2, unpacked_cb.entity, AnalyticsV2TimeDelta.QUARTER)
+        )
+        kb_builder.adjust(1)
+        kb_builder.row(InlineKeyboardButton(
+            text=Localizator.get_text(BotEntity.COMMON, "back_button"),
+            callback_data=AnalyticsV2Callback.create(0).pack()
+        ))
+        msg = Localizator.get_text(BotEntity.ADMIN, "analytics_v2_timedelta_menu").format(entity=entity_name)
+        return msg, kb_builder
+
+    @staticmethod
+    async def get_analytics_v2_data(callback: CallbackQuery, session: AsyncSession | Session) -> tuple[str, InlineKeyboardBuilder]:
+        """Display analytics data based on entity and timedelta."""
+        unpacked_cb = AnalyticsV2Callback.unpack(callback.data)
+        kb_builder = InlineKeyboardBuilder()
+
+        from repositories.sales_record import SalesRecordRepository
+        from repositories.violation_statistics import ViolationStatisticsRepository
+        from enums.violation_type import ViolationType
+
+        days = unpacked_cb.timedelta
+        currency_text = Localizator.get_currency_text()
+
+        match unpacked_cb.entity:
+            case AnalyticsV2Entity.SALES:
+                # Get sales data
+                total_revenue = await SalesRecordRepository.get_total_revenue(days, session)
+                total_items = await SalesRecordRepository.get_total_items_sold(days, session)
+
+                msg = Localizator.get_text(BotEntity.ADMIN, 'analytics_v2_sales_data').format(
+                    days=days,
+                    items_sold=total_items,
+                    total_revenue=total_revenue,
+                    currency_text=currency_text
+                )
+
+            case AnalyticsV2Entity.VIOLATIONS:
+                # Get violation data
+                underpayment_count = await ViolationStatisticsRepository.get_violation_count_by_type(ViolationType.UNDERPAYMENT_FINAL, days, session)
+                late_payment_count = await ViolationStatisticsRepository.get_violation_count_by_type(ViolationType.LATE_PAYMENT, days, session)
+                timeout_count = await ViolationStatisticsRepository.get_violation_count_by_type(ViolationType.TIMEOUT, days, session)
+                cancellation_count = await ViolationStatisticsRepository.get_violation_count_by_type(ViolationType.USER_CANCELLATION_LATE, days, session)
+                total_penalty = await ViolationStatisticsRepository.get_total_penalty_amount(days, session)
+
+                msg = Localizator.get_text(BotEntity.ADMIN, 'analytics_v2_violations_data').format(
+                    days=days,
+                    underpayment_count=underpayment_count,
+                    late_payment_count=late_payment_count,
+                    timeout_count=timeout_count,
+                    cancellation_count=cancellation_count,
+                    total_penalty=total_penalty,
+                    currency_text=currency_text
+                )
+
+            case AnalyticsV2Entity.REVENUE:
+                # Revenue overview
+                total_revenue = await SalesRecordRepository.get_total_revenue(days, session)
+                total_items = await SalesRecordRepository.get_total_items_sold(days, session)
+                avg_per_item = total_revenue / total_items if total_items > 0 else 0.0
+
+                msg = Localizator.get_text(BotEntity.ADMIN, 'analytics_v2_revenue_data').format(
+                    days=days,
+                    total_revenue=total_revenue,
+                    items_sold=total_items,
+                    avg_per_item=avg_per_item,
+                    currency_text=currency_text
+                )
+
+        # Back button
+        kb_builder.row(InlineKeyboardButton(
+            text=Localizator.get_text(BotEntity.COMMON, "back_button"),
+            callback_data=AnalyticsV2Callback.create(1, unpacked_cb.entity).pack()
+        ))
+        kb_builder.row(AdminConstants.back_to_main_button)
+
+        return msg, kb_builder

@@ -4,6 +4,41 @@ All notable changes to this project will be documented in this file.
 
 ## 2025-11-13
 
+### Analytics v2 - Anonymized Sales and Violation Tracking
+
+**Privacy-First Analytics**
+- All analytics data collected without user identification (no telegram_id, no username)
+- Complete user privacy preservation while enabling business intelligence
+- Data minimization compliance: personal data deleted after 30 days, anonymous statistics retained indefinitely
+- No ability to link sales or violations to individual users
+
+**Core Analytics Infrastructure**
+- Anonymized sales records per item for trend analysis and revenue tracking
+- Violation statistics tracking (underpayments, late payments, timeouts, cancellations) without user attribution
+- Automatic data aggregation on order completion without blocking business operations
+- Sales and violation data retained for business intelligence after order deletion
+
+**Admin Interface**
+- Sales analytics with subcategory breakdown by revenue and daily sales
+- Violation analytics showing penalty collection and violation type distribution
+- Time range selection (7, 30, 90 days) for trend analysis
+- Pagination support for large datasets with page navigation
+- CSV export functionality for external analysis and reporting
+
+**Data Collection**
+- Sales records created automatically when orders reach PAID status
+- Payment method tracking (wallet-only, crypto-only, mixed)
+- Physical vs digital item classification for inventory insights
+- Refund tracking with revenue calculation exclusion
+- Shipping cost and tier pricing breakdown preservation
+
+**Technical Foundation**
+- SalesRecord and ViolationStatistics models without user_id columns
+- Repository layer with aggregation queries (revenue, counts, date ranges)
+- Service layer integration at order completion and violation points
+- Database migration with backward compatibility
+- Dual session support for encrypted and unencrypted databases
+
 ### Phone-Style Dialpad for Quantity Input
 
 **User Interface**

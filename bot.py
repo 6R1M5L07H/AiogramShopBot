@@ -48,6 +48,7 @@ def get_shipping_types() -> dict:
 from aiogram import Bot, Dispatcher
 from aiogram.enums import ParseMode
 from fastapi import FastAPI, Request, status, HTTPException
+from contextlib import asynccontextmanager
 from db import create_db_and_tables
 import uvicorn
 from fastapi.responses import JSONResponse
@@ -55,6 +56,7 @@ from processing.processing import processing_router
 from services.notification import NotificationService
 from jobs.payment_timeout_job import PaymentTimeoutJob
 from jobs.database_backup_job import backup_scheduler
+from jobs.data_retention_cleanup_job import start_data_retention_cleanup_job
 from middleware.security_headers import SecurityHeadersMiddleware, CSPMiddleware
 from fastapi.middleware.cors import CORSMiddleware
 import asyncio
@@ -62,7 +64,76 @@ import asyncio
 redis = Redis(host=config.REDIS_HOST, password=config.REDIS_PASSWORD)
 bot = Bot(config.TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher(storage=RedisStorage(redis))
-app = FastAPI()
+
+# Background tasks
+backup_task = None
+data_retention_task = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan event handler for startup and shutdown."""
+    global backup_task, data_retention_task
+
+    # Startup
+    await create_db_and_tables()
+    await bot.set_webhook(
+        url=config.WEBHOOK_URL,
+        secret_token=config.WEBHOOK_SECRET_TOKEN
+    )
+    logging.info(f"[Startup] Webhook registered with Telegram")
+
+    # Start payment timeout job
+    await payment_timeout_job.start()
+
+    # Start database backup scheduler (if enabled)
+    if config.DB_BACKUP_ENABLED:
+        backup_task = asyncio.create_task(backup_scheduler())
+        logging.info("[Startup] Database backup scheduler started")
+    else:
+        logging.info("[Startup] Database backup scheduler disabled")
+
+    # Start data retention cleanup job (always enabled for data minimization)
+    data_retention_task = asyncio.create_task(start_data_retention_cleanup_job())
+    logging.info("[Startup] Data retention cleanup job started")
+
+    # Notify admins on startup
+    for admin in config.ADMIN_ID_LIST:
+        try:
+            await bot.send_message(admin, 'Bot is working')
+        except Exception as e:
+            logging.warning(e)
+
+    yield
+
+    # Shutdown
+    logging.warning('Shutting down..')
+
+    # Stop payment timeout job
+    await payment_timeout_job.stop()
+
+    # Stop database backup scheduler
+    if backup_task is not None:
+        backup_task.cancel()
+        try:
+            await backup_task
+        except asyncio.CancelledError:
+            logging.info("[Shutdown] Database backup scheduler stopped")
+
+    # Stop data retention cleanup job
+    if data_retention_task is not None:
+        data_retention_task.cancel()
+        try:
+            await data_retention_task
+        except asyncio.CancelledError:
+            logging.info("[Shutdown] Data retention cleanup job stopped")
+
+    await bot.delete_webhook()
+    await dp.storage.close()
+    logging.warning('Bye!')
+
+
+app = FastAPI(lifespan=lifespan)
 
 # Add security middleware (disabled by default for API-only bots)
 # Enable when adding web-based UI (admin dashboard, status pages, etc.)
@@ -95,9 +166,6 @@ app.include_router(processing_router)
 # Initialize payment timeout job
 payment_timeout_job = PaymentTimeoutJob(check_interval_seconds=60)
 
-# Background task for database backups
-backup_task = None
-
 
 @app.post(config.WEBHOOK_PATH)
 async def webhook(request: Request):
@@ -107,62 +175,13 @@ async def webhook(request: Request):
 
     try:
         update_data = await request.json()
+        logging.info(f"📥 Webhook received update: {update_data}")
         await dp.feed_webhook_update(bot, update_data)
+        logging.info(f"✅ Webhook processed successfully")
         return {"status": "ok"}
     except Exception as e:
         logging.error(f"Error processing webhook: {e}")
         return {"status": "error"}, status.HTTP_500_INTERNAL_SERVER_ERROR
-
-
-@app.on_event("startup")
-async def on_startup():
-    global backup_task
-
-    await create_db_and_tables()
-    await bot.set_webhook(
-        url=config.WEBHOOK_URL,
-        secret_token=config.WEBHOOK_SECRET_TOKEN
-    )
-    logging.info(f"[Startup] Webhook registered with Telegram")
-
-    # Start payment timeout job
-    await payment_timeout_job.start()
-
-    # Start database backup scheduler (if enabled)
-    if config.DB_BACKUP_ENABLED:
-        backup_task = asyncio.create_task(backup_scheduler())
-        logging.info("[Startup] Database backup scheduler started")
-    else:
-        logging.info("[Startup] Database backup scheduler disabled")
-
-    # Notify admins on startup
-    for admin in config.ADMIN_ID_LIST:
-        try:
-            await bot.send_message(admin, 'Bot is working')
-        except Exception as e:
-            logging.warning(e)
-
-
-@app.on_event("shutdown")
-async def on_shutdown():
-    global backup_task
-
-    logging.warning('Shutting down..')
-
-    # Stop payment timeout job
-    await payment_timeout_job.stop()
-
-    # Stop database backup scheduler
-    if backup_task is not None:
-        backup_task.cancel()
-        try:
-            await backup_task
-        except asyncio.CancelledError:
-            logging.info("[Shutdown] Database backup scheduler stopped")
-
-    await bot.delete_webhook()
-    await dp.storage.close()
-    logging.warning('Bye!')
 
 
 @app.exception_handler(Exception)
