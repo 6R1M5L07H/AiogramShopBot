@@ -18,6 +18,7 @@ from models.item import ItemDTO
 from models.order import OrderDTO
 from repositories.buy import BuyRepository
 from repositories.buyItem import BuyItemRepository
+from utils.html_escape import safe_html
 from repositories.cart import CartRepository
 from repositories.cartItem import CartItemRepository
 from repositories.item import ItemRepository
@@ -129,6 +130,219 @@ class CartService:
             }
 
         return True, "item_added_to_cart", {}
+
+    @staticmethod
+    async def get_cart_summary_data(
+        user_id: int,
+        session: AsyncSession | Session
+    ) -> dict:
+        """
+        Get cart summary data without UI logic.
+
+        Pure data collection for cart display - no InlineKeyboardBuilder,
+        no Localizator calls. Returns raw data that handlers can use to
+        build their own UI.
+
+        Args:
+            user_id: User ID to get cart for
+            session: Database session
+
+        Returns:
+            dict with keys:
+            - has_pending_order: bool - If user has pending order
+            - order: OrderDTO - Pending order (if has_pending_order=True)
+            - has_items: bool - If cart has items
+            - items: list[dict] - Cart items with structure:
+                {
+                    "cart_item_id": int,
+                    "subcategory_name": str,
+                    "quantity": int,
+                    "price": float,
+                    "total": float
+                }
+            - message_key: str - Localization key ("cart", "no_cart_items", "redirect_to_order")
+        """
+        from enums.order_status import OrderStatus
+
+        # Check for pending order
+        pending_order = await OrderRepository.get_pending_order_by_user(user_id, session)
+        if pending_order:
+            return {
+                "has_pending_order": True,
+                "order": pending_order,
+                "has_items": False,
+                "items": [],
+                "message_key": "redirect_to_order"
+            }
+
+        # Get cart items
+        cart_items = await CartItemRepository.get_by_user_id(user_id, 0, session)
+
+        if not cart_items:
+            return {
+                "has_pending_order": False,
+                "has_items": False,
+                "items": [],
+                "message_key": "no_cart_items"
+            }
+
+        # Batch load subcategories (prevent N+1 queries)
+        subcategory_ids = list({ci.subcategory_id for ci in cart_items})
+        subcategories_dict = await SubcategoryRepository.get_by_ids(subcategory_ids, session)
+
+        # Build items list
+        items_data = []
+        for cart_item in cart_items:
+            item_dto = ItemDTO(
+                category_id=cart_item.category_id,
+                subcategory_id=cart_item.subcategory_id
+            )
+            price = await ItemRepository.get_price(item_dto, session)
+            subcategory = subcategories_dict.get(cart_item.subcategory_id)
+
+            if subcategory:
+                items_data.append({
+                    "cart_item_id": cart_item.id,
+                    "subcategory_name": subcategory.name,
+                    "quantity": cart_item.quantity,
+                    "price": price,
+                    "total": price * cart_item.quantity
+                })
+
+        return {
+            "has_pending_order": False,
+            "has_items": True,
+            "items": items_data,
+            "message_key": "cart"
+        }
+
+    @staticmethod
+    async def get_pending_order_data(
+        order,
+        session: AsyncSession | Session
+    ) -> dict:
+        """
+        Get pending order data without UI logic.
+
+        Pure data collection for pending order display - no InlineKeyboardBuilder,
+        no Localizator calls, no message formatting. Returns raw data that handlers
+        can use to build their own UI.
+
+        Args:
+            order: OrderDTO object
+            session: Database session
+
+        Returns:
+            dict with keys:
+            - order_id: int
+            - status: OrderStatus enum
+            - has_invoice: bool
+            - invoice: InvoiceDTO or None
+            - is_expired: bool
+            - time_elapsed_minutes: float
+            - time_remaining_minutes: float
+            - can_cancel_free: bool (within grace period)
+            - grace_remaining_minutes: float
+            - items: list[dict] with subcategory_name, quantity, price, line_total
+            - subtotal: float
+            - shipping_cost: float
+            - total_price: float
+            - wallet_used: float
+            - expires_at: datetime
+            - created_at: datetime
+            - message_key: str (localization key hint)
+        """
+        from repositories.invoice import InvoiceRepository
+        from repositories.item import ItemRepository
+        from repositories.subcategory import SubcategoryRepository
+        from datetime import datetime
+        from collections import Counter
+        import config
+
+        # Get invoice if exists
+        invoice = await InvoiceRepository.get_by_order_id(order.id, session)
+
+        # Calculate timing
+        time_elapsed = (datetime.utcnow() - order.created_at).total_seconds() / 60  # Minutes
+        time_remaining = config.ORDER_TIMEOUT_MINUTES - time_elapsed
+        can_cancel_free = time_elapsed <= config.ORDER_CANCEL_GRACE_PERIOD_MINUTES
+        grace_remaining = config.ORDER_CANCEL_GRACE_PERIOD_MINUTES - time_elapsed
+        is_expired = time_remaining <= 0
+
+        # Build result dict
+        result = {
+            "order_id": order.id,
+            "status": order.status,
+            "has_invoice": invoice is not None,
+            "invoice": invoice,
+            "is_expired": is_expired,
+            "time_elapsed_minutes": time_elapsed,
+            "time_remaining_minutes": time_remaining,
+            "can_cancel_free": can_cancel_free,
+            "grace_remaining_minutes": grace_remaining,
+            "subtotal": 0.0,
+            "shipping_cost": order.shipping_cost,
+            "total_price": order.total_price,
+            "wallet_used": order.wallet_used,
+            "expires_at": order.expires_at,
+            "created_at": order.created_at,
+            "items": [],
+            "message_key": "pending_order"
+        }
+
+        # Handle expired orders without invoice - continue to build full data
+        # (Handler will detect is_expired and show appropriate message)
+        if is_expired and not has_invoice:
+            # Don't return early - handler needs full order data for expired orders without invoice
+            pass
+
+        # Get order items
+        order_items = await ItemRepository.get_by_order_id(order.id, session)
+
+        # Build items list with quantities
+        items_by_subcategory = Counter()
+        subcategory_prices = {}
+        for item in order_items:
+            items_by_subcategory[item.subcategory_id] += 1
+            if item.subcategory_id not in subcategory_prices:
+                subcategory_prices[item.subcategory_id] = item.price
+
+        # Batch-load all subcategories
+        subcategory_ids_set = set(items_by_subcategory.keys())
+        subcategories_dict = await SubcategoryRepository.get_by_ids(list(subcategory_ids_set), session)
+
+        # Build items data
+        items_data = []
+        subtotal = 0.0
+        for subcategory_id, qty in items_by_subcategory.items():
+            subcategory = subcategories_dict.get(subcategory_id)
+            if not subcategory:
+                continue
+            price = subcategory_prices[subcategory_id]
+            line_total = price * qty
+            subtotal += line_total
+
+            items_data.append({
+                "subcategory_id": subcategory_id,
+                "subcategory_name": subcategory.name,
+                "quantity": qty,
+                "price": price,
+                "line_total": line_total
+            })
+
+        result["items"] = items_data
+        result["subtotal"] = subtotal
+
+        # Determine message key based on order status
+        if not invoice:
+            if order.status == OrderStatus.PENDING_PAYMENT_AND_ADDRESS:
+                result["message_key"] = "pending_order_awaiting_address"
+            else:
+                result["message_key"] = "pending_order_awaiting_payment"
+        else:
+            result["message_key"] = "pending_order_with_invoice"
+
+        return result
 
     @staticmethod
     async def create_buttons(message: Message | CallbackQuery, session: AsyncSession | Session):
@@ -373,6 +587,379 @@ class CartService:
         return message_text, kb_builder
 
     @staticmethod
+    async def get_checkout_summary_data(
+        user_id: int,
+        session: AsyncSession | Session
+    ) -> dict:
+        """
+        Get checkout summary data without UI dependencies.
+        Returns raw data for building checkout confirmation screen.
+
+        Returns:
+            dict with keys:
+            - items: list[dict] with:
+                - name: str (subcategory name)
+                - is_tier: bool (whether item has tier pricing)
+                - tier_breakdown: list[dict] or None (if is_tier=True and multi-tier)
+                    - quantity: int
+                    - unit_price: float
+                    - total: float
+                - qty: int (if not multi-tier)
+                - unit_price: float (if not multi-tier)
+                - line_total: float
+            - subtotal: float (sum of all item totals)
+            - has_physical_items: bool
+            - max_shipping_cost: float
+            - grand_total: float (subtotal + max_shipping_cost)
+            - message_key: str (localization key)
+        """
+        import json
+
+        cart_items = await CartItemRepository.get_all_by_user_id(user_id, session)
+
+        # Batch-load all subcategories (eliminates N+1 queries)
+        subcategory_ids = list({cart_item.subcategory_id for cart_item in cart_items})
+        subcategories_dict = await SubcategoryRepository.get_by_ids(subcategory_ids, session)
+
+        items_data = []
+        items_total = 0.0
+        max_shipping_cost = 0.0
+        has_physical_items = False
+
+        for cart_item in cart_items:
+            subcategory = subcategories_dict.get(cart_item.subcategory_id)
+            if not subcategory:
+                continue
+
+            # Calculate shipping cost for physical items
+            try:
+                sample_item = await ItemRepository.get_single(
+                    cart_item.category_id, cart_item.subcategory_id, session
+                )
+                if sample_item and sample_item.is_physical:
+                    has_physical_items = True
+                    if sample_item.shipping_cost > max_shipping_cost:
+                        max_shipping_cost = sample_item.shipping_cost
+            except:
+                pass
+
+            # Use tier breakdown if available
+            if cart_item.tier_breakdown:
+                try:
+                    tier_breakdown = json.loads(cart_item.tier_breakdown)
+
+                    # Check if multi-tier (more than 1 breakdown entry)
+                    is_multi_tier = len(tier_breakdown) > 1
+
+                    # Calculate total for this item
+                    line_total = sum(item['total'] for item in tier_breakdown)
+                    items_total += line_total
+
+                    if is_multi_tier:
+                        # Multi-tier item with detailed breakdown
+                        items_data.append({
+                            'name': subcategory.name,
+                            'is_tier': True,
+                            'tier_breakdown': tier_breakdown,
+                            'line_total': line_total
+                        })
+                    else:
+                        # Single tier - store with calculation details
+                        item = tier_breakdown[0]
+                        items_data.append({
+                            'name': subcategory.name,
+                            'is_tier': False,
+                            'qty': item['quantity'],
+                            'unit_price': item['unit_price'],
+                            'line_total': line_total
+                        })
+
+                except (json.JSONDecodeError, KeyError):
+                    # Fallback to flat pricing (no tier breakdown)
+                    item_dto = ItemDTO(category_id=cart_item.category_id, subcategory_id=cart_item.subcategory_id)
+                    price = await ItemRepository.get_price(item_dto, session)
+                    line_total = price * cart_item.quantity
+                    items_total += line_total
+                    items_data.append({
+                        'name': subcategory.name,
+                        'is_tier': False,
+                        'qty': cart_item.quantity,
+                        'unit_price': price,
+                        'line_total': line_total
+                    })
+            else:
+                # Flat pricing (no tier breakdown stored)
+                item_dto = ItemDTO(category_id=cart_item.category_id, subcategory_id=cart_item.subcategory_id)
+                price = await ItemRepository.get_price(item_dto, session)
+                line_total = price * cart_item.quantity
+                items_total += line_total
+                items_data.append({
+                    'name': subcategory.name,
+                    'is_tier': False,
+                    'qty': cart_item.quantity,
+                    'unit_price': price,
+                    'line_total': line_total
+                })
+
+        grand_total = items_total + max_shipping_cost
+
+        return {
+            'items': items_data,
+            'subtotal': items_total,
+            'has_physical_items': has_physical_items,
+            'max_shipping_cost': max_shipping_cost,
+            'grand_total': grand_total,
+            'message_key': 'cart_confirm_checkout_process'
+        }
+
+    @staticmethod
+    def format_checkout_message(checkout_data: dict) -> str:
+        """
+        Format checkout summary message from checkout data dict.
+
+        Takes raw data from get_checkout_summary_data() and builds HTML message.
+        This is pure formatting - no database calls, no business logic.
+
+        Args:
+            checkout_data: Dict from get_checkout_summary_data() with keys:
+                - items: list[dict]
+                - subtotal: float
+                - has_physical_items: bool
+                - max_shipping_cost: float
+                - grand_total: float
+                - message_key: str
+
+        Returns:
+            HTML formatted message string
+        """
+        currency_sym = Localizator.get_currency_symbol()
+
+        # Header
+        message_text = Localizator.get_text(BotEntity.USER, checkout_data["message_key"])
+        message_text += "\n\n"
+
+        # === PHASE 1: Multi-Tier Detailed Breakdowns ===
+        multi_tier_items = [item for item in checkout_data["items"] if item.get("is_tier") and item.get("tier_breakdown")]
+
+        if multi_tier_items:
+            message_text += f"<b>{Localizator.get_text(BotEntity.USER, 'cart_tier_calculations_header')}</b>\n\n"
+            for item in multi_tier_items:
+                message_text += f"<b>{safe_html(item['name'])}:</b>\n"
+                for breakdown_item in item['tier_breakdown']:
+                    qty = breakdown_item['quantity']
+                    unit_price = breakdown_item['unit_price']
+                    total = breakdown_item['total']
+                    message_text += f" {qty:>2} × {unit_price:>6.2f} {currency_sym} = {total:>8.2f} {currency_sym}\n"
+
+                # Calculate average
+                total_qty = sum(b['quantity'] for b in item['tier_breakdown'])
+                avg_price = item['line_total'] / total_qty if total_qty > 0 else 0
+
+                message_text += "─" * 30 + "\n"
+                unit_text = Localizator.get_text(BotEntity.USER, 'unit_per_piece')
+                message_text += f"{'':>17}Σ {item['line_total']:>7.2f} {currency_sym}  (Ø {avg_price:.2f} {currency_sym}{unit_text})\n\n"
+
+            message_text += "═" * 30 + "\n\n"
+
+        # === PHASE 2: Compact Item Summary ===
+        message_text += f"<b>{Localizator.get_text(BotEntity.USER, 'cart_items_in_cart_header')}</b>\n"
+        for item in checkout_data["items"]:
+            if item.get("is_tier") and item.get("tier_breakdown"):
+                # Multi-tier item - show only result
+                message_text += f"{safe_html(item['name'])}: {item['line_total']:.2f} {currency_sym}\n"
+            else:
+                # Single-tier or flat - show calculation
+                message_text += f"{safe_html(item['name'])}: {item['qty']} × {item['unit_price']:.2f} {currency_sym} = {item['line_total']:.2f} {currency_sym}\n"
+
+        # === PHASE 3: Totals ===
+        message_text += "\n" + "═" * 30 + "\n"
+        subtotal_label = Localizator.get_text(BotEntity.USER, 'cart_subtotal_label')
+        message_text += f"{subtotal_label} {checkout_data['subtotal']:>8.2f} {currency_sym}\n"
+
+        if checkout_data["has_physical_items"] and checkout_data["max_shipping_cost"] > 0:
+            shipping_label = Localizator.get_text(BotEntity.USER, 'cart_shipping_max_label')
+            message_text += f"{shipping_label}  {checkout_data['max_shipping_cost']:>7.2f} {currency_sym}\n"
+
+        message_text += "═" * 30 + "\n"
+        total_label = Localizator.get_text(BotEntity.USER, 'cart_total_label')
+        message_text += f"<b>{total_label}        {checkout_data['grand_total']:>8.2f} {currency_sym}</b>"
+
+        return message_text
+
+    @staticmethod
+    async def get_delete_confirmation_data(
+        cart_item_id: int,
+        session: AsyncSession | Session
+    ) -> dict:
+        """
+        Get data needed for delete confirmation screen.
+
+        Pure data method - no UI dependencies.
+
+        Args:
+            cart_item_id: ID of cart item to delete
+            session: Database session
+
+        Returns:
+            dict with keys:
+            - cart_item_id: int
+            - subcategory_name: str
+            - quantity: int
+            - message_key: str (localization key)
+        """
+        cart_item = await CartItemRepository.get_by_id(cart_item_id, session)
+        subcategory = await SubcategoryRepository.get_by_id(cart_item.subcategory_id, session)
+
+        return {
+            "cart_item_id": cart_item.id,
+            "subcategory_name": subcategory.name,
+            "quantity": cart_item.quantity,
+            "message_key": "delete_cart_item_confirmation"
+        }
+
+    @staticmethod
+    async def remove_cart_item(
+        cart_item_id: int,
+        session: AsyncSession | Session
+    ) -> None:
+        """
+        Remove item from cart.
+
+        Simple wrapper around repository method - maintains layer separation.
+
+        Args:
+            cart_item_id: ID of cart item to remove
+            session: Database session
+        """
+        await CartItemRepository.remove_from_cart(cart_item_id, session)
+        await session_commit(session)
+
+    @staticmethod
+    def format_pending_order_message(order_data: dict) -> str:
+        """
+        Format pending order message (without invoice).
+
+        Used for orders awaiting address or payment initiation.
+        For orders with invoice, use OrderService._format_payment_screen().
+
+        Args:
+            order_data: Dict from get_pending_order_data() with keys:
+                - items: list[dict] with subcategory_name, quantity, price, line_total
+                - subtotal: float
+                - shipping_cost: float
+                - total_price: float
+                - time_remaining_minutes: float
+                - can_cancel_free: bool
+                - grace_remaining_minutes: float
+                - expires_at: datetime
+                - created_at: datetime
+                - status: OrderStatus
+                - message_key: str
+
+        Returns:
+            Formatted HTML message string
+        """
+        from datetime import timedelta
+        import config
+
+        currency_sym = Localizator.get_currency_symbol()
+
+        # Format items list
+        items_list = ""
+        for item in order_data["items"]:
+            name_with_qty = f"{item['quantity']}x {safe_html(item['subcategory_name'])}"
+            spacing = " " * max(1, 30 - len(name_with_qty))
+            items_list += f"{name_with_qty}\n  {currency_sym}{item['price']:.2f} × {item['quantity']}{spacing}{currency_sym}{item['line_total']:.2f}\n"
+
+        # Format expiry time (HH:MM format)
+        expires_at_time = order_data["expires_at"].strftime("%H:%M")
+
+        # Calculate grace period expiry time
+        grace_expires_time = (
+            order_data["created_at"] +
+            timedelta(minutes=config.ORDER_CANCEL_GRACE_PERIOD_MINUTES)
+        ).strftime("%H:%M")
+
+        # Format grace period info
+        if order_data["can_cancel_free"]:
+            grace_period_info = Localizator.get_text(BotEntity.USER, "grace_period_active").format(
+                grace_remaining=int(order_data["grace_remaining_minutes"]),
+                grace_expires_time=grace_expires_time
+            )
+        else:
+            grace_period_info = Localizator.get_text(BotEntity.USER, "grace_period_expired")
+
+        # Build message based on status
+        message_text = Localizator.get_text(BotEntity.USER, order_data["message_key"]).format(
+            items_list=items_list,
+            subtotal=order_data["subtotal"],
+            shipping_cost=order_data["shipping_cost"],
+            total_price=order_data["total_price"],
+            currency_sym=currency_sym,
+            expires_at=expires_at_time,
+            time_remaining=int(order_data["time_remaining_minutes"]),
+            grace_period_info=grace_period_info
+        )
+
+        return message_text
+
+    @staticmethod
+    def format_expired_order_message(order_data: dict) -> str:
+        """
+        Format expired order message.
+
+        Args:
+            order_data: Dict from get_pending_order_data() with invoice
+
+        Returns:
+            Formatted HTML message string
+        """
+        from utils.crypto import format_crypto_amount
+
+        currency_sym = Localizator.get_currency_symbol()
+        invoice = order_data["invoice"]
+        expires_at_time = order_data["expires_at"].strftime("%H:%M")
+
+        message_text = Localizator.get_text(BotEntity.USER, "order_expired").format(
+            invoice_number=invoice.invoice_number,
+            total_price=order_data["total_price"],
+            currency_sym=currency_sym,
+            crypto_amount=format_crypto_amount(invoice.payment_amount_crypto),
+            crypto_currency=invoice.payment_crypto_currency.value,
+            payment_address=invoice.payment_address,
+            expires_at=expires_at_time,
+            expires_minutes=0
+        )
+        message_text += f"\n\n{Localizator.get_text(BotEntity.USER, 'no_cart_items')}"
+
+        return message_text
+
+    @staticmethod
+    async def handle_expired_order(order_id: int, session: AsyncSession | Session) -> None:
+        """
+        Handle expired order auto-cancellation.
+
+        Args:
+            order_id: Order ID to cancel
+            session: Database session
+        """
+        from enums.order_cancel_reason import OrderCancelReason
+        from services.order import OrderService
+        import logging
+
+        try:
+            await OrderService.cancel_order(
+                order_id=order_id,
+                reason=OrderCancelReason.TIMEOUT,
+                session=session,
+                refund_wallet=True
+            )
+            await session_commit(session)
+            logging.info(f"Auto-cancelled expired order {order_id} for user")
+        except Exception as e:
+            logging.warning(f"Could not auto-cancel expired order {order_id}: {e}")
+
+    @staticmethod
     async def delete_cart_item_confirm(callback: CallbackQuery, session: AsyncSession | Session):
         """
         Show confirmation dialog before deleting cart item.
@@ -511,7 +1098,7 @@ class CartService:
         if multi_tier_items:
             message_text += f"<b>{Localizator.get_text(BotEntity.USER, 'cart_tier_calculations_header')}</b>\n\n"
             for item in multi_tier_items:
-                message_text += f"<b>{item['name']}:</b>\n"
+                message_text += f"<b>{safe_html(item['name'])}:</b>\n"
                 for breakdown_item in item['breakdown']:
                     qty = breakdown_item['quantity']
                     unit_price = breakdown_item['unit_price']
@@ -533,10 +1120,10 @@ class CartService:
         for item in all_items_summary:
             if item['is_tier']:
                 # Multi-tier item - show only result
-                message_text += f"{item['name']}: {item['total']:.2f} {currency_sym}\n"
+                message_text += f"{safe_html(item['name'])}: {item['total']:.2f} {currency_sym}\n"
             else:
                 # Single-tier or legacy - show calculation
-                message_text += f"{item['name']}: {item['qty']} × {item['unit_price']:.2f} {currency_sym} = {item['total']:.2f} {currency_sym}\n"
+                message_text += f"{safe_html(item['name'])}: {item['qty']} × {item['unit_price']:.2f} {currency_sym} = {item['total']:.2f} {currency_sym}\n"
 
         # === PHASE 3: Shipping & Totals ===
         # Get shipping cost using new CartShippingService
