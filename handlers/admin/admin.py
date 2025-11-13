@@ -4,8 +4,9 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from callbacks import AdminMenuCallback, AdminAnnouncementCallback, AdminInventoryManagementCallback, \
-    UserManagementCallback, StatisticsCallback, WalletCallback, ShippingManagementCallback
+    UserManagementCallback, StatisticsCallback, WalletCallback, ShippingManagementCallback, AnalyticsV2Callback
 from enums.bot_entity import BotEntity
+from handlers.admin.analytics_v2 import analytics_v2
 from handlers.admin.announcement import announcement_router
 from handlers.admin.inventory_management import inventory_management
 from handlers.admin.statistics import statistics
@@ -15,6 +16,7 @@ from utils.custom_filters import AdminIdFilter
 from utils.localizator import Localizator
 
 admin_router = Router()
+admin_router.include_router(analytics_v2)
 admin_router.include_router(announcement_router)
 admin_router.include_router(inventory_management)
 admin_router.include_router(user_management)
@@ -40,6 +42,8 @@ async def admin(**kwargs):
                               callback_data=UserManagementCallback.create(level=0))
     admin_menu_builder.button(text=Localizator.get_text(BotEntity.ADMIN, "statistics"),
                               callback_data=StatisticsCallback.create(level=0))
+    admin_menu_builder.button(text=Localizator.get_text(BotEntity.ADMIN, "analytics_v2"),
+                              callback_data=AnalyticsV2Callback.create(level=0))
     admin_menu_builder.button(text=Localizator.get_text(BotEntity.ADMIN, "shipping_management"),
                               callback_data=ShippingManagementCallback.create(level=0))
     admin_menu_builder.button(text=Localizator.get_text(BotEntity.ADMIN, "crypto_withdraw"),

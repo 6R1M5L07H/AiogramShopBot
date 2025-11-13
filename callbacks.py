@@ -183,6 +183,32 @@ class StatisticsCallback(BaseCallback, prefix="statistics"):
         return StatisticsCallback(level=level, statistics_entity=statistics_entity, timedelta=timedelta, page=page)
 
 
+class AnalyticsV2Entity(IntEnum):
+    SALES = 1
+    VIOLATIONS = 2
+    REVENUE = 3
+
+
+class AnalyticsV2TimeDelta(IntEnum):
+    WEEK = 7
+    MONTH = 30
+    QUARTER = 90
+
+
+class AnalyticsV2Callback(BaseCallback, prefix="analytics_v2"):
+    entity: AnalyticsV2Entity | None
+    timedelta: AnalyticsV2TimeDelta | None
+    days: int | None
+    page: int | None
+
+    @staticmethod
+    def create(level: int, entity: AnalyticsV2Entity | None = None,
+               timedelta: AnalyticsV2TimeDelta | None = None,
+               days: int | None = None,
+               page: int | None = None):
+        return AnalyticsV2Callback(level=level, entity=entity, timedelta=timedelta, days=days, page=page)
+
+
 class WalletCallback(BaseCallback, prefix="wallet"):
     cryptocurrency: Cryptocurrency | None
 

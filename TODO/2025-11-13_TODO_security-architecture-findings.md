@@ -123,10 +123,127 @@ if RUNTIME_ENVIRONMENT == RuntimeEnvironment.DEV:
 
 ---
 
+---
+
+## 🟢 Fixed Issues (Analytics v2)
+
+### 6. CSV Injection Vulnerability (FIXED)
+
+**Location:** `services/analytics.py:261-300`
+
+**Issue:**
+- CSV generation used f-strings without escaping
+- Category/subcategory names with `=`, `+`, `-`, `@` could execute formulas in Excel
+- Example: Category name `=1+1` would execute as formula
+
+**Fix Applied:**
+- Replaced f-string concatenation with Python `csv` module
+- Using `csv.QUOTE_ALL` to properly escape all fields
+- Enum values converted to `.value` for clean export
+
+**Status:** ✅ Fixed in current commit
+
+---
+
+### 7. Refund Data Integrity Issue (FIXED)
+
+**Location:** `repositories/sales_record.py:352-404`
+
+**Issue:**
+- Refund marking used only `sale_date + category_name + subcategory_name`
+- Could mark ALL sales of same category on same day as refunded
+- Malicious user cancelling one order could corrupt entire day's analytics
+
+**Fix Applied:**
+- Added `order_hash` column to SalesRecord (SHA256 of `order_id + created_at`)
+- Pseudonymized identifier maintains data minimization
+- Refund updates now precisely target specific order's records
+
+**Status:** ✅ Fixed in current commit
+
+---
+
+## 🟡 New Architecture Issues (Analytics v2)
+
+### 8. N+1 Query in Sales Record Creation
+
+**Location:** `services/analytics.py:93-131`
+
+**Issue:**
+- Each item fetches Category and Subcategory individually
+- 20-item order = 40 database queries
+- Expensive for large orders
+
+**Fix Required:**
+- Batch load categories and subcategories before loop
+- Build lookup dictionaries
+- Reduce to 2 queries regardless of order size
+
+**Impact:** Medium - Performance issue for large orders
+
+---
+
+### 9. Memory Loading Instead of SQL Aggregation
+
+**Location:** `repositories/sales_record.py:226-295`
+
+**Issue:**
+- Loads ALL sales for time range into memory
+- Groups in Python instead of SQL GROUP BY
+- 90-day reports block event loop
+- Does not scale beyond 10,000 records
+
+**Fix Required:**
+- Move aggregation to SQL with GROUP BY
+- Apply pagination in SQL, not Python
+- Return only requested page from database
+
+**Impact:** High - Scalability bottleneck
+
+---
+
+### 10. SQLite-Specific Distinct Count
+
+**Location:** `repositories/sales_record.py:316-325`
+
+**Issue:**
+- Uses string concatenation for distinct count: `category + '|' + subcategory`
+- Only works on SQLite
+- Prevents migration to PostgreSQL/MySQL
+
+**Fix Required:**
+- Use `tuple_()` for DB-agnostic distinct count
+- OR use subquery approach
+
+**Impact:** Medium - Blocks database migration
+
+---
+
+## Implementation Priority
+
+1. **Immediate (Before next production deploy):**
+   - Fix #1: Webhook Secret Token validation
+   - Fix #2: Payment signature bypass
+   - ✅ Fix #6: CSV Injection (COMPLETED)
+   - ✅ Fix #7: Refund Data Integrity (COMPLETED)
+
+2. **High Priority (Next sprint):**
+   - Fix #3: Replace destructive auto-migrate
+   - Fix #4: Runtime environment enum comparison
+   - Fix #9: SQL aggregation for analytics
+
+3. **Medium Priority (Technical debt):**
+   - Fix #5: N+1 query optimization (user purchase history)
+   - Fix #8: N+1 query optimization (analytics creation)
+   - Fix #10: SQLite-specific code removal
+
+---
+
 ## Notes
 
 - Issues #1 and #2 are blocking security vulnerabilities
 - Issue #3 could cause catastrophic data loss
-- Issues #4 and #5 are bugs but not security-critical
-- All issues exist in codebase prior to dialpad feature
-- None of these issues were introduced by dialpad implementation
+- Issues #6 and #7 were security issues in Analytics v2, now fixed
+- Issues #8, #9, #10 are performance/portability issues, not security-critical
+- All pre-existing issues (#1-#5) exist in codebase prior to dialpad feature
+- Analytics v2 issues (#6-#10) identified and partially fixed during feature development

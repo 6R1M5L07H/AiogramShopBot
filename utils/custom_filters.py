@@ -32,10 +32,17 @@ class IsUserExistFilter(BaseFilter):
     If user is banned, shows informative message with unban instructions.
     """
     async def __call__(self, message: Message) -> bool:
+        import logging
         async with get_db_session() as session:
             user = await UserService.get(UserDTO(telegram_id=message.from_user.id), session)
 
             if user is None:
+                logging.error(
+                    f"❌ USER NOT FOUND: Telegram ID {message.from_user.id} "
+                    f"(username: @{message.from_user.username}) tried to access protected route but user profile doesn't exist in database. "
+                    f"User needs to send /start command first to create profile. "
+                    f"This may indicate: (1) User was deleted from DB, (2) DB was reset, (3) New user without /start."
+                )
                 return False
 
             # Check if user is banned using centralized function
@@ -70,6 +77,20 @@ class IsUserExistFilterIncludingBanned(BaseFilter):
     - FAQ/Terms
     """
     async def __call__(self, message: Message) -> bool:
+        import logging
+        logging.info(f"🔍 IsUserExistFilterIncludingBanned called for user {message.from_user.id}")
         async with get_db_session() as session:
             user = await UserService.get(UserDTO(telegram_id=message.from_user.id), session)
-            return user is not None
+
+            if user is None:
+                logging.error(
+                    f"❌ USER NOT FOUND: Telegram ID {message.from_user.id} "
+                    f"(username: @{message.from_user.username}) tried to access handler but user profile doesn't exist in database. "
+                    f"User needs to send /start command first to create profile. "
+                    f"This may indicate: (1) User was deleted from DB, (2) DB was reset, (3) New user without /start."
+                )
+                logging.info(f"🔍 IsUserExistFilterIncludingBanned result: False (user=None)")
+                return False
+
+            logging.info(f"🔍 IsUserExistFilterIncludingBanned result: True (user_id={user.id})")
+            return True

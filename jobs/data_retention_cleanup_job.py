@@ -6,7 +6,11 @@ Automatically deletes old data according to retention policies:
 - ReferralUsage: 365 days
 - ReferralDiscount: After 90-day expiry
 
-Runs daily to ensure GDPR compliance and minimize data storage.
+Anonymized analytics data (no user_id) is RETAINED INDEFINITELY:
+- SalesRecord: Anonymized per-item sales data for business intelligence
+- ViolationStatistics: Anonymized violation tracking for abuse pattern detection
+
+Runs daily to ensure data minimization principles.
 """
 
 import asyncio

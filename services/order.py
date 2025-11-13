@@ -13,6 +13,7 @@ from enums.bot_entity import BotEntity
 from enums.order_cancel_reason import OrderCancelReason
 from enums.order_status import OrderStatus
 from enums.strike_type import StrikeType
+from enums.violation_type import ViolationType
 from models.cart import CartDTO
 from models.cartItem import CartItemDTO
 from models.item import ItemDTO
@@ -22,6 +23,7 @@ from repositories.cartItem import CartItemRepository
 from repositories.item import ItemRepository
 from repositories.order import OrderRepository
 from repositories.user import UserRepository
+from services.analytics import AnalyticsService
 from utils.localizator import Localizator
 
 
@@ -248,7 +250,7 @@ class OrderService:
             item.is_sold = True
         await ItemRepository.update(items, session)
 
-        # 3. Create Buy record for purchase history (same as old system)
+        # 3. Create Buy record for purchase history (legacy - will be replaced)
         # Check if Buy record already exists (idempotency - prevent duplicates)
         existing_buy_items = await BuyItemRepository.get_by_item_ids([item.id for item in items], session)
 
@@ -267,6 +269,15 @@ class OrderService:
             logging.info(f"✅ Created Buy record {buy_id} for order {order_id}")
         else:
             logging.warning(f"⚠️ Buy record already exists for order {order_id} - skipping duplicate creation")
+
+        # 3b. Create anonymized SalesRecord for long-term analytics (data minimization)
+        from services.analytics import AnalyticsService
+        try:
+            sales_record_ids = await AnalyticsService.create_sales_records_from_order(order_id, session)
+            logging.info(f"✅ Created {len(sales_record_ids)} SalesRecord entries for order {order_id}")
+        except Exception as e:
+            logging.error(f"❌ Failed to create SalesRecords for order {order_id}: {e}", exc_info=True)
+            # Don't fail order completion if analytics fail
 
         # 4. Commit all changes
         await session_commit(session)
@@ -300,16 +311,21 @@ class OrderService:
         order_total: float,
         shipping_cost: float,
         reason: 'OrderCancelReason',
-        within_grace_period: bool
+        within_grace_period: bool,
+        order_status: 'OrderStatus'
     ) -> dict:
         """
         Calculate refund for mixed orders (digital + physical items).
 
         Rules:
-        1. Digital items (already delivered): NOT refundable
-        2. Physical items (not shipped): Refundable
+        1. Digital items: Refundable ONLY if NOT delivered yet (status != PAID)
+        2. Physical items (not shipped): Always refundable
         3. Shipping cost: Refundable if physical items cancelled
-        4. Penalty: Applied only to refundable amount (physical + shipping)
+        4. Penalty: Applied to ALL refundable amounts (digital + physical + shipping)
+
+        Digital item delivery status:
+        - PAID or PAID_AWAITING_SHIPMENT: Digital items DELIVERED → NOT refundable
+        - All other statuses: Digital items NOT delivered → Refundable
 
         IMPORTANT: Uses order_total (with tier pricing) as source of truth,
         NOT item.price sum (which has original prices).
@@ -320,27 +336,37 @@ class OrderService:
             shipping_cost: Shipping cost for physical items
             reason: Cancellation reason (affects penalty)
             within_grace_period: True if within grace period (no penalty)
+            order_status: Current order status (determines if digital items delivered)
 
         Returns:
             dict with refund breakdown:
             {
-                'digital_amount': float,      # Amount for digital items (NOT refunded)
-                'physical_amount': float,     # Amount for physical items (refundable)
-                'shipping_cost': float,       # Shipping cost (refundable if physical)
-                'refundable_base': float,     # physical + shipping (before penalty)
-                'penalty_percent': float,     # Penalty percentage applied
-                'penalty_amount': float,      # Penalty amount (rounded down)
-                'final_refund': float,        # Actual refund amount
-                'has_digital_items': bool,    # True if order contains digital items
-                'has_physical_items': bool,   # True if order contains physical items
-                'is_mixed_order': bool        # True if both digital and physical
+                'digital_amount': float,              # Amount for digital items (NOT refunded if delivered)
+                'digital_refundable_amount': float,   # Amount for digital items (refundable if not delivered)
+                'physical_amount': float,             # Amount for physical items (refundable)
+                'shipping_cost': float,               # Shipping cost (refundable if physical)
+                'refundable_base': float,             # Total refundable before penalty
+                'penalty_percent': float,             # Penalty percentage applied
+                'penalty_amount': float,              # Penalty amount (rounded down)
+                'final_refund': float,                # Actual refund amount
+                'has_digital_items': bool,            # True if order contains digital items
+                'has_physical_items': bool,           # True if order contains physical items
+                'is_mixed_order': bool,               # True if both digital and physical
+                'digital_items_delivered': bool       # True if digital items were delivered
             }
         """
         from services.payment_validator import PaymentValidator
+        from enums.order_status import OrderStatus
 
-        # Calculate digital item total (digital items don't have tier pricing, use item.price)
-        # Calculate physical item total by subtraction to preserve tier pricing accuracy
-        digital_total = 0.0
+        # Check if digital items have been delivered
+        # Digital items are delivered ONLY when order reaches PAID or PAID_AWAITING_SHIPMENT
+        digital_items_delivered = (order_status == OrderStatus.PAID or
+                                   order_status == OrderStatus.PAID_AWAITING_SHIPMENT)
+
+        # Calculate digital item totals (digital items don't have tier pricing, use item.price)
+        # Separate into delivered (non-refundable) and not-delivered (refundable)
+        digital_total_non_refundable = 0.0  # Delivered digital items
+        digital_total_refundable = 0.0      # Not delivered digital items
         has_digital = False
         has_physical = False
 
@@ -348,19 +374,32 @@ class OrderService:
             if item.is_physical:
                 has_physical = True
             else:
-                # Digital items: Use item.price (no tier pricing)
-                digital_total += item.price
                 has_digital = True
+                if digital_items_delivered:
+                    # Digital item delivered → NOT refundable
+                    digital_total_non_refundable += item.price
+                else:
+                    # Digital item NOT delivered → Refundable
+                    digital_total_refundable += item.price
 
         is_mixed = has_digital and has_physical
 
         # Use order_total (with tier pricing) as source of truth
         # Calculate physical items by subtraction (preserves tier pricing)
         items_total = order_total - shipping_cost  # Subtract shipping to get items-only total
-        physical_total = items_total - digital_total  # Remainder after digital items
 
-        # Shipping cost only refunded if physical items present
-        refundable_base = physical_total
+        if digital_items_delivered:
+            # Digital delivered: Calculate physical as remainder after non-refundable digital
+            physical_total = items_total - digital_total_non_refundable
+            # Refundable base: Only physical items
+            refundable_base = physical_total
+        else:
+            # Digital NOT delivered: Calculate physical as remainder after refundable digital
+            physical_total = items_total - digital_total_refundable
+            # Refundable base: Physical + Digital (both refundable)
+            refundable_base = physical_total + digital_total_refundable
+
+        # Shipping cost added to refundable base if physical items present
         if has_physical:
             refundable_base += shipping_cost
 
@@ -388,7 +427,8 @@ class OrderService:
             final_refund = refundable_base
 
         return {
-            'digital_amount': round(digital_total, 2),
+            'digital_amount': round(digital_total_non_refundable, 2),
+            'digital_refundable_amount': round(digital_total_refundable, 2),
             'physical_amount': round(physical_total, 2),
             'shipping_cost': round(shipping_cost, 2),
             'refundable_base': round(refundable_base, 2),
@@ -397,7 +437,8 @@ class OrderService:
             'final_refund': round(final_refund, 2),
             'has_digital_items': has_digital,
             'has_physical_items': has_physical,
-            'is_mixed_order': is_mixed
+            'is_mixed_order': is_mixed,
+            'digital_items_delivered': digital_items_delivered
         }
 
     @staticmethod
@@ -534,13 +575,15 @@ class OrderService:
 
         logging.info(f"📦 Order {order_id} (Invoice: {invoice_number}): Loaded {len(items)} items")
 
-        # Calculate partial refund for mixed orders (digital items NOT refundable)
+        # Calculate partial refund for mixed orders
+        # Digital items refundable only if NOT delivered (status != PAID)
         partial_refund_info = OrderService._calculate_partial_refund(
             items=items,
             order_total=order.total_price,
             shipping_cost=order.shipping_cost or 0.0,
             reason=reason,
-            within_grace_period=within_grace_period
+            within_grace_period=within_grace_period,
+            order_status=order.status
         )
 
         logging.info(f"📊 Order {order_id} (Invoice: {invoice_number}): Partial refund calculated - is_mixed={partial_refund_info['is_mixed_order']}")
@@ -708,6 +751,16 @@ class OrderService:
                     strike_type=StrikeType.LATE_CANCEL,
                     session=session
                 )
+                # Track violation for analytics (anonymized, no user_id)
+                try:
+                    await AnalyticsService.create_violation_record(
+                        order_id=order_id,
+                        violation_type=ViolationType.USER_CANCELLATION_LATE,
+                        penalty_applied=penalty_amount if wallet_refund_info and wallet_refund_info.get('penalty_amount') else 0.0,
+                        session=session
+                    )
+                except Exception as e:
+                    logging.error(f"Failed to create violation record for order {order_id}: {e}", exc_info=True)
         elif reason == OrderCancelReason.TIMEOUT:
             new_status = OrderStatus.TIMEOUT
             within_grace_period = False  # Timeouts never count as grace period
@@ -721,6 +774,16 @@ class OrderService:
                     strike_type=StrikeType.TIMEOUT,
                     session=session
                 )
+            # Track violation for analytics (GDPR-compliant, no user_id)
+            try:
+                await AnalyticsService.create_violation_record(
+                    order_id=order_id,
+                    violation_type=ViolationType.TIMEOUT,
+                    penalty_applied=penalty_amount if wallet_refund_info and wallet_refund_info.get('penalty_amount') else 0.0,
+                    session=session
+                )
+            except Exception as e:
+                logging.error(f"Failed to create violation record for order {order_id}: {e}", exc_info=True)
         elif reason == OrderCancelReason.ADMIN:
             new_status = OrderStatus.CANCELLED_BY_ADMIN
             within_grace_period = True  # Admin cancels don't cause strikes
@@ -765,6 +828,30 @@ class OrderService:
 
         # UPDATE ORDER STATUS
         await OrderRepository.update_status(order_id, new_status, session)
+
+        # UPDATE SALESRECORDS FOR REFUNDED ITEMS (only if order reached PAID status)
+        # This ensures analytics accurately reflect refunded items
+        if order.status == OrderStatus.PAID or order.status == OrderStatus.PAID_AWAITING_SHIPMENT:
+            from services.analytics import AnalyticsService
+            try:
+                # Identify which items to mark as refunded based on delivery status
+                refunded_items = []
+                for item in items:
+                    if item.is_physical:
+                        # Physical items always refunded after PAID cancellation
+                        refunded_items.append(item)
+                    # Digital items already delivered at PAID, not refunded
+
+                if refunded_items:
+                    refunded_count = await AnalyticsService.mark_items_as_refunded(
+                        order_id=order_id,
+                        items=refunded_items,
+                        session=session
+                    )
+                    logging.info(f"✅ Marked {refunded_count} SalesRecords as refunded for order {order_id}")
+            except Exception as e:
+                logging.error(f"❌ Failed to update SalesRecords for order {order_id}: {e}")
+                # Don't fail cancellation if analytics update fails
 
         # STORE CANCELLATION REASON (if provided)
         if custom_reason:

@@ -24,6 +24,9 @@ from models.payment_transaction import PaymentTransaction
 from models.referral_discount import ReferralDiscount
 from models.referral_usage import ReferralUsage
 from models.user_strike import UserStrike
+from models.sales_record import SalesRecord
+from models.violation_statistics import ViolationStatistics
+from models.shipping_tier import ShippingTier
 
 __all__ = [
     'Base',
@@ -45,4 +48,7 @@ __all__ = [
     'ReferralDiscount',
     'ReferralUsage',
     'UserStrike',
+    'SalesRecord',
+    'ViolationStatistics',
+    'ShippingTier',
 ]
