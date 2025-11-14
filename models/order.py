@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from pydantic import BaseModel
-from sqlalchemy import Column, Integer, Float, DateTime, ForeignKey, func, CheckConstraint, Enum as SQLEnum, Text
+from sqlalchemy import Column, Integer, Float, DateTime, ForeignKey, String, func, CheckConstraint, Enum as SQLEnum, Text
 from sqlalchemy.orm import relationship
 
 from enums.currency import Currency
@@ -25,6 +25,7 @@ class Order(Base):
 
     # Shipping Fields
     shipping_cost = Column(Float, nullable=False, default=0.0)
+    shipping_type_key = Column(String(100), nullable=True)  # Key referencing shipping_types config (e.g., "paeckchen", "paket_2kg")
 
     # Payment Validation Fields
     total_paid_crypto = Column(Float, nullable=False, default=0.0)  # Sum of all partial payments
@@ -42,6 +43,21 @@ class Order(Base):
     # Stores custom reason text provided by admin when cancelling order
     # Displayed in order history detail view
     cancellation_reason = Column(Text, nullable=True)
+
+    # Items Snapshot (JSON)
+    # Stores complete item details at order creation time for historical record
+    # Format: [{"description": "Item Name", "price": 10.0, "quantity": 2, "is_physical": true,
+    #           "private_data": "KEY-123", "tier_breakdown": {...}}]
+    # Allows viewing order details after items are released back to stock (cancelled orders)
+    items_snapshot = Column(Text, nullable=True)
+
+    # Refund Breakdown (JSON)
+    # Stores refund calculation details for cancelled orders (especially mixed orders)
+    # Format: {"digital_amount": 10.0, "physical_amount": 20.0, "shipping_cost": 1.5,
+    #          "refundable_base": 21.5, "penalty_percent": 5, "penalty_amount": 1.08,
+    #          "final_refund": 20.42, "is_mixed_order": true}
+    # Allows displaying which items were refunded vs. kept in cancelled order view
+    refund_breakdown_json = Column(Text, nullable=True)
 
     # Relations
     user = relationship('User', backref='orders')
@@ -67,9 +83,12 @@ class OrderDTO(BaseModel):
     cancelled_at: datetime | None = None
     shipped_at: datetime | None = None
     shipping_cost: float | None = 0.0
+    shipping_type_key: str | None = None  # Key referencing shipping_types config
     total_paid_crypto: float | None = None
     retry_count: int | None = None
     original_expires_at: datetime | None = None
     wallet_used: float | None = None
     tier_breakdown_json: str | None = None  # JSON string with tier pricing breakdown
     cancellation_reason: str | None = None  # Custom reason for admin cancellations
+    items_snapshot: str | None = None  # JSON string with complete item details at order creation
+    refund_breakdown_json: str | None = None  # JSON string with refund calculation for cancelled orders

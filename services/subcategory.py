@@ -22,7 +22,7 @@ class SubcategoryService:
         subcategories = await SubcategoryRepository.get_paginated_by_category_id(unpacked_cb.category_id,
                                                                                  unpacked_cb.page, session)
         for subcategory in subcategories:
-            item = await ItemRepository.get_single(unpacked_cb.category_id, subcategory.id, session)
+            item = await ItemRepository.get_item_metadata(unpacked_cb.category_id, subcategory.id, session)
             available_qty = await ItemRepository.get_available_qty(ItemDTO(category_id=unpacked_cb.category_id,
                                                                            subcategory_id=subcategory.id), session)
 
@@ -50,7 +50,7 @@ class SubcategoryService:
     @staticmethod
     async def get_select_quantity_buttons(callback: CallbackQuery, session: AsyncSession | Session) -> tuple[str, InlineKeyboardBuilder]:
         unpacked_cb = AllCategoriesCallback.unpack(callback.data)
-        item = await ItemRepository.get_single(unpacked_cb.category_id, unpacked_cb.subcategory_id, session)
+        item = await ItemRepository.get_item_metadata(unpacked_cb.category_id, unpacked_cb.subcategory_id, session)
         subcategory = await SubcategoryRepository.get_by_id(unpacked_cb.subcategory_id, session)
         category = await CategoryRepository.get_by_id(unpacked_cb.category_id, session)
 
@@ -172,7 +172,7 @@ class SubcategoryService:
         from services.pricing import PricingService
 
         unpacked_cb = AllCategoriesCallback.unpack(callback.data)
-        item = await ItemRepository.get_single(unpacked_cb.category_id, unpacked_cb.subcategory_id, session)
+        item = await ItemRepository.get_item_metadata(unpacked_cb.category_id, unpacked_cb.subcategory_id, session)
         subcategory = await SubcategoryRepository.get_by_id(unpacked_cb.subcategory_id, session)
 
         if item is None:

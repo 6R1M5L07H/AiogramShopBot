@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2025-11-14
+
+### Tiered Shipping with Dynamic Upselling
+
+**Shipping System**
+- Quantity-based shipping tiers automatically select appropriate shipping method per order
+- Shipping upselling flow offers premium options after address entry with cost comparison
+- Real cost vs charged cost separation enables subsidized shipping promotions
+
+**Order Management**
+- Unified order views eliminate duplication between admin and user contexts
+- Mixed order cancellations handle partial refunds when digital items already delivered
+- Stock restoration on order cancellation prevents inventory loss
+
 ## 2025-11-13
 
 ### Analytics v2 - Anonymized Sales and Violation Tracking

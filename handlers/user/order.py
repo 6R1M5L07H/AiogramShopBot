@@ -678,6 +678,85 @@ async def confirm_adjusted_order(**kwargs):
     await callback.message.edit_text(text=msg, reply_markup=kb_builder.as_markup())
 
 
+async def show_shipping_upsell(**kwargs):
+    """
+    Level 7: Show Shipping Upsell
+
+    - Display upgrade option for current shipping type
+    - Handle upgrade selection (if shipping_type_key present in callback)
+    - Buttons: "Upgrade wählen" (update + pay) | "Weiter ohne Upgrade" (Level 8)
+    """
+    callback = kwargs.get("callback")
+    session = kwargs.get("session")
+    state = kwargs.get("state")
+
+    # Unpack callback data
+    unpacked_cb = OrderCallback.unpack(callback.data)
+    order_id = unpacked_cb.order_id
+
+    # Resolve order_id from state if not in callback
+    if order_id == -1 and state:
+        state_data = await state.get_data()
+        order_id = state_data.get("order_id")
+
+    # Check if user clicked upgrade button (shipping_type_key present)
+    if unpacked_cb.shipping_type_key:
+        # User selected upgrade - update shipping and proceed to payment
+        from services.shipping_upsell import ShippingUpsellService
+
+        await OrderService.update_shipping_selection(
+            order_id=order_id,
+            shipping_type_key=unpacked_cb.shipping_type_key,
+            session=session
+        )
+        await session_commit(session)
+
+        # Show updated message
+        order = await OrderRepository.get_by_id(order_id, session)
+        shipping_details = ShippingUpsellService.get_shipping_type_details(order.shipping_type_key)
+
+        currency_sym = "€" if order.currency.value == "EUR" else order.currency.value
+
+        message_text = Localizator.get_text(BotEntity.USER, "shipping_upsell_updated").format(
+            shipping_name=shipping_details["name"],
+            currency_sym=currency_sym,
+            shipping_cost=order.shipping_cost
+        )
+        await callback.message.edit_text(message_text)
+
+        # Proceed to payment
+        await process_payment(callback=callback, session=session, state=state, order_id=order_id)
+        return
+
+    # Show upsell screen
+    msg, kb_builder = await OrderService.show_shipping_upsell_screen(order_id, session)
+    await callback.message.edit_text(text=msg, reply_markup=kb_builder.as_markup())
+
+
+async def skip_shipping_upsell(**kwargs):
+    """
+    Level 8: Skip/Decline Upsell
+
+    - User declined upgrade
+    - Proceed to payment with base shipping
+    """
+    callback = kwargs.get("callback")
+    session = kwargs.get("session")
+    state = kwargs.get("state")
+
+    # Get order_id
+    unpacked_cb = OrderCallback.unpack(callback.data)
+    order_id = unpacked_cb.order_id
+
+    # Resolve order_id from state if not in callback
+    if order_id == -1 and state:
+        state_data = await state.get_data()
+        order_id = state_data.get("order_id")
+
+    # Proceed directly to payment
+    await process_payment(callback=callback, session=session, state=state, order_id=order_id)
+
+
 @order_router.callback_query(OrderCallback.filter(), IsUserExistFilter())
 async def navigate_order_process(
     callback: CallbackQuery,
@@ -702,6 +781,8 @@ async def navigate_order_process(
         4: cancel_order,                    # Show cancel confirmation
         5: execute_cancel_order,            # Execute cancellation
         6: reshow_stock_adjustment,         # Re-show stock adjustment
+        7: show_shipping_upsell,            # Show shipping upsell
+        8: skip_shipping_upsell,            # Skip shipping upsell
         9: confirm_adjusted_order,          # Confirm adjusted order
     }
 

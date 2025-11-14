@@ -204,7 +204,14 @@ class NotificationService:
     async def payment_cancelled_underpayment(
         user: UserDTO,
         invoice_number: str,
+        first_payment_crypto: str,
+        first_payment_fiat: float,
+        second_payment_crypto: str,
+        second_payment_fiat: float,
         total_paid_fiat: float,
+        required_fiat: float,
+        shortfall_fiat: float,
+        crypto_currency: str,
         penalty_amount: float,
         net_wallet_credit: float,
         currency_sym: str
@@ -212,11 +219,24 @@ class NotificationService:
         """
         Notifies user about order cancellation due to second underpayment.
 
-        Informs about 5% penalty and wallet credit.
+        Shows detailed breakdown:
+        - First payment amount (crypto + fiat)
+        - Second payment amount (crypto + fiat)
+        - Total paid vs. required
+        - Shortfall
+        - Penalty calculation
+        - Net wallet credit
         """
         msg = Localizator.get_text(BotEntity.USER, "payment_cancelled_underpayment").format(
             invoice_number=invoice_number,
+            first_payment_crypto=first_payment_crypto,
+            first_payment_fiat=f"{first_payment_fiat:.2f}",
+            second_payment_crypto=second_payment_crypto,
+            second_payment_fiat=f"{second_payment_fiat:.2f}",
             total_paid_fiat=f"{total_paid_fiat:.2f}",
+            required_fiat=f"{required_fiat:.2f}",
+            shortfall_fiat=f"{shortfall_fiat:.2f}",
+            crypto_currency=crypto_currency,
             penalty_amount=f"{penalty_amount:.2f}",
             net_wallet_credit=f"{net_wallet_credit:.2f}",
             currency_sym=currency_sym
@@ -333,7 +353,7 @@ class NotificationService:
                             'quantity': 1,
                             'is_physical': item.is_physical,
                             'private_data': item.private_data,
-                            'tier_breakdown': tier_breakdown  # Add tier breakdown
+                            'tier_breakdown': tier_breakdown if not item.private_data else None  # Don't show tier breakdown for individual items with codes
                         })
 
                 # Group items by (name, price, is_physical, private_data) while preserving tier_breakdown
@@ -583,7 +603,7 @@ class NotificationService:
             return (
                 f"❌ <b>{Localizator.get_text(BotEntity.USER, 'order_cancelled_by_admin_title')}</b>\n\n"
                 f"📋 {Localizator.get_text(BotEntity.USER, 'order_number')}: {invoice_number}\n\n"
-                f"<b>{Localizator.get_text(BotEntity.USER, 'admin_cancel_reason_label')}</b>\n"
+                f"<b>{Localizator.get_text(BotEntity.COMMON, 'admin_cancel_reason_label')}</b>\n"
                 f"{safe_html(custom_reason)}\n\n"
                 f"{Localizator.get_text(BotEntity.USER, 'admin_cancel_contact_support')}"
             )

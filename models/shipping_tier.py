@@ -52,7 +52,8 @@ class ShippingSelectionResultDTO(BaseModel):
     """Result of shipping type selection for a cart item."""
     shipping_type_key: str  # Key from shipping_types json (e.g., "maxibrief")
     shipping_type_name: str  # Display name (e.g., "Maxibrief")
-    base_cost: float
+    charged_cost: float  # What customer pays
+    real_cost: float  # Actual shipping cost (for priority logic)
     has_tracking: bool
     allows_packstation: bool
     upgrade: dict | None = None  # Upgrade option if available

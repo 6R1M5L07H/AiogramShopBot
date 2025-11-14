@@ -86,7 +86,7 @@ async def _handle_exact_payment(payment_dto, invoice, order, session):
     await OrderService.complete_order_payment(order.id, session)
     await session_commit(session)
 
-    logging.info(f"🎉 SUCCESS: Order {order.id} marked as PAID")
+    logging.info(f"🎉 SUCCESS: Invoice {invoice.invoice_number} (Order-ID (DB) {order.id}) marked as PAID")
 
     # Send notification to user (includes invoice details + purchased items)
     user = await UserRepository.get_by_id(order.user_id, session)
@@ -133,7 +133,7 @@ async def _handle_minor_overpayment(payment_dto, invoice, order, session):
     await OrderService.complete_order_payment(order.id, session)
     await session_commit(session)
 
-    logging.info(f"🎉 SUCCESS: Order {order.id} marked as PAID (minor overpayment forfeited)")
+    logging.info(f"🎉 SUCCESS: Invoice {invoice.invoice_number} (Order-ID (DB) {order.id}) marked as PAID (minor overpayment forfeited)")
 
     # Send notification to user (includes invoice details + purchased items)
     user = await UserRepository.get_by_id(order.user_id, session)
@@ -186,7 +186,7 @@ async def _handle_significant_overpayment(payment_dto, invoice, order, session):
     await OrderService.complete_order_payment(order.id, session)
     await session_commit(session)
 
-    logging.info(f"🎉 SUCCESS: Order {order.id} marked as PAID (€{excess_fiat:.2f} credited to wallet)")
+    logging.info(f"🎉 SUCCESS: Invoice {invoice.invoice_number} (Order-ID (DB) {order.id}) marked as PAID (€{excess_fiat:.2f} credited to wallet)")
 
     # Send notification to user about wallet credit
     from utils.localizator import Localizator
@@ -379,12 +379,24 @@ async def _handle_second_underpayment(payment_dto, invoice, order, session):
 
     logging.info(f"❌ Order {order.id} cancelled (2nd underpayment) | €{net_amount:.2f} credited to wallet")
 
-    # Send notification to user about cancellation and wallet credit
+    # Send notification to user about cancellation and wallet credit with detailed breakdown
     from utils.localizator import Localizator
+
+    # Calculate shortfall
+    required_fiat = invoice.payment_amount_fiat
+    shortfall_fiat = required_fiat - total_paid_fiat
+
     await NotificationService.payment_cancelled_underpayment(
         user=user,
         invoice_number=invoice.invoice_number,
+        first_payment_crypto=format_crypto_amount(order.total_paid_crypto),
+        first_payment_fiat=first_payment_fiat,
+        second_payment_crypto=format_crypto_amount(payment_dto.cryptoAmount),
+        second_payment_fiat=second_payment_fiat,
         total_paid_fiat=total_paid_fiat,
+        required_fiat=required_fiat,
+        shortfall_fiat=shortfall_fiat,
+        crypto_currency=payment_dto.cryptoCurrency.value,
         penalty_amount=penalty_amount,
         net_wallet_credit=net_amount,
         currency_sym=Localizator.get_currency_symbol()

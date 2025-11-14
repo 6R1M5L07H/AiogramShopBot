@@ -69,7 +69,7 @@ class OrderService:
         cart_items = cart_dto.items
 
         # 1. Calculate total price (items + MAX shipping cost) AND build tier breakdown JSON
-        total_price_with_shipping, max_shipping_cost, tier_breakdown_json = await OrderService._calculate_order_totals(
+        total_price_with_shipping, max_shipping_cost, tier_breakdown_json, shipping_type_key = await OrderService._calculate_order_totals(
             cart_items, session
         )
 
@@ -81,6 +81,7 @@ class OrderService:
             status=OrderStatus.PENDING_PAYMENT,  # Will be updated based on item type
             total_price=total_price_with_shipping,
             shipping_cost=max_shipping_cost,
+            shipping_type_key=shipping_type_key,  # Correctly determined from tiered shipping system
             currency=config.CURRENCY,
             expires_at=expires_at,
             wallet_used=0.0,  # Will be set later by orchestrate_payment_processing
@@ -125,6 +126,11 @@ class OrderService:
                         quantity=actual_quantity,
                         session=session
                     )
+
+                    # CRITICAL: If pricing returns 0, this indicates missing price configuration
+                    if pricing_result.total == 0:
+                        raise ValueError(f"Pricing returned 0 for subcategory {subcategory_id} - missing price tiers or item.price = 0")
+
                     actual_total_price += pricing_result.total
 
                     # Add to adjusted tier breakdown
@@ -146,22 +152,25 @@ class OrderService:
 
                     logging.info(f"Recalculated tier price for subcategory {subcategory_id}: {actual_quantity} items = {pricing_result.total:.2f} EUR")
                 except Exception as e:
-                    logging.warning(f"Tier pricing recalculation failed for subcategory {subcategory_id}: {e}, using flat pricing")
-                    # Fallback: sum individual item prices
-                    item_total = 0.0
-                    for item in items:
-                        item_total += item.price
-                        actual_total_price += item.price
+                    # CRITICAL ERROR: Cannot determine price for items
+                    # This indicates missing price configuration (no tiers AND price=0)
+                    logging.error(
+                        f"❌ CRITICAL: Cannot calculate price for subcategory {subcategory_id} ({subcategory.name if subcategory else 'Unknown'}): {e}"
+                    )
+                    logging.error(f"❌ Order {order_id} MUST be cancelled - cannot proceed with unknown prices")
 
-                    # Add flat pricing to breakdown
-                    adjusted_tier_breakdown_list.append({
-                        'subcategory_id': subcategory_id,
-                        'subcategory_name': subcategory.name if subcategory else 'Unknown',
-                        'quantity': actual_quantity,
-                        'total': item_total,
-                        'average_unit_price': item_total / actual_quantity if actual_quantity > 0 else 0,
-                        'breakdown': None
-                    })
+                    # Cancel order and release items
+                    await OrderRepository.update_status(order_id, OrderStatus.CANCELLED_BY_SYSTEM, session)
+                    for item in reserved_items:
+                        item.order_id = None
+                        item.is_sold = False
+                    await ItemRepository.update(reserved_items, session)
+
+                    # Raise exception to prevent order completion
+                    raise ValueError(
+                        f"Cannot create order - missing price configuration for subcategory {subcategory_id}. "
+                        f"Please configure price_tiers or set item.price > 0"
+                    )
 
                 # Update shipping cost (use MAX)
                 for item in items:
@@ -194,6 +203,12 @@ class OrderService:
 
         # Reload order after status update
         order_dto = await OrderRepository.get_by_id(order_id, session)
+
+        # 6. Create items snapshot for historical record (before items can be released on cancel)
+        items_snapshot_json = await OrderService._create_items_snapshot(order_id, session)
+        order_dto.items_snapshot = items_snapshot_json
+        await OrderRepository.update(order_dto, session)
+        logging.info(f"💾 Saved items snapshot for order {order_id} ({len(reserved_items)} items)")
 
         return order_dto, stock_adjustments, has_physical_items
 
@@ -575,8 +590,7 @@ class OrderService:
 
         logging.info(f"📦 Order {order_id} (Invoice: {invoice_number}): Loaded {len(items)} items")
 
-        # Calculate partial refund for mixed orders
-        # Digital items refundable only if NOT delivered (status != PAID)
+        # Calculate partial refund for mixed orders (digital items refunded if not delivered)
         partial_refund_info = OrderService._calculate_partial_refund(
             items=items,
             order_total=order.total_price,
@@ -586,7 +600,13 @@ class OrderService:
             order_status=order.status
         )
 
-        logging.info(f"📊 Order {order_id} (Invoice: {invoice_number}): Partial refund calculated - is_mixed={partial_refund_info['is_mixed_order']}")
+        logging.info(
+            f"📊 Order {order_id} (Invoice: {invoice_number}): Partial refund calculated - "
+            f"is_mixed={partial_refund_info['is_mixed_order']}, "
+            f"digital_items_delivered={partial_refund_info['digital_items_delivered']}, "
+            f"refundable_base={partial_refund_info['refundable_base']}€, "
+            f"digital_refundable_amount={partial_refund_info['digital_refundable_amount']}€"
+        )
 
         # Calculate total paid amount (wallet + crypto payments)
         # Wallet payments: Stored in order.wallet_used field (not in PaymentTransaction table)
@@ -859,6 +879,13 @@ class OrderService:
             logging.info(f"📝 Stored cancellation reason for order {order_id}: '{custom_reason[:50]}...'")
             # Will be committed with transaction at the end
 
+        # STORE REFUND BREAKDOWN (for mixed orders display)
+        import json
+        order_update = await OrderRepository.get_by_id(order_id, session)
+        order_update.refund_breakdown_json = json.dumps(partial_refund_info)
+        await OrderRepository.update(order_update, session)
+        logging.info(f"💾 Stored refund breakdown for order {order_id} (is_mixed={partial_refund_info['is_mixed_order']})")
+
         # MARK INVOICES AS INACTIVE (soft delete for audit trail)
         if invoices:
             for invoice in invoices:
@@ -909,10 +936,13 @@ class OrderService:
                 # This should be handled manually by admin or through a separate stock management system.
                 # For now, just log the shortage.
 
-        # Clean up the cancelled order items (remove reservation)
+        # Clean up the cancelled order items (remove reservation AND restore to stock)
         for item in items:
             item.order_id = None
+            item.is_sold = False  # CRITICAL: Restore items to available stock
         await ItemRepository.update(items, session)
+
+        logging.info(f"✅ Released {len(items)} items back to stock for order {order_id}")
 
         # SEND NOTIFICATIONS (only after successful item release)
         if 'wallet_refund' in notification_messages:
@@ -1071,10 +1101,123 @@ class OrderService:
         if state:
             await state.update_data(order_id=order_id)
 
-        # Directly proceed to payment processing (no intermediate screen)
-        from handlers.user.order import process_payment
-        kwargs = {"callback": callback, "session": session, "state": state}
-        return await process_payment(**kwargs)
+        # Check if shipping upgrade available
+        from services.shipping_upsell import ShippingUpsellService
+        upgrade = ShippingUpsellService.get_upgrade_for_shipping_type(order.shipping_type_key)
+
+        if upgrade:
+            # Show upsell screen directly
+            return await OrderService.show_shipping_upsell_screen(order_id, session)
+        else:
+            # No upgrade available - directly to payment
+            from handlers.user.order import process_payment
+            kwargs = {"callback": callback, "session": session, "state": state}
+            return await process_payment(**kwargs)
+
+    @staticmethod
+    async def show_shipping_upsell_screen(
+        order_id: int,
+        session: AsyncSession | Session
+    ) -> tuple[str, InlineKeyboardBuilder]:
+        """
+        Level 7: Show Shipping Upsell Screen
+
+        Display shipping upgrade option if available for the current shipping type.
+
+        Flow:
+        1. Get order
+        2. Get base shipping_type_key from order
+        3. Get upgrade via ShippingUpsellService.get_upgrade_for_shipping_type()
+        4. If no upgrade: Return "no upgrade" message + button to Level 8
+        5. Build message with base + upgrade details
+        6. Return message + keyboard
+
+        Args:
+            order_id: ID of the order
+            session: Database session
+
+        Returns:
+            Tuple of (message_text, keyboard_builder)
+        """
+        from services.shipping_upsell import ShippingUpsellService
+
+        # Get order
+        order = await OrderRepository.get_by_id(order_id, session)
+        if not order:
+            kb_builder = InlineKeyboardBuilder()
+            kb_builder.button(
+                text=Localizator.get_text(BotEntity.COMMON, "back_button"),
+                callback_data=OrderCallback.create(0)
+            )
+            return Localizator.get_text(BotEntity.USER, "order_not_found_error"), kb_builder
+
+        # Get base shipping details
+        base_shipping_key = order.shipping_type_key
+        base_details = ShippingUpsellService.get_shipping_type_details(base_shipping_key)
+
+        if not base_details:
+            # Fallback if shipping type not found in config
+            kb_builder = InlineKeyboardBuilder()
+            kb_builder.button(
+                text=Localizator.get_text(BotEntity.COMMON, "continue"),
+                callback_data=OrderCallback.create(level=8, order_id=order_id)
+            )
+            return Localizator.get_text(BotEntity.USER, "shipping_upsell_no_upgrade"), kb_builder
+
+        # Get upgrade option
+        upgrade = ShippingUpsellService.get_upgrade_for_shipping_type(base_shipping_key)
+
+        if not upgrade:
+            # No upgrade available - show simple message with continue button
+            kb_builder = InlineKeyboardBuilder()
+            kb_builder.button(
+                text=Localizator.get_text(BotEntity.COMMON, "continue"),
+                callback_data=OrderCallback.create(level=8, order_id=order_id)
+            )
+            return Localizator.get_text(BotEntity.USER, "shipping_upsell_no_upgrade"), kb_builder
+
+        # Build message with base + upgrade details
+        currency_sym = "€" if order.currency.value == "EUR" else order.currency.value
+
+        message_text = Localizator.get_text(BotEntity.USER, "shipping_upsell_title")
+        message_text += "\n\n"
+        message_text += Localizator.get_text(BotEntity.USER, "shipping_upsell_base").format(
+            shipping_name=base_details["name"],
+            currency_sym=currency_sym,
+            base_cost=base_details["charged_cost"]
+        )
+        message_text += Localizator.get_text(BotEntity.USER, "shipping_upsell_upgrade").format(
+            upgrade_name=upgrade["name"],
+            currency_sym=currency_sym,
+            delta_cost=upgrade["delta_cost"],
+            upgrade_description=upgrade.get("description", "")
+        )
+
+        # Build keyboard
+        kb_builder = InlineKeyboardBuilder()
+
+        # Button 1: Upgrade wählen (triggers Level 7 again with shipping_type_key)
+        kb_builder.button(
+            text=Localizator.get_text(BotEntity.USER, "shipping_upsell_upgrade_button").format(
+                currency_sym=currency_sym,
+                delta_cost=upgrade["delta_cost"]
+            ),
+            callback_data=OrderCallback.create(
+                level=7,
+                order_id=order_id,
+                shipping_type_key=upgrade["type"]
+            )
+        )
+
+        # Button 2: Weiter ohne Upgrade
+        kb_builder.button(
+            text=Localizator.get_text(BotEntity.USER, "shipping_upsell_skip_button"),
+            callback_data=OrderCallback.create(level=8, order_id=order_id)
+        )
+
+        kb_builder.adjust(1)  # Stack buttons vertically
+
+        return message_text, kb_builder
 
     @staticmethod
     async def show_stock_adjustment_confirmation(
@@ -1572,11 +1715,11 @@ class OrderService:
                 'price': item.price,
                 'quantity': 1,  # Each item is already individual
                 'is_physical': item.is_physical,
-                'private_data': item.private_data,
+                'private_data': None,  # Don't include private_data in payment screen (not paid yet)
                 'tier_breakdown': tier_breakdown
             })
 
-        # Group items by (name, price, is_physical, private_data) while preserving tier_breakdown
+        # Group items by (name, price, is_physical) - private_data excluded for aggregation
         items_list = OrderService._group_items_for_display(items_raw)
 
         # Format crypto amount with currency
@@ -1604,7 +1747,7 @@ class OrderService:
     async def _calculate_order_totals(
         cart_items: list[CartItemDTO],
         session: AsyncSession | Session
-    ) -> tuple[float, float, str]:
+    ) -> tuple[float, float, str, str]:
         """
         Calculate order totals: item prices + max shipping cost.
         Also builds tier_breakdown_json for historical accuracy.
@@ -1614,7 +1757,7 @@ class OrderService:
             session: Database session
 
         Returns:
-            Tuple of (total_price_with_shipping, max_shipping_cost, tier_breakdown_json)
+            Tuple of (total_price_with_shipping, max_shipping_cost, tier_breakdown_json, shipping_type_key)
         """
         from repositories.subcategory import SubcategoryRepository
 
@@ -1639,6 +1782,11 @@ class OrderService:
                 )
 
                 item_total = pricing_result.total
+
+                # CRITICAL: If pricing returns 0, this indicates missing price configuration
+                if item_total == 0:
+                    raise ValueError(f"Pricing returned 0 for subcategory {cart_item.subcategory_id} - missing price tiers or item.price = 0")
+
                 average_unit_price = pricing_result.average_unit_price
                 breakdown = [
                     {
@@ -1664,35 +1812,45 @@ class OrderService:
                 logging.debug(f"Computed tier price for {cart_item.subcategory_id}: {item_total:.2f} EUR")
 
             except Exception as e:
-                logging.warning(f"Failed to calculate tier pricing for cart_item {cart_item.id}: {e}, falling back to flat pricing")
-                # Fallback to flat pricing
-                item_dto = ItemDTO(
-                    category_id=cart_item.category_id,
-                    subcategory_id=cart_item.subcategory_id
+                # CRITICAL ERROR: Cannot determine price for cart item
+                logging.error(
+                    f"❌ CRITICAL: Cannot calculate price for cart_item {cart_item.id} "
+                    f"(subcategory {cart_item.subcategory_id}): {e}"
                 )
-                price = await ItemRepository.get_price(item_dto, session)
-                item_total = price * cart_item.quantity
-                total_price += item_total
+                # Re-raise exception - order creation should FAIL if we can't determine prices
+                raise ValueError(
+                    f"Cannot create order - missing price configuration for subcategory {cart_item.subcategory_id}. "
+                    f"Please configure price_tiers or set item.price > 0"
+                ) from e
 
-                # Add flat pricing to breakdown
-                tier_breakdown_list.append({
-                    'subcategory_id': cart_item.subcategory_id,
-                    'subcategory_name': subcategory.name if subcategory else 'Unknown',
-                    'quantity': cart_item.quantity,
-                    'total': item_total,
-                    'average_unit_price': price,
-                    'breakdown': None  # No tier breakdown for flat pricing
-                })
+        # Calculate shipping using tiered shipping system (not legacy flat shipping_cost)
+        from services.cart_shipping import CartShippingService
 
-            # Get shipping cost (only for physical items)
-            # Note: We use MAX shipping cost across all items, not SUM
-            repository_item = await ItemRepository.get_single(
-                cart_item.category_id,
-                cart_item.subcategory_id,
-                session
-            )
-            if repository_item and repository_item.is_physical:
-                max_shipping_cost = max(max_shipping_cost, repository_item.shipping_cost)
+        max_shipping_cost = await CartShippingService.get_max_shipping_cost(cart_items, session)
+
+        # Determine shipping_type_key from max-cost shipping method
+        shipping_results = await CartShippingService.calculate_shipping_for_cart(cart_items, session)
+        shipping_type_key = "paeckchen"  # Default fallback
+
+        if shipping_results:
+            # Find shipping method with priority logic:
+            # 1. Highest charged_cost (what customer pays)
+            # 2. If tied, highest real_cost (larger package = correct upgrades)
+            max_cost_result = None
+            max_charged_cost = 0.0
+            for result in shipping_results.values():
+                if result.charged_cost > max_charged_cost:
+                    # Clear winner - higher charged cost
+                    max_charged_cost = result.charged_cost
+                    max_cost_result = result
+                elif result.charged_cost == max_charged_cost:
+                    # Tie in charged_cost - use real_cost as tiebreaker
+                    if max_cost_result is None or result.real_cost > max_cost_result.real_cost:
+                        max_cost_result = result
+
+            if max_cost_result:
+                shipping_type_key = max_cost_result.shipping_type_key
+                logging.info(f"🚚 Selected shipping type: {shipping_type_key} (charged: €{max_cost_result.charged_cost:.2f}, real: €{max_cost_result.real_cost:.2f})")
 
         # Add shipping cost to total
         total_price_with_shipping = total_price + max_shipping_cost
@@ -1703,11 +1861,11 @@ class OrderService:
 
         logging.info(
             f"📦 Order totals: Items={total_price:.2f} EUR | "
-            f"Shipping={max_shipping_cost:.2f} EUR (MAX) | "
+            f"Shipping={max_shipping_cost:.2f} EUR (MAX, type={shipping_type_key}) | "
             f"Total={total_price_with_shipping:.2f} EUR"
         )
 
-        return total_price_with_shipping, max_shipping_cost, tier_breakdown_json
+        return total_price_with_shipping, max_shipping_cost, tier_breakdown_json, shipping_type_key
 
     @staticmethod
     async def _reserve_items_with_adjustments(
@@ -1837,7 +1995,7 @@ class OrderService:
                 'quantity': 1,
                 'is_physical': item.is_physical,
                 'private_data': item.private_data,
-                'tier_breakdown': tier_breakdown  # Add tier breakdown to each item
+                'tier_breakdown': tier_breakdown if not item.private_data else None  # Don't show tier breakdown for individual items with codes
             })
 
         # Group items by (name, price, is_physical, private_data) while preserving tier_breakdown
@@ -1849,13 +2007,26 @@ class OrderService:
         else:
             footer_text = Localizator.get_text(BotEntity.USER, "order_completed_wallet_only_digital_footer")
 
+        # Get shipping type name for display
+        shipping_type_name = None
+        if order.shipping_type_key:
+            from utils.shipping_types_loader import load_shipping_types, get_shipping_type
+            try:
+                shipping_types = load_shipping_types("de")
+                shipping_type = get_shipping_type(shipping_types, order.shipping_type_key)
+                if shipping_type:
+                    shipping_type_name = shipping_type.get("name")
+            except Exception:
+                logging.warning(f"Failed to load shipping type for key: {order.shipping_type_key}")
+
         return InvoiceFormatterService.format_complete_order_view(
             header_type="wallet_payment",
             invoice_number=invoice.invoice_number,
             items=items_list,
             shipping_cost=order.shipping_cost,
+            shipping_type_name=shipping_type_name,  # Pass shipping type name for display
             total_price=order.total_price,
-            wallet_used=invoice.fiat_amount,
+            wallet_used=order.wallet_used,  # Use actual wallet amount from order, not invoice
             use_spacing_alignment=True,
             separate_digital_physical=True,  # Always use separated view
             show_private_data=True,  # Show keys/codes immediately after wallet payment
@@ -1904,6 +2075,54 @@ class OrderService:
         except (json.JSONDecodeError, TypeError) as e:
             logging.warning(f"Failed to parse tier_breakdown_json for order {order.id}: {e}")
             return None
+
+    @staticmethod
+    async def _create_items_snapshot(order_id: int, session: AsyncSession | Session) -> str:
+        """
+        Create JSON snapshot of all items in an order for historical record.
+
+        This snapshot preserves complete item details (description, price, quantity,
+        is_physical, private_data) even after items are released back to stock on
+        order cancellation.
+
+        Args:
+            order_id: Order ID
+            session: Database session
+
+        Returns:
+            JSON string with item details
+
+        Example format:
+            [
+                {
+                    "description": "USB Stick 32GB",
+                    "price": 10.0,
+                    "quantity": 1,
+                    "is_physical": true,
+                    "private_data": "KEY-12345-ABCDE"
+                },
+                ...
+            ]
+        """
+        from repositories.item import ItemRepository
+        import json
+
+        # Get all items for this order
+        items = await ItemRepository.get_by_order_id(order_id, session)
+
+        # Build snapshot list
+        snapshot = []
+        for item in items:
+            snapshot.append({
+                'description': item.description,
+                'price': item.price,
+                'quantity': 1,  # Each item is individual
+                'is_physical': item.is_physical,
+                'private_data': item.private_data,
+                'subcategory_id': item.subcategory_id
+            })
+
+        return json.dumps(snapshot)
 
     @staticmethod
     async def _group_items_with_tier_pricing(
@@ -2100,3 +2319,59 @@ class OrderService:
             logging.warning(f"⚠️ User {user_id} (telegram_id: {user.telegram_id}) received strike #{actual_strike_count}/{config.MAX_STRIKES_BEFORE_BAN} (type: {strike_type.name})")
 
         await UserRepository.update(user, session)
+
+    @staticmethod
+    async def update_shipping_selection(
+        order_id: int,
+        shipping_type_key: str,
+        session: AsyncSession | Session
+    ) -> OrderDTO:
+        """
+        Update order's selected shipping type and recalculate shipping cost.
+
+        Used when customer selects shipping upgrade (upselling flow).
+
+        Args:
+            order_id: Order ID
+            shipping_type_key: Selected shipping type key (e.g., "paket_2kg")
+            session: Database session
+
+        Returns:
+            OrderDTO: Updated order
+
+        Raises:
+            ValueError: If order not found or shipping type invalid
+
+        Example:
+            >>> order = await OrderService.update_shipping_selection(123, "paket_2kg", session)
+            >>> order.shipping_type_key  # "paket_2kg"
+            >>> order.shipping_cost  # 1.50
+        """
+        from services.shipping_upsell import ShippingUpsellService
+
+        # Get order
+        order = await OrderRepository.get_by_id(order_id, session)
+        if not order:
+            logging.error(f"[OrderService] Order {order_id} not found")
+            raise ValueError(f"Order {order_id} not found")
+
+        # Get shipping type details
+        shipping_type_details = ShippingUpsellService.get_shipping_type_details(shipping_type_key)
+        if not shipping_type_details:
+            logging.error(f"[OrderService] Invalid shipping type: {shipping_type_key}")
+            raise ValueError(f"Invalid shipping type: {shipping_type_key}")
+
+        # Update order
+        old_shipping_type = order.shipping_type_key
+        old_shipping_cost = order.shipping_cost
+
+        order.shipping_type_key = shipping_type_key
+        order.shipping_cost = shipping_type_details["charged_cost"]
+
+        # Recalculate total price
+        order.total_price = (order.total_price - old_shipping_cost) + order.shipping_cost
+
+        await OrderRepository.update(order, session)
+        logging.info(f"[OrderService] Order {order_id} shipping updated: {old_shipping_type} → {shipping_type_key} (cost: {old_shipping_cost} → {order.shipping_cost})")
+
+        return order

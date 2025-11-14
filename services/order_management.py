@@ -133,7 +133,8 @@ class OrderManagementService:
                 created_time = order.created_at.strftime("%d.%m")
 
                 # Full invoice number (e.g., INV-2025-ABCDEF)
-                invoice_number = order.invoices[0].invoice_number if order.invoices else "N/A"
+                # Fallback to Order ID if no invoice exists (old orders or data migration issues)
+                invoice_number = order.invoices[0].invoice_number if order.invoices else f"Order-{order.id}"
 
                 # Get status text
                 status_text = Localizator.get_text(BotEntity.COMMON, f"order_status_{order.status.value}")
@@ -280,50 +281,113 @@ class OrderManagementService:
         from repositories.item import ItemRepository
         from repositories.subcategory import SubcategoryRepository
         from services.order import OrderService
-        order_items = await ItemRepository.get_by_order_id(order_id, session)
+        from enums.order_status import OrderStatus
+        import json
 
-        # Parse tier breakdown from order (NO recalculation!)
-        tier_breakdown_list = OrderService._parse_tier_breakdown_from_order(order)
+        # Check if order is cancelled - if so, use items_snapshot instead of items table
+        is_cancelled = order.status in [
+            OrderStatus.CANCELLED_BY_USER,
+            OrderStatus.CANCELLED_BY_ADMIN,
+            OrderStatus.CANCELLED_BY_SYSTEM,
+            OrderStatus.TIMEOUT
+        ]
 
-        # Get subcategory information
-        subcategory_ids = list({item.subcategory_id for item in order_items})
-        subcategories_dict = await SubcategoryRepository.get_by_ids(subcategory_ids, session)
+        if is_cancelled and order.items_snapshot:
+            # Use items snapshot (items were released back to stock)
+            logging.info(f"Order {order_id} is cancelled - using items_snapshot")
+            snapshot_items = json.loads(order.items_snapshot)
 
-        # Fallback: If tier_breakdown_json not available (old orders), recalculate
-        if not tier_breakdown_list:
-            logging.warning(f"Order {order_id} has no tier_breakdown_json, falling back to recalculation")
-            tier_breakdown_list = await OrderService._group_items_with_tier_pricing(
-                order_items, subcategories_dict, session
-            )
+            # Load refund breakdown if available (for mixed orders)
+            refund_breakdown = None
+            if order.refund_breakdown_json:
+                try:
+                    refund_breakdown = json.loads(order.refund_breakdown_json)
+                    logging.info(f"Order {order_id} has refund breakdown: is_mixed={refund_breakdown.get('is_mixed_order')}")
+                except json.JSONDecodeError:
+                    logging.warning(f"Failed to parse refund_breakdown_json for order {order_id}")
 
-        # Build items list with private_data (ungrouped for individual keys/codes)
-        items_raw = []
-        for item in order_items:
-            # Find corresponding tier breakdown from tier_breakdown_list
-            tier_breakdown = None
-            for tier_item in tier_breakdown_list:
-                subcategory = subcategories_dict.get(item.subcategory_id)
-                if subcategory and tier_item['subcategory_name'] == subcategory.name:
-                    tier_breakdown = tier_item.get('breakdown')
-                    break
+            # Build items_raw from snapshot
+            items_raw = []
+            for snapshot_item in snapshot_items:
+                items_raw.append({
+                    'name': snapshot_item['description'],
+                    'price': snapshot_item['price'],
+                    'quantity': snapshot_item['quantity'],
+                    'is_physical': snapshot_item['is_physical'],
+                    'private_data': snapshot_item.get('private_data'),
+                    'tier_breakdown': None  # Tier breakdown not stored in snapshot
+                })
 
-            items_raw.append({
-                'name': item.description,
-                'price': item.price,
-                'quantity': 1,  # Each item is already individual
-                'is_physical': item.is_physical,
-                'private_data': item.private_data,
-                'tier_breakdown': tier_breakdown  # Add tier breakdown to each item
-            })
+            # Group items for display
+            items_list = OrderService._group_items_for_display(items_raw)
 
-        # Group items by (name, price, is_physical, private_data) while preserving tier_breakdown
-        items_list = OrderService._group_items_for_display(items_raw)
+            # Calculate subtotal
+            subtotal = order.total_price - order.shipping_cost
 
-        # Calculate subtotal
-        subtotal = order.total_price - order.shipping_cost
+            # Check if any items have private_data
+            has_private_data = any(item.get('private_data') for item in snapshot_items)
 
-        # Check if any items have private_data (for retention notice)
-        has_private_data = any(item.private_data for item in order_items)
+        else:
+            # Active order - get items from database
+            order_items = await ItemRepository.get_by_order_id(order_id, session)
+
+            # Parse tier breakdown from order (NO recalculation!)
+            tier_breakdown_list = OrderService._parse_tier_breakdown_from_order(order)
+
+            # Get subcategory information
+            subcategory_ids = list({item.subcategory_id for item in order_items})
+            subcategories_dict = await SubcategoryRepository.get_by_ids(subcategory_ids, session)
+
+            # Fallback: If tier_breakdown_json not available (old orders), recalculate
+            if not tier_breakdown_list:
+                logging.warning(f"Order {order_id} has no tier_breakdown_json, falling back to recalculation")
+                tier_breakdown_list = await OrderService._group_items_with_tier_pricing(
+                    order_items, subcategories_dict, session
+                )
+
+            # Build items list with private_data (ungrouped for individual keys/codes)
+            items_raw = []
+            for item in order_items:
+                # Find corresponding tier breakdown from tier_breakdown_list
+                tier_breakdown = None
+                for tier_item in tier_breakdown_list:
+                    subcategory = subcategories_dict.get(item.subcategory_id)
+                    if subcategory and tier_item['subcategory_name'] == subcategory.name:
+                        tier_breakdown = tier_item.get('breakdown')
+                        break
+
+                items_raw.append({
+                    'name': item.description,
+                    'price': item.price,
+                    'quantity': 1,  # Each item is already individual
+                    'is_physical': item.is_physical,
+                    'private_data': item.private_data,
+                    'tier_breakdown': tier_breakdown if not item.private_data else None  # Don't show tier breakdown for individual items with codes
+                })
+
+            # Group items by (name, price, is_physical, private_data) while preserving tier_breakdown
+            items_list = OrderService._group_items_for_display(items_raw)
+
+            # Calculate subtotal
+            subtotal = order.total_price - order.shipping_cost
+
+            # Check if any items have private_data (for retention notice)
+            has_private_data = any(item.private_data for item in order_items)
+
+            # No refund breakdown for active orders
+            refund_breakdown = None
+
+        # Get shipping type name for display
+        shipping_type_name = None
+        if order.shipping_type_key:
+            from utils.shipping_types_loader import load_shipping_types, get_shipping_type
+            try:
+                shipping_types = load_shipping_types("de")
+                shipping_type = get_shipping_type(shipping_types, order.shipping_type_key)
+                if shipping_type:
+                    shipping_type_name = shipping_type.get("name")
+            except Exception:
+                logging.warning(f"Failed to load shipping type for key: {order.shipping_type_key}")
 
         # Format message (unified display)
         msg = InvoiceFormatterService.format_complete_order_view(
@@ -336,11 +400,14 @@ class OrderManagementService:
             items=items_list,
             subtotal=subtotal,
             shipping_cost=order.shipping_cost,
+            shipping_type_name=shipping_type_name,  # Pass shipping type name
             total_price=order.total_price,
+            wallet_used=order.wallet_used,  # Pass wallet usage for display
             separate_digital_physical=True,
             show_private_data=True,  # Show keys/codes for both Admin and User
             show_retention_notice=has_private_data and (entity == BotEntity.USER),  # Only show retention notice to users
             cancellation_reason=order.cancellation_reason,  # Pass stored cancellation reason
+            partial_refund_info=refund_breakdown,  # Refund breakdown for mixed order cancellations
             currency_symbol=Localizator.get_currency_symbol(),
             entity=entity
         )
