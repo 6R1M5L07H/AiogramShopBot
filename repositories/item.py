@@ -32,10 +32,10 @@ class ItemRepository:
         return available_qty.scalar()
 
     @staticmethod
-    async def get_single(category_id: int, subcategory_id: int, session: Session | AsyncSession) -> ItemDTO | None:
+    async def get_item_metadata(category_id: int, subcategory_id: int, session: Session | AsyncSession) -> ItemDTO | None:
         """
-        Get a single item for display purposes (price, description).
-        Includes reserved items since we just need metadata, not actual purchase.
+        Get item metadata for display purposes (price, description, is_physical, shipping_cost).
+        Returns ANY item (sold or not) since we only need metadata, not availability.
         For availability check, use get_available_qty().
 
         Returns:
@@ -43,8 +43,7 @@ class ItemRepository:
         """
         stmt = (select(Item)
                 .where(Item.category_id == category_id,
-                       Item.subcategory_id == subcategory_id,
-                       Item.is_sold == False)  # Include reserved items
+                       Item.subcategory_id == subcategory_id)
                 .limit(1))
         item = await session_execute(stmt, session)
         result = item.scalar()

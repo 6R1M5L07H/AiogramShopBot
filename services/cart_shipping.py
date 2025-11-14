@@ -93,7 +93,7 @@ class CartShippingService:
             )
 
             if shipping_result:
-                logger.info(f"[CartShipping]   Result: {shipping_result.shipping_type_key} @ {shipping_result.base_cost} EUR")
+                logger.info(f"[CartShipping]   Result: {shipping_result.shipping_type_key} @ {shipping_result.charged_cost} EUR (real: {shipping_result.real_cost})")
                 shipping_results[subcategory_id] = shipping_result
             else:
                 logger.info(f"[CartShipping]   Result: None (digital or error)")
@@ -134,10 +134,10 @@ class CartShippingService:
             ...     session=session
             ... )
             >>> result.shipping_type_key  # "paeckchen"
-            >>> result.base_cost  # 0.0
+            >>> result.charged_cost  # 0.0
         """
         # Check if items are physical (sample check)
-        sample_item = await ItemRepository.get_single(category_id, subcategory_id, session)
+        sample_item = await ItemRepository.get_item_metadata(category_id, subcategory_id, session)
         logger.info(f"[CartShipping]     Sample item: is_physical={sample_item.is_physical if sample_item else 'N/A'}")
 
         if not sample_item or not sample_item.is_physical:
@@ -155,7 +155,8 @@ class CartShippingService:
             return ShippingSelectionResultDTO(
                 shipping_type_key="legacy_flat",
                 shipping_type_name=Localizator.get_text(BotEntity.USER, "shipping_legacy_flat"),
-                base_cost=sample_item.shipping_cost,
+                charged_cost=sample_item.shipping_cost,
+                real_cost=sample_item.shipping_cost,  # Assume real = charged for legacy
                 has_tracking=False,
                 allows_packstation=sample_item.allows_packstation,
                 upgrade=None
@@ -197,7 +198,8 @@ class CartShippingService:
         return ShippingSelectionResultDTO(
             shipping_type_key=shipping_type_key,
             shipping_type_name=shipping_type_config["name"],
-            base_cost=shipping_type_config["base_cost"],
+            charged_cost=shipping_type_config["charged_cost"],
+            real_cost=shipping_type_config["real_cost"],
             has_tracking=shipping_type_config["has_tracking"],
             allows_packstation=shipping_type_config["allows_packstation"],
             upgrade=shipping_type_config.get("upgrade")
@@ -236,11 +238,11 @@ class CartShippingService:
         if not shipping_results:
             return 0.0
 
-        # Find maximum shipping cost
+        # Find maximum shipping cost (what customer pays)
         max_cost = 0.0
         for shipping_result in shipping_results.values():
-            if shipping_result.base_cost > max_cost:
-                max_cost = shipping_result.base_cost
+            if shipping_result.charged_cost > max_cost:
+                max_cost = shipping_result.charged_cost
 
         return max_cost
 
@@ -293,36 +295,40 @@ class CartShippingService:
         subcategory_ids = list(subcategory_quantities.keys())
         subcategories_dict = await SubcategoryRepository.get_by_ids(subcategory_ids, session)
 
-        # Build summary text
+        # Find the final shipping method using priority logic:
+        # 1. Highest charged_cost (what customer pays)
+        # 2. If tied, highest real_cost (larger package = correct upgrades)
         currency_sym = Localizator.get_currency_symbol()
-        summary_lines = [Localizator.get_text(BotEntity.USER, "shipping_summary_header") + ":"]
-        max_cost = 0.0
+        max_charged_cost = 0.0
+        final_shipping_method = None
 
-        for subcategory_id, quantity in subcategory_quantities.items():
+        for subcategory_id in subcategory_quantities.keys():
             shipping_result = shipping_results.get(subcategory_id)
             if not shipping_result:
                 continue
 
-            subcategory = subcategories_dict.get(subcategory_id)
-            if not subcategory:
-                continue
+            if shipping_result.charged_cost > max_charged_cost:
+                # Clear winner - higher charged cost
+                max_charged_cost = shipping_result.charged_cost
+                final_shipping_method = shipping_result
+            elif shipping_result.charged_cost == max_charged_cost:
+                # Tie in charged_cost - use real_cost as tiebreaker (larger package wins)
+                if final_shipping_method is None or shipping_result.real_cost > final_shipping_method.real_cost:
+                    final_shipping_method = shipping_result
 
-            # Format cost text: "free" or "€1.50"
-            if shipping_result.base_cost == 0.0:
-                cost_text = Localizator.get_text(BotEntity.USER, "shipping_cost_free")
-            else:
-                cost_text = f"{currency_sym}{shipping_result.base_cost:.2f}"
+        # Show only the final shipping method (what will actually be used)
+        # Format: "Versand:              X.XX € (Method Name)"
+        # This ensures amounts are aligned in a single column with subtotal and total
+        if final_shipping_method:
+            cost = final_shipping_method.charged_cost
+            method_name = final_shipping_method.shipping_type_name
 
-            summary_lines.append(
-                f"- {subcategory.name} ({quantity}x): {shipping_result.shipping_type_name} ({cost_text})"
-            )
-
-            if shipping_result.base_cost > max_cost:
-                max_cost = shipping_result.base_cost
-
-        if max_cost > 0:
-            summary_lines.append("")
-            max_label = Localizator.get_text(BotEntity.USER, "shipping_max_cost_label")
-            summary_lines.append(f"{max_label}: {currency_sym}{max_cost:.2f}")
+            # "Versand:" (7 chars) + 13 spaces + cost (right-aligned 5.2f) + currency + method in parentheses
+            # This aligns with "Zwischensumme:" and "Gesamt:" formatting in cart.py
+            summary_lines = [
+                f"Versand:             {cost:>5.2f} {currency_sym} ({method_name})"
+            ]
+        else:
+            summary_lines = []
 
         return "\n".join(summary_lines)

@@ -633,7 +633,7 @@ class CartService:
 
             # Calculate shipping cost for physical items
             try:
-                sample_item = await ItemRepository.get_single(
+                sample_item = await ItemRepository.get_item_metadata(
                     cart_item.category_id, cart_item.subcategory_id, session
                 )
                 if sample_item and sample_item.is_physical:
@@ -663,7 +663,7 @@ class CartService:
                             'tier_breakdown': tier_breakdown,
                             'line_total': line_total
                         })
-                    else:
+                    elif tier_breakdown:
                         # Single tier - store with calculation details
                         item = tier_breakdown[0]
                         items_data.append({
@@ -673,8 +673,11 @@ class CartService:
                             'unit_price': item['unit_price'],
                             'line_total': line_total
                         })
+                    else:
+                        # Empty tier_breakdown - fall through to exception handler
+                        raise ValueError("Empty tier breakdown")
 
-                except (json.JSONDecodeError, KeyError):
+                except (json.JSONDecodeError, KeyError, ValueError):
                     # Fallback to flat pricing (no tier breakdown)
                     item_dto = ItemDTO(category_id=cart_item.category_id, subcategory_id=cart_item.subcategory_id)
                     price = await ItemRepository.get_price(item_dto, session)
@@ -1126,6 +1129,19 @@ class CartService:
                 message_text += f"{safe_html(item['name'])}: {item['qty']} × {item['unit_price']:.2f} {currency_sym} = {item['total']:.2f} {currency_sym}\n"
 
         # === PHASE 3: Shipping & Totals ===
+        # Check if any items are physical (need shipping display even if cost = 0)
+        has_physical_items = False
+        for cart_item in cart_items:
+            try:
+                sample_item = await ItemRepository.get_item_metadata(
+                    cart_item.category_id, cart_item.subcategory_id, session
+                )
+                if sample_item and sample_item.is_physical:
+                    has_physical_items = True
+                    break
+            except:
+                pass
+
         # Get shipping cost using new CartShippingService
         max_shipping_cost = await CartShippingService.get_max_shipping_cost(cart_items, session)
 
@@ -1133,14 +1149,16 @@ class CartService:
         subtotal_label = Localizator.get_text(BotEntity.USER, 'cart_subtotal_label')
         message_text += f"{subtotal_label} {items_total:>8.2f} {currency_sym}\n"
 
-        if max_shipping_cost > 0:
-            # Get detailed shipping summary
+        # Show shipping line for physical items (even if cost = 0 for free shipping promotions)
+        # Format: "Versand:              X.XX € (Method Name)"
+        if has_physical_items:
             shipping_summary = await CartShippingService.get_shipping_summary_text(cart_items, session)
             if shipping_summary:
                 message_text += "\n" + shipping_summary + "\n"
-
-            shipping_label = Localizator.get_text(BotEntity.USER, 'cart_shipping_max_label')
-            message_text += f"{shipping_label}  {max_shipping_cost:>7.2f} {currency_sym}\n"
+            else:
+                # Fallback: Show shipping cost without method name if summary unavailable
+                shipping_label = Localizator.get_text(BotEntity.USER, 'cart_shipping_max_label')
+                message_text += f"\n{shipping_label}  {max_shipping_cost:>7.2f} {currency_sym}\n"
 
         message_text += "═" * 30 + "\n"
         cart_grand_total = items_total + max_shipping_cost

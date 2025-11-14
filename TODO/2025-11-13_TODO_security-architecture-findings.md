@@ -239,6 +239,94 @@ if RUNTIME_ENVIRONMENT == RuntimeEnvironment.DEV:
 
 ---
 
+## 🔵 User Experience & Best Practices
+
+### 11. Insufficient Shipping Address Validation
+
+**Location:** `handlers/user/shipping_handlers.py:19-49`
+
+**Issue:**
+- Accepts any string >10 characters as valid shipping address
+- No country-specific validation (postal codes, street format)
+- Direct interpolation into confirmation message without safe_html
+- Support burden due to incorrect/incomplete addresses
+
+**Fix Required:**
+- Implement country-specific address validation (street, postal code, city)
+- Offer inline address suggestions via Telegram Bot API
+- Apply safe_html before re-displaying user input in messages
+- Consider structured address entry (separate fields)
+
+**Impact:** Medium - User experience and support overhead
+
+---
+
+### 12. Missing User-Specific Localization
+
+**Location:** `run.py:39-59`
+
+**Issue:**
+- Uses global bot language setting for all users
+- Ignores `message.from_user.language_code` from Telegram
+- Users with different language preferences see German-only content
+- Reduces bot "nativeness" and increases support requests
+
+**Fix Required:**
+- Read user language from `message.from_user.language_code`
+- Store language preference in user profile
+- Apply per-user localization for menus, help, FAQs
+- Fallback to bot default if user language not supported
+
+**Impact:** Medium - User experience and internationalization
+
+---
+
+## Codex Review (2025-11-14)
+
+**Branch:** `feature/tiered-pricing-shipping-upselling`
+**Reviewer:** OpenAI Codex v0.58.0 (gpt-5.1-codex)
+
+### Findings Summary:
+
+**Critical Security Issues Confirmed:**
+- ✅ Issue #2: Payment webhook signature bypass (`processing/processing.py:23-31`)
+- ✅ Issue #1: Telegram webhook secret token bypass (`bot.py:170-174`, `utils/config_validator.py:108`)
+- ✅ Issue #3: Destructive DB auto-reset (`db.py:133-144`)
+
+**Architecture Issues Confirmed:**
+- ✅ Issue #4: Runtime environment enum comparison bug (`config.py:143-149`)
+- ✅ Issue #5: N+1 query in purchase history (`services/user.py:92-125`)
+
+**New Issues Identified:**
+- ⚠️ Issue #11: Insufficient shipping address validation
+- ⚠️ Issue #12: Missing user-specific localization
+
+**Verdict:** No new security vulnerabilities introduced by tiered shipping feature. All findings are pre-existing issues or UX improvements.
+
+---
+
+## Updated Implementation Priority
+
+1. **Immediate (Before next production deploy):**
+   - Fix #1: Webhook Secret Token validation
+   - Fix #2: Payment signature bypass
+   - ✅ Fix #6: CSV Injection (COMPLETED)
+   - ✅ Fix #7: Refund Data Integrity (COMPLETED)
+
+2. **High Priority (Next sprint):**
+   - Fix #3: Replace destructive auto-migrate
+   - Fix #4: Runtime environment enum comparison
+   - Fix #9: SQL aggregation for analytics
+
+3. **Medium Priority (Technical debt):**
+   - Fix #5: N+1 query optimization (user purchase history)
+   - Fix #8: N+1 query optimization (analytics creation)
+   - Fix #10: SQLite-specific code removal
+   - Fix #11: Shipping address validation
+   - Fix #12: User-specific localization
+
+---
+
 ## Notes
 
 - Issues #1 and #2 are blocking security vulnerabilities
@@ -247,3 +335,4 @@ if RUNTIME_ENVIRONMENT == RuntimeEnvironment.DEV:
 - Issues #8, #9, #10 are performance/portability issues, not security-critical
 - All pre-existing issues (#1-#5) exist in codebase prior to dialpad feature
 - Analytics v2 issues (#6-#10) identified and partially fixed during feature development
+- Codex review (2025-11-14) confirmed no new security issues in tiered shipping feature

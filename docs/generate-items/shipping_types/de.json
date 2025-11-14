@@ -1,7 +1,8 @@
 {
   "maxibrief": {
     "name": "Maxibrief",
-    "base_cost": 0.00,
+    "real_cost": 2.70,
+    "charged_cost": 0.00,
     "allows_packstation": false,
     "has_tracking": false,
     "max_weight_grams": 1000,
@@ -20,7 +21,8 @@
   },
   "maxibrief_einwurf": {
     "name": "Maxibrief + Einwurfeinschreiben",
-    "base_cost": 2.35,
+    "real_cost": 5.05,
+    "charged_cost": 2.35,
     "allows_packstation": false,
     "has_tracking": true,
     "max_weight_grams": 1000,
@@ -34,7 +36,8 @@
   },
   "paeckchen": {
     "name": "Päckchen",
-    "base_cost": 0.00,
+    "real_cost": 3.99,
+    "charged_cost": 0.00,
     "allows_packstation": true,
     "has_tracking": false,
     "max_weight_grams": 2000,
@@ -53,7 +56,8 @@
   },
   "paket_2kg": {
     "name": "Versichertes Paket (2kg)",
-    "base_cost": 1.50,
+    "real_cost": 5.49,
+    "charged_cost": 1.50,
     "allows_packstation": true,
     "has_tracking": true,
     "max_weight_grams": 2000,
@@ -63,7 +67,8 @@
   },
   "paket_5kg": {
     "name": "Paket 5kg",
-    "base_cost": 0.00,
+    "real_cost": 6.99,
+    "charged_cost": 0.00,
     "allows_packstation": true,
     "has_tracking": true,
     "max_weight_grams": 5000,
@@ -73,7 +78,8 @@
   },
   "paket_10kg": {
     "name": "Paket 10kg",
-    "base_cost": 0.00,
+    "real_cost": 9.49,
+    "charged_cost": 0.00,
     "allows_packstation": true,
     "has_tracking": true,
     "max_weight_grams": 10000,

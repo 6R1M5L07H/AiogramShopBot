@@ -193,7 +193,7 @@ class ShippingService:
         from models.item import ItemDTO
 
         for cart_item in cart_items:
-            item = await ItemRepository.get_single(
+            item = await ItemRepository.get_item_metadata(
                 cart_item.category_id,
                 cart_item.subcategory_id,
                 session

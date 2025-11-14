@@ -221,12 +221,13 @@ class OrderCallback(BaseCallback, prefix="order"):
     order_id: int
     confirmation: bool
     cryptocurrency: Cryptocurrency | None
+    shipping_type_key: str
 
     @staticmethod
     def create(level: int = 0, order_id: int = -1, confirmation: bool = False,
-               cryptocurrency: Cryptocurrency | None = None):
+               cryptocurrency: Cryptocurrency | None = None, shipping_type_key: str = ""):
         return OrderCallback(level=level, order_id=order_id, confirmation=confirmation,
-                           cryptocurrency=cryptocurrency)
+                           cryptocurrency=cryptocurrency, shipping_type_key=shipping_type_key)
 
 
 class ShippingManagementCallback(BaseCallback, prefix="shipping_management"):

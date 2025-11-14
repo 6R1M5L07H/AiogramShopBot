@@ -56,7 +56,7 @@ async def select_quantity(**kwargs):
     unpacked_cb = AllCategoriesCallback.unpack(callback.data)
 
     # Get item data and cache in FSM state to avoid repeated DB lookups
-    item = await ItemRepository.get_single(unpacked_cb.category_id, unpacked_cb.subcategory_id, session)
+    item = await ItemRepository.get_item_metadata(unpacked_cb.category_id, unpacked_cb.subcategory_id, session)
     available_qty = await ItemRepository.get_available_qty(item, session) if item else 0
 
     await state.set_state(QuantityInputStates.building_quantity)
@@ -242,25 +242,14 @@ async def handle_dialpad_action(
 
         quantity = int(current_quantity)
 
-        # Check stock availability
-        item = await ItemRepository.get_by_id(item_id, session)
-        available_qty = await ItemRepository.get_available_qty(item, session)
-
-        if quantity > available_qty:
-            # Auto-correct to maximum available quantity instead of blocking
-            quantity = available_qty
-            await callback.answer(
-                Localizator.get_text(BotEntity.USER, "quantity_exceeds_stock")
-            )
-            # Continue with corrected quantity (no return)
-
         # Create AllCategoriesCallback to simulate add_to_cart flow
+        # Pass the REQUESTED quantity (not adjusted) - add_to_cart will handle adjustment
         from copy import copy
         cart_callback = AllCategoriesCallback.create(
             level=4,  # add_to_cart level
             category_id=category_id,
             subcategory_id=subcategory_id,
-            quantity=quantity,
+            quantity=quantity,  # Pass original requested quantity
             confirmation=True
         )
 

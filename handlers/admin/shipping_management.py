@@ -230,8 +230,10 @@ async def show_order_details(**kwargs):
 
     # "Cancel Order" button: Logic based on status and item types
     # - PENDING_* statuses: ALWAYS show (items not paid = not delivered, regardless of type)
-    # - PAID status: Only if NO digital items (digital items are immediately delivered, non-refundable)
-    # - PAID_AWAITING_SHIPMENT: Only if NO digital items (physical items not shipped yet)
+    # - PAID/PAID_AWAITING_SHIPMENT: Show if physical items present (not shipped yet)
+    #   * Pure digital orders: NOT cancellable (all items delivered)
+    #   * Pure physical orders: Cancellable (items not shipped)
+    #   * Mixed orders: Cancellable (digital delivered, physical not shipped → partial refund)
     pending_statuses = [
         OrderStatus.PENDING_PAYMENT,
         OrderStatus.PENDING_PAYMENT_AND_ADDRESS,
@@ -242,12 +244,11 @@ async def show_order_details(**kwargs):
     if order.status in pending_statuses:
         # PENDING orders: ALWAYS cancellable (nothing delivered yet, even digital items)
         show_cancel = True
-    elif order.status == OrderStatus.PAID and not has_digital_items:
-        # PAID with only physical items: Cancellable if not shipped yet
-        show_cancel = True
-    elif order.status == OrderStatus.PAID_AWAITING_SHIPMENT and not has_digital_items:
-        # PAID_AWAITING_SHIPMENT: Only if NO digital items (they're already delivered)
-        show_cancel = True
+    elif order.status in [OrderStatus.PAID, OrderStatus.PAID_AWAITING_SHIPMENT]:
+        # PAID/PAID_AWAITING_SHIPMENT: Cancellable if physical items present (not shipped yet)
+        # Mixed orders: Digital delivered (not refundable), physical not shipped (refundable)
+        if has_physical_items:
+            show_cancel = True
 
     if show_cancel:
         kb_builder.button(
