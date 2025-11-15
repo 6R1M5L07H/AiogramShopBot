@@ -584,7 +584,9 @@ class NotificationService:
             from services.order import OrderService
             items_list = OrderService._group_items_for_display(items_raw)
 
-            escaped_reason = safe_html(custom_reason)
+            # Only show cancellation_reason if custom_reason provided (otherwise hide section completely)
+            escaped_reason = safe_html(custom_reason) if custom_reason and custom_reason.strip() else None
+
             logging.info(f"🔵 Passing to formatter: cancellation_reason='{escaped_reason}' (from custom_reason='{custom_reason}')")
 
             return InvoiceFormatterService.format_complete_order_view(
