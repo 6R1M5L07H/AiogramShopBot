@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="{{lang}}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>{{page_title}}</title>
+    <link rel="stylesheet" href="/webapp/webapp.css">
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="/webapp/openpgp.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>{{header_title}}</h1>
+            <p class="subtitle">{{header_subtitle}}</p>
+        </header>
+
+        <main>
+            <div class="info-box">
+                <p class="info-text">{{info_text}}</p>
+            </div>
+
+            <div class="form-group">
+                <label for="address">{{label_address}}</label>
+                <textarea
+                    id="address"
+                    rows="8"
+                    placeholder="{{placeholder_address}}"
+                    class="address-input"
+                ></textarea>
+                <p class="hint">{{hint_text}}</p>
+            </div>
+
+            <div class="button-group">
+                <button id="encryptBtn" class="btn btn-primary">
+                    {{btn_encrypt}}
+                </button>
+                <button id="cancelBtn" class="btn btn-secondary">
+                    {{btn_cancel}}
+                </button>
+            </div>
+
+            <div id="status" class="status-message"></div>
+        </main>
+
+        <footer>
+            <p class="footer-text">{{footer_text}}</p>
+        </footer>
+    </div>
+
+    <script>
+        // Embed PGP public key from backend
+        const PGP_PUBLIC_KEY = `{{pgp_public_key}}`;
+
+        // Localized strings for JS
+        const STRINGS = {
+            encrypting: "{{js_encrypting}}",
+            error_empty: "{{js_error_empty}}",
+            error_encryption: "{{js_error_encryption}}",
+            success: "{{js_success}}"
+        };
+    </script>
+    <script src="/webapp/encrypt.js"></script>
+</body>
+</html>

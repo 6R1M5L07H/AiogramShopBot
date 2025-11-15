@@ -350,11 +350,20 @@ class OrderManagementService:
         if order_data["shipping_address"]:
             import config
             if entity == BotEntity.ADMIN:
-                # Admin: Show actual decrypted address
+                # Admin: Show actual decrypted address or PGP message
                 msg += f"\n\n📬 <b>{Localizator.get_text(entity, 'shipping_address_label')}:</b>\n"
-                if not order_data["shipping_address"].startswith("[DECRYPTION FAILED"):
+
+                # Check encryption mode
+                encryption_mode = order_data.get("encryption_mode")
+                if encryption_mode == "pgp":
+                    # PGP: Show notice and encrypted message
+                    msg += f"<i>🔐 {Localizator.get_text(entity, 'shipping_address_pgp_notice')}</i>\n\n"
+                    msg += f"<code>{order_data['shipping_address']}</code>\n"
+                elif not order_data["shipping_address"].startswith("[DECRYPTION FAILED"):
+                    # AES: Show decrypted address
                     msg += f"<code>{order_data['shipping_address']}</code>\n"
                 else:
+                    # Decryption failed
                     msg += f"<i>{order_data['shipping_address']}</i>\n"
             else:
                 # User: Only show encrypted notice, NOT the address itself

@@ -970,8 +970,12 @@ class OrderService:
             )
             return Localizator.get_text(BotEntity.USER, "order_not_found_error"), kb_builder
 
-        # Save encrypted shipping address
-        await ShippingService.save_shipping_address(order_id, shipping_address, session)
+        # Save encrypted shipping address (unified storage)
+        # Get encryption_mode from FSM (set by handler: "aes-gcm" or "pgp")
+        encryption_mode = state_data.get("encryption_mode", "aes-gcm")  # Default to AES
+        await ShippingService.save_shipping_address_unified(
+            order_id, shipping_address, encryption_mode, session
+        )
 
         # Update order status: PENDING_PAYMENT_AND_ADDRESS → PENDING_PAYMENT
         await OrderRepository.update_status(order_id, OrderStatus.PENDING_PAYMENT, session)

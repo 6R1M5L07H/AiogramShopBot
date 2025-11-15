@@ -23,3 +23,30 @@ class Localizator:
     @staticmethod
     def get_currency_text():
         return Localizator.get_text(BotEntity.COMMON, f"{config.CURRENCY.value.lower()}_text")
+
+    @staticmethod
+    def get_text_with_lang(entity: BotEntity, key: str, lang: str) -> str:
+        """
+        Get localized text for specific language (for Mini Apps).
+
+        Args:
+            entity: Bot entity type (USER, ADMIN, COMMON)
+            key: Localization key
+            lang: Language code ('de', 'en')
+
+        Returns:
+            Localized string
+
+        Raises:
+            FileNotFoundError: If language file not found
+            KeyError: If key not found in localization file
+        """
+        localization_filename = f"./l10n/{lang}.json"
+        with open(localization_filename, "r", encoding="UTF-8") as f:
+            data = json.loads(f.read())
+            if entity == BotEntity.ADMIN:
+                return data["admin"][key]
+            elif entity == BotEntity.USER:
+                return data["user"][key]
+            else:
+                return data["common"][key]

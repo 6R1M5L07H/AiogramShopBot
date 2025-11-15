@@ -168,3 +168,78 @@ WEBHOOK_SECURITY_HEADERS_ENABLED = os.environ.get("WEBHOOK_SECURITY_HEADERS_ENAB
 WEBHOOK_CSP_ENABLED = os.environ.get("WEBHOOK_CSP_ENABLED", "false") == "true"  # Enable Content Security Policy
 WEBHOOK_HSTS_ENABLED = os.environ.get("WEBHOOK_HSTS_ENABLED", "false") == "true"  # Enable HSTS (only for HTTPS)
 WEBHOOK_CORS_ALLOWED_ORIGINS = os.environ.get("WEBHOOK_CORS_ALLOWED_ORIGINS", "").split(",") if os.environ.get("WEBHOOK_CORS_ALLOWED_ORIGINS") else []  # CORS allowed origins
+
+# === PGP Shipping Address Encryption ===
+# Optional PGP client-side encryption for shipping addresses
+# If not configured, falls back to AES-256-GCM server-side encryption
+PGP_PUBLIC_KEY_BASE64 = os.environ.get("PGP_PUBLIC_KEY_BASE64")  # Base64-encoded ASCII-armored public key
+
+# === Bot Domain ===
+# Bot's public domain for Telegram Mini App URLs
+# Examples: bot.yourdomain.com, 203.0.113.42.sslip.io
+BOT_DOMAIN = os.environ.get("BOT_DOMAIN")
+
+
+# === PGP Helper Functions ===
+
+def load_pgp_public_key() -> str:
+    """
+    Load PGP public key from BASE64 env var.
+
+    Returns:
+        Decoded PGP public key (ASCII-armored)
+
+    Raises:
+        PGPKeyNotConfiguredException: If key not configured or invalid
+    """
+    import base64
+    import logging
+    from exceptions.shipping import PGPKeyNotConfiguredException
+
+    logger = logging.getLogger(__name__)
+
+    if not PGP_PUBLIC_KEY_BASE64:
+        raise PGPKeyNotConfiguredException()
+
+    try:
+        decoded = base64.b64decode(PGP_PUBLIC_KEY_BASE64).decode('utf-8')
+        logger.info("PGP public key loaded from BASE64")
+        return decoded
+    except Exception as e:
+        logger.error(f"Failed to decode PGP_PUBLIC_KEY_BASE64: {e}")
+        raise PGPKeyNotConfiguredException()
+
+
+def is_pgp_encryption_available() -> bool:
+    """Check if PGP encryption is configured (safe, no exceptions)."""
+    try:
+        load_pgp_public_key()
+        return True
+    except Exception:
+        return False
+
+
+def get_webapp_base_url() -> str:
+    """
+    Get base URL for Telegram Mini Apps.
+
+    Returns:
+        Base URL with https:// prefix
+
+    Raises:
+        ValueError: If BOT_DOMAIN not configured
+    """
+    if not BOT_DOMAIN:
+        raise ValueError("BOT_DOMAIN not configured in .env")
+
+    # Add https:// if not present
+    if not BOT_DOMAIN.startswith(("http://", "https://")):
+        return f"https://{BOT_DOMAIN}"
+
+    return BOT_DOMAIN
+
+
+def get_webapp_url(lang: str = "de") -> str:
+    """Get full URL for shipping encryption Mini App."""
+    base = get_webapp_base_url()
+    return f"{base}/webapp/shipping-encrypt-{lang}.html"

@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from pydantic import BaseModel
-from sqlalchemy import Column, Integer, Float, DateTime, ForeignKey, func, CheckConstraint, Enum as SQLEnum, Text
+from sqlalchemy import Column, Integer, Float, DateTime, ForeignKey, func, CheckConstraint, Enum as SQLEnum, Text, LargeBinary
 from sqlalchemy.orm import relationship
 
 from enums.currency import Currency
@@ -25,6 +25,11 @@ class Order(Base):
 
     # Shipping Fields
     shipping_cost = Column(Float, nullable=False, default=0.0)
+
+    # Unified Shipping Address Encryption (Migration 014)
+    # Replaces shipping_addresses table with unified storage
+    encryption_mode = Column(Text, nullable=True)  # 'aes-gcm' | 'pgp'
+    encrypted_payload = Column(LargeBinary, nullable=True)  # Combined ciphertext+nonce+tag (AES) or PGP message
 
     # Payment Validation Fields
     total_paid_crypto = Column(Float, nullable=False, default=0.0)  # Sum of all partial payments
@@ -67,6 +72,8 @@ class OrderDTO(BaseModel):
     cancelled_at: datetime | None = None
     shipped_at: datetime | None = None
     shipping_cost: float | None = 0.0
+    encryption_mode: str | None = None  # 'aes-gcm' | 'pgp'
+    encrypted_payload: bytes | None = None  # Binary encrypted data
     total_paid_crypto: float | None = None
     retry_count: int | None = None
     original_expires_at: datetime | None = None

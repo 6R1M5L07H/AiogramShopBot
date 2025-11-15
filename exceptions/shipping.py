@@ -31,3 +31,13 @@ class InvalidAddressException(ShippingException):
         )
         self.order_id = order_id
         self.reason = reason
+
+
+class PGPKeyNotConfiguredException(ShippingException):
+    """Raised when PGP encryption requested but no public key configured."""
+
+    def __init__(self):
+        super().__init__(
+            "PGP public key not configured. Set PGP_PUBLIC_KEY_BASE64 in .env",
+            details={}
+        )

@@ -2,6 +2,51 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2025-01-15
+
+### PGP Shipping Address Encryption
+
+**Privacy & Security Enhancement**
+- Client-side PGP encryption for shipping addresses via Telegram Mini App
+- Zero-knowledge architecture: bot cannot decrypt PGP-encrypted addresses
+- Dual encryption modes: PGP (client-side) and AES-GCM (server-side fallback)
+- Unified storage in orders.encrypted_payload with encryption_mode indicator
+
+**User Experience**
+- Telegram Mini App with OpenPGP.js for secure address encryption
+- Two input options: "🔐 Sichere Verschlüsselung" (PGP) or "✍️ Manuell eingeben" (AES)
+- Freitext address input with Packstation support notice
+- Automatic encryption before transmission to bot
+
+**Admin Features**
+- PGP-encrypted addresses displayed in order management with decrypt notice
+- AES-encrypted addresses shown as plaintext (bot can decrypt)
+- Encryption mode indicator for each order
+
+**Technical Infrastructure**
+- Migration 014: Added encryption_mode and encrypted_payload to orders table
+- EncryptionWrapper service with unified storage interface
+- FastAPI endpoints for Mini App template rendering
+- Testing tools: setup_test_pgp_key.sh and test_decrypt_address.py
+- Comprehensive documentation in docs/PGP_SHIPPING_ENCRYPTION.md
+
+**Configuration**
+- PGP_PUBLIC_KEY_BASE64: Base64-encoded ASCII-armored public key
+- BOT_DOMAIN: Bot's public HTTPS domain for Mini Apps
+- Updated .env.dev.template and .env.prod.template with PGP configuration
+
+## 2025-11-14
+
+### Admin Order Cancellation UX Improvement
+
+**User-Facing Changes**
+- Admin cancellation notifications now hide the "Cancellation Reason" section when no custom reason is provided
+- Cleaner invoice display: reason field only appears when admin actually specifies a cancellation reason
+
+**Technical Changes**
+- Modified notification service to pass None instead of fallback text when custom_reason is empty
+- InvoiceFormatter automatically skips cancellation reason section when value is None
+
 ## 2025-11-11
 
 ### Dynamic Shipping Tiers and Incremental Pricing

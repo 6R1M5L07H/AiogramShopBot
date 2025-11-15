@@ -133,20 +133,52 @@ async def _handle_physical_items_flow(
     """
     Handle UI flow for orders with physical items (request shipping address).
 
+    Shows two encryption options:
+    1. PGP Mini App (if PGP key configured)
+    2. Manual text input (always available, bot AES-encrypts)
+
     Returns:
         tuple: (message_text, keyboard_builder)
     """
     from handlers.user.shipping_states import ShippingAddressStates
+    from services.shipping import ShippingService
+    from aiogram.types import WebAppInfo
+
     await state.set_state(ShippingAddressStates.waiting_for_address)
 
     message_text = Localizator.get_text(BotEntity.USER, "shipping_address_request").format(
         retention_days=config.DATA_RETENTION_DAYS
     )
+
     kb_builder = InlineKeyboardBuilder()
+
+    # Option 1: PGP Mini App (if available)
+    if ShippingService.is_pgp_available():
+        try:
+            webapp_url = config.get_webapp_url(config.BOT_LANGUAGE)
+            kb_builder.button(
+                text=Localizator.get_text(BotEntity.USER, "shipping_pgp_miniapp_btn"),
+                web_app=WebAppInfo(url=webapp_url)
+            )
+        except Exception as e:
+            # If webapp URL generation fails, log and skip PGP option
+            import logging
+            logging.warning(f"Failed to generate Mini App URL: {e}")
+
+    # Option 2: Manual text input
+    kb_builder.button(
+        text=Localizator.get_text(BotEntity.USER, "shipping_manual_input_btn"),
+        callback_data=OrderCallback.create(level=7, order_id=order.id).pack()  # Level 7 = manual input
+    )
+
+    # Cancel button
     kb_builder.button(
         text=Localizator.get_text(BotEntity.COMMON, "cancel"),
-        callback_data=OrderCallback.create(level=4, order_id=order.id)
+        callback_data=OrderCallback.create(level=4, order_id=order.id).pack()
     )
+
+    kb_builder.adjust(1)  # One button per row
+
     return message_text, kb_builder
 
 
@@ -678,6 +710,35 @@ async def confirm_adjusted_order(**kwargs):
     await callback.message.edit_text(text=msg, reply_markup=kb_builder.as_markup())
 
 
+async def request_manual_shipping_input(**kwargs):
+    """
+    Level 7: Request Manual Shipping Address Input
+
+    - User chose manual text input (not Mini App)
+    - Prompt for plain text address (bot will AES-encrypt)
+    """
+    callback = kwargs.get("callback")
+    state = kwargs.get("state")
+
+    from handlers.user.shipping_states import ShippingAddressStates
+    await state.set_state(ShippingAddressStates.waiting_for_address)
+
+    # Get order_id from callback for cancel button
+    order_id = callback.data.order_id if hasattr(callback.data, 'order_id') else None
+
+    message_text = Localizator.get_text(BotEntity.USER, "shipping_manual_input_prompt").format(
+        retention_days=config.DATA_RETENTION_DAYS
+    )
+
+    kb_builder = InlineKeyboardBuilder()
+    kb_builder.button(
+        text=Localizator.get_text(BotEntity.COMMON, "cancel"),
+        callback_data=OrderCallback.create(level=4, order_id=order_id).pack()
+    )
+
+    await callback.message.edit_text(text=message_text, reply_markup=kb_builder.as_markup())
+
+
 @order_router.callback_query(OrderCallback.filter(), IsUserExistFilter())
 async def navigate_order_process(
     callback: CallbackQuery,
@@ -702,6 +763,7 @@ async def navigate_order_process(
         4: cancel_order,                    # Show cancel confirmation
         5: execute_cancel_order,            # Execute cancellation
         6: reshow_stock_adjustment,         # Re-show stock adjustment
+        7: request_manual_shipping_input,   # Manual shipping address input
         9: confirm_adjusted_order,          # Confirm adjusted order
     }
 

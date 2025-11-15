@@ -188,7 +188,8 @@
     "cancellation_strike_received": "⚠️ <b>Strike erhalten</b> - Diese Stornierung führte zu einem Strike auf Ihrem Konto.",
     "cancellation_full_refund": "💰 <b>Volle Rückerstattung:</b> {refund_amount} {currency_symbol}",
     "shipping_address_admin_label": "<b>Adressdaten:</b>",
-    "order_wallet_credit": "💰 Guthaben gutgeschrieben: {amount} {currency_sym}"
+    "order_wallet_credit": "💰 Guthaben gutgeschrieben: {amount} {currency_sym}",
+    "shipping_address_pgp_notice": "PGP-verschlüsselt (Admin kann nicht entschlüsseln)"
   },
   "common": {
     "back_button": "⬅️ Zurück",
@@ -459,6 +460,25 @@
     "shipping_legacy_flat": "Standardversand",
     "shipping_summary_header": "Versand",
     "shipping_cost_free": "kostenlos",
-    "shipping_max_cost_label": "Höchste Versandkosten"
+    "shipping_max_cost_label": "Höchste Versandkosten",
+    "webapp_page_title": "Versandadresse verschlüsseln",
+    "webapp_header_title": "🔐 Sichere Versandadresse",
+    "webapp_header_subtitle": "Ihre Adresse wird lokal auf Ihrem Gerät verschlüsselt",
+    "webapp_info_text": "Ihre Versandadresse wird mit PGP-Verschlüsselung direkt auf Ihrem Gerät verschlüsselt, bevor sie an den Bot gesendet wird. Der Bot kann die verschlüsselte Adresse nicht entschlüsseln.",
+    "webapp_label_address": "Versandadresse:",
+    "webapp_placeholder_address": "Bitte geben Sie Ihre vollständige Versandadresse ein:\n\nMax Mustermann\nMusterstraße 123\n12345 Musterstadt\n\nHinweis: Bei Packstation-Lieferung bitte die Packstationsnummer und Postnummer angeben. Beachten Sie, dass nicht alle Versandarten Packstationen unterstützen. Eine Haftung bei Packstation-Lieferung kann nicht übernommen werden.",
+    "webapp_hint_text": "Achten Sie auf vollständige Angaben (Name, Straße, PLZ, Ort). Bei Packstation: Packstationsnummer + Postnummer angeben.",
+    "webapp_btn_encrypt": "🔐 Verschlüsseln & Senden",
+    "webapp_btn_cancel": "❌ Abbrechen",
+    "webapp_footer_text": "🔒 End-to-End verschlüsselt mit OpenPGP",
+    "webapp_js_encrypting": "Verschlüssele...",
+    "webapp_js_error_empty": "Bitte geben Sie eine Versandadresse ein",
+    "webapp_js_error_encryption": "Verschlüsselung fehlgeschlagen. Bitte versuchen Sie es erneut.",
+    "webapp_js_success": "Verschlüsselt! Sende an Bot...",
+    "shipping_pgp_miniapp_btn": "🔐 Sichere Verschlüsselung (empfohlen)",
+    "shipping_manual_input_btn": "✍️ Manuell eingeben",
+    "shipping_manual_input_prompt": "📬 <b>Bitte geben Sie Ihre vollständige Versandadresse ein:</b>\n\nDie Adresse sollte enthalten:\n- Name\n- Straße und Hausnummer\n- PLZ und Ort\n- Land\n\nBei Packstation:\n- Packstationsnummer + Postnummer\n\n<i>🔒 Datenschutz: Ihre Adresse wird verschlüsselt gespeichert und automatisch nach {retention_days} Tagen endgültig gelöscht.</i>",
+    "shipping_pgp_confirm": "✅ <b>Adresse verschlüsselt erhalten!</b>\n\n🔐 Ihre Versandadresse wurde mit PGP-Verschlüsselung gesichert und kann vom Bot nicht eingesehen werden.\n\n<i>Die verschlüsselte Adresse wird automatisch nach {retention_days} Tagen gelöscht.</i>\n\n<b>Möchten Sie fortfahren?</b>",
+    "shipping_pgp_error": "❌ <b>Fehler beim Verarbeiten der verschlüsselten Adresse.</b>\n\nBitte versuchen Sie es erneut oder verwenden Sie die manuelle Eingabe."
   }
 }

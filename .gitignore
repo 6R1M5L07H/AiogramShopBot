@@ -186,3 +186,8 @@ backups/*.db
 backups/*.db.gz
 backups/*.sha256
 !backups/.gitkeep
+
+# PGP Test Keys (DO NOT COMMIT!)
+tools/test_pgp_private_key.asc
+tools/*.asc
+*.asc

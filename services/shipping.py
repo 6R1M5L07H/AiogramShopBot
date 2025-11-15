@@ -3,6 +3,10 @@ Shipping Service
 
 Handles shipping address encryption, storage, and retrieval for orders with physical items.
 Uses AES-256-GCM encryption with PBKDF2 key derivation.
+
+MIGRATION NOTE: Methods ending with _unified() use new storage (orders.encrypted_payload).
+Legacy methods use old storage (shipping_addresses table).
+After migration, use _unified() methods exclusively.
 """
 
 import os
@@ -298,7 +302,7 @@ class ShippingService:
 
         invoice = await InvoiceRepository.get_by_order_id(order_id, session)
         user = await UserRepository.get_by_id(order.user_id, session)
-        shipping_address = await ShippingService.get_shipping_address(order_id, session)
+        shipping_address = await ShippingService.get_shipping_address_unified(order_id, session)
 
         # Format user display (escape for HTML safety)
         username = f"@{safe_html(user.telegram_username)}" if user.telegram_username else str(user.telegram_id)
@@ -323,6 +327,7 @@ class ShippingService:
             "username": username,
             "user_id": user.telegram_id,
             "shipping_address": shipping_address,
+            "encryption_mode": order.encryption_mode,  # 'aes-gcm', 'pgp', or None
             "digital_items": digital_grouped,
             "physical_items": physical_grouped,
         }
@@ -412,3 +417,77 @@ class ShippingService:
             return invoice.invoice_number
         else:
             return "N/A"
+
+    # ========================================================================
+    # Unified Storage Interface (Migration 014)
+    # ========================================================================
+
+    @staticmethod
+    async def save_shipping_address_unified(
+        order_id: int,
+        plaintext_or_pgp: str,
+        encryption_mode: str,
+        session: AsyncSession | Session
+    ):
+        """
+        Save shipping address with unified storage (orders.encrypted_payload).
+
+        Args:
+            order_id: Order ID
+            plaintext_or_pgp: Plaintext (for AES) or PGP message (for PGP mode)
+            encryption_mode: 'aes-gcm' or 'pgp'
+            session: Database session
+
+        Raises:
+            ValueError: If invalid encryption mode
+        """
+        from services.encryption_wrapper import EncryptionWrapper
+        await EncryptionWrapper.save_shipping_address_unified(
+            order_id, plaintext_or_pgp, encryption_mode, session
+        )
+
+    @staticmethod
+    async def get_shipping_address_unified(
+        order_id: int,
+        session: AsyncSession | Session
+    ) -> str | None:
+        """
+        Retrieve shipping address from unified storage.
+
+        Args:
+            order_id: Order ID
+            session: Database session
+
+        Returns:
+            - AES mode: Decrypted plaintext address
+            - PGP mode: ASCII-armored PGP message (admin must decrypt offline)
+            - None if no address stored
+        """
+        from services.encryption_wrapper import EncryptionWrapper
+        return await EncryptionWrapper.get_shipping_address_unified(order_id, session)
+
+    @staticmethod
+    async def delete_shipping_address_unified(
+        order_id: int,
+        session: AsyncSession | Session
+    ):
+        """
+        Delete shipping address from unified storage.
+
+        Args:
+            order_id: Order ID
+            session: Database session
+        """
+        from services.encryption_wrapper import EncryptionWrapper
+        await EncryptionWrapper.delete_shipping_address_unified(order_id, session)
+
+    @staticmethod
+    def is_pgp_available() -> bool:
+        """
+        Check if PGP encryption mode is available.
+
+        Returns:
+            True if PGP public key configured, False otherwise
+        """
+        from services.encryption_wrapper import EncryptionWrapper
+        return EncryptionWrapper.is_pgp_mode_available()

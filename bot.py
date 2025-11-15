@@ -52,6 +52,7 @@ from db import create_db_and_tables
 import uvicorn
 from fastapi.responses import JSONResponse
 from processing.processing import processing_router
+from handlers.api.webapp import webapp_router
 from services.notification import NotificationService
 from jobs.payment_timeout_job import PaymentTimeoutJob
 from jobs.database_backup_job import backup_scheduler
@@ -91,6 +92,7 @@ else:
     logging.debug("[Startup] CORS middleware disabled (no allowed origins configured)")
 
 app.include_router(processing_router)
+app.include_router(webapp_router)
 
 # Initialize payment timeout job
 payment_timeout_job = PaymentTimeoutJob(check_interval_seconds=60)

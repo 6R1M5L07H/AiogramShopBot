@@ -194,7 +194,8 @@
     "cancellation_strike_received": "⚠️ <b>Strike Received</b> - This cancellation resulted in a strike on your account.",
     "cancellation_full_refund": "💰 <b>Full Refund:</b> {refund_amount} {currency_symbol}",
     "shipping_address_admin_label": "<b>Shipping Address:</b>",
-    "order_wallet_credit": "💰 Wallet credited: {amount} {currency_sym}"
+    "order_wallet_credit": "💰 Wallet credited: {amount} {currency_sym}",
+    "shipping_address_pgp_notice": "PGP-encrypted (Admin cannot decrypt)"
   },
   "common": {
     "back_button": "⬅️ Back",
@@ -474,6 +475,25 @@
     "shipping_legacy_flat": "Standard Shipping",
     "shipping_summary_header": "Shipping",
     "shipping_cost_free": "free",
-    "shipping_max_cost_label": "Max shipping cost"
+    "shipping_max_cost_label": "Max shipping cost",
+    "webapp_page_title": "Encrypt Shipping Address",
+    "webapp_header_title": "🔐 Secure Shipping Address",
+    "webapp_header_subtitle": "Your address is encrypted locally on your device",
+    "webapp_info_text": "Your shipping address will be encrypted with PGP encryption directly on your device before being sent to the bot. The bot cannot decrypt the encrypted address.",
+    "webapp_label_address": "Shipping Address:",
+    "webapp_placeholder_address": "Please enter your complete shipping address:\n\nJohn Doe\n123 Main Street\n12345 City\n\nNote: For parcel locker delivery, please provide locker number and postal code. Note that not all shipping methods support parcel lockers. No liability accepted for parcel locker delivery.",
+    "webapp_hint_text": "Ensure complete details (Name, Street, Postal Code, City). For parcel locker: Locker number + Postal code.",
+    "webapp_btn_encrypt": "🔐 Encrypt & Send",
+    "webapp_btn_cancel": "❌ Cancel",
+    "webapp_footer_text": "🔒 End-to-end encrypted with OpenPGP",
+    "webapp_js_encrypting": "Encrypting...",
+    "webapp_js_error_empty": "Please enter a shipping address",
+    "webapp_js_error_encryption": "Encryption failed. Please try again.",
+    "webapp_js_success": "Encrypted! Sending to bot...",
+    "shipping_pgp_miniapp_btn": "🔐 Secure Encryption (recommended)",
+    "shipping_manual_input_btn": "✍️ Enter Manually",
+    "shipping_manual_input_prompt": "📬 <b>Please enter your complete shipping address:</b>\n\nThe address should include:\n- Name\n- Street and house number\n- Postal code and city\n- Country\n\nFor parcel locker:\n- Locker number + Postal code\n\n<i>🔒 Privacy: Your address will be encrypted and automatically deleted after {retention_days} days.</i>",
+    "shipping_pgp_confirm": "✅ <b>Encrypted address received!</b>\n\n🔐 Your shipping address has been secured with PGP encryption and cannot be viewed by the bot.\n\n<i>The encrypted address will be automatically deleted after {retention_days} days.</i>\n\n<b>Would you like to continue?</b>",
+    "shipping_pgp_error": "❌ <b>Error processing encrypted address.</b>\n\nPlease try again or use manual input."
   }
 }
