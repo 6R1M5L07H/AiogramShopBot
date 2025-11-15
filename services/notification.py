@@ -601,8 +601,8 @@ class NotificationService:
         else:
             # Fallback: Simple message without items
             return (
-                f"❌ <b>{Localizator.get_text(BotEntity.USER, 'order_cancelled_by_admin_title')}</b>\n\n"
-                f"📋 {Localizator.get_text(BotEntity.USER, 'order_number')}: {invoice_number}\n\n"
+                f"<b>{Localizator.get_text(BotEntity.USER, 'order_cancelled_by_admin_title')}</b>\n\n"
+                f"{Localizator.get_text(BotEntity.USER, 'order_number')}: {invoice_number}\n\n"
                 f"<b>{Localizator.get_text(BotEntity.COMMON, 'admin_cancel_reason_label')}</b>\n"
                 f"{safe_html(custom_reason)}\n\n"
                 f"{Localizator.get_text(BotEntity.USER, 'admin_cancel_contact_support')}"

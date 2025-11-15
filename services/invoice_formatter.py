@@ -344,6 +344,398 @@ class InvoiceFormatterService:
         return message
 
     @staticmethod
+    def _format_header(
+        header_type: str,
+        invoice_number: str,
+        date: str,
+        username: Optional[str] = None,
+        user_id: Optional[int] = None,
+        order_status: Optional[OrderStatus] = None,
+        created_at: Optional[datetime] = None,
+        paid_at: Optional[datetime] = None,
+        shipped_at: Optional[datetime] = None,
+        expires_at: Optional[datetime] = None,
+        entity: BotEntity = BotEntity.USER
+    ) -> str:
+        """
+        Format header section for invoice/order views.
+
+        Args:
+            header_type: Type of header to render
+            invoice_number: Invoice reference number
+            date: Date string for display
+            username: User's Telegram username (admin views only)
+            user_id: User's Telegram ID (admin views only)
+            order_status: Order status enum
+            created_at: Order creation timestamp
+            paid_at: Payment timestamp
+            shipped_at: Shipping timestamp
+            expires_at: Payment expiry timestamp
+            entity: BotEntity for localization
+
+        Returns:
+            Formatted header string
+        """
+        message = ""
+
+        if header_type == "admin_order":
+            # Admin order view header
+            header = Localizator.get_text(BotEntity.ADMIN, "order_details_header").format(
+                invoice_number=invoice_number,
+                username=username or "Unknown",
+                user_id=user_id or 0
+            )
+            message += f"{header}\n\n"
+            message += f"<b>Invoice #{invoice_number}</b>\n\n"
+
+        elif header_type == "payment_screen":
+            # Payment screen header with timer
+            message += f"<b>Invoice #{invoice_number}</b>\n"
+            message += f"{date}\n\n"
+
+        elif header_type == "wallet_payment":
+            # Wallet payment completion header
+            message += f"<b>Invoice #{invoice_number}</b>\n"
+            message += f"{date}\n\n"
+
+        elif header_type == "cancellation_refund":
+            # Cancellation with refund header
+            message += f"<b>{Localizator.get_text(entity, 'order_cancelled_title')}</b>\n\n"
+            message += f"{Localizator.get_text(entity, 'order_number_label')}: {invoice_number}\n\n"
+
+        elif header_type == "partial_cancellation":
+            # Partial cancellation header (mixed order: digital kept, physical refunded)
+            message += f"<b>{Localizator.get_text(entity, 'order_partially_cancelled_title')}</b>\n\n"
+            message += f"{Localizator.get_text(entity, 'order_number_label')}: {invoice_number}\n\n"
+
+        elif header_type == "admin_cancellation":
+            # Admin cancellation header
+            message += f"<b>{Localizator.get_text(BotEntity.COMMON, 'admin_cancel_invoice_header')}{invoice_number}</b>\n"
+            message += f"{Localizator.get_text(BotEntity.COMMON, 'admin_cancel_invoice_date')} {date}\n"
+            message += f"{Localizator.get_text(BotEntity.COMMON, 'admin_cancel_invoice_status')}\n\n"
+
+        elif header_type == "payment_success":
+            # Payment success notification header
+            success_header = Localizator.get_text(BotEntity.COMMON, "payment_success").format(invoice_number=invoice_number)
+            message += f"<b>{success_header}</b>\n\n"
+            message += f"<b>{Localizator.get_text(entity, 'invoice_number_label')}: {invoice_number}</b>\n\n"
+
+        elif header_type == "order_shipped":
+            # Order shipped notification header
+            shipped_header = Localizator.get_text(entity, "order_shipped_header")
+            message += f"<b>{shipped_header}</b>\n\n"
+            message += f"<b>{Localizator.get_text(entity, 'invoice_number_label')}: {invoice_number}</b>\n\n"
+
+            # Show shipped timestamp
+            if shipped_at:
+                shipped_str = shipped_at.strftime("%d.%m.%Y %H:%M")
+                shipped_label = Localizator.get_text(BotEntity.COMMON, "shipped_on_label")
+                message += f"<b>{shipped_label}:</b> {shipped_str}\n\n"
+
+        elif header_type == "order_detail_admin":
+            # Admin order detail header with status (no duplicate emoji)
+            if order_status:
+                # Get status using enum value directly (UPPERCASE)
+                status = Localizator.get_text(BotEntity.COMMON, f"order_status_{order_status.value}")
+
+                created_str = created_at.strftime("%d.%m.%Y %H:%M") if created_at else "N/A"
+                order_label = Localizator.get_text(BotEntity.COMMON, "order_label")
+                message += f"<b>{order_label} #{invoice_number}</b>\n\n"
+                created_label = Localizator.get_text(BotEntity.COMMON, "created_on_label")
+                status_label = Localizator.get_text(BotEntity.COMMON, "status_label")
+                message += f"<b>{created_label}:</b> {created_str}\n"
+                message += f"<b>{status_label}:</b> {status}\n"
+
+                # Add paid timestamp if available
+                if paid_at:
+                    paid_str = paid_at.strftime("%d.%m.%Y %H:%M")
+                    paid_info = Localizator.get_text(BotEntity.COMMON, "order_paid_on").format(paid_at=paid_str)
+                    message += f"{paid_info}\n"
+
+                # Add shipped timestamp if available
+                if shipped_at:
+                    shipped_str = shipped_at.strftime("%d.%m.%Y %H:%M")
+                    shipped_info = Localizator.get_text(BotEntity.COMMON, "order_shipped_on").format(shipped_at=shipped_str)
+                    message += f"{shipped_info}\n"
+
+                message += "\n"
+
+        elif header_type == "order_detail_user" or header_type == "purchase_history":
+            # User order detail / purchase history header with status
+            if order_status:
+                # Get status using enum value directly (UPPERCASE)
+                status = Localizator.get_text(BotEntity.COMMON, f"order_status_{order_status.value}")
+
+                created_str = created_at.strftime("%d.%m.%Y %H:%M") if created_at else "N/A"
+                order_label = Localizator.get_text(BotEntity.COMMON, "order_label")
+                message += f"<b>📋 {order_label} #{invoice_number}</b>\n\n"
+                created_label = Localizator.get_text(BotEntity.COMMON, "created_on_label")
+                status_label = Localizator.get_text(BotEntity.COMMON, "status_label")
+                message += f"<b>{created_label}:</b> {created_str}\n"
+                message += f"<b>{status_label}:</b> {status}\n"
+
+                # Add paid timestamp if available
+                if paid_at:
+                    paid_str = paid_at.strftime("%d.%m.%Y %H:%M")
+                    paid_info = Localizator.get_text(BotEntity.COMMON, "order_paid_on").format(paid_at=paid_str)
+                    message += f"{paid_info}\n"
+
+                # Add shipped timestamp if available
+                if shipped_at:
+                    shipped_str = shipped_at.strftime("%d.%m.%Y %H:%M")
+                    shipped_info = Localizator.get_text(BotEntity.COMMON, "order_shipped_on").format(shipped_at=shipped_str)
+                    message += f"{shipped_info}\n"
+
+                message += "\n"
+
+        return message
+
+    @staticmethod
+    def _format_items(
+        items: Optional[list[dict]],
+        header_type: str,
+        currency_symbol: str,
+        show_private_data: bool,
+        separate_digital_physical: bool,
+        use_spacing_alignment: bool,
+        entity: BotEntity
+    ) -> tuple[str, float]:
+        """
+        Format items section for invoice/order views.
+
+        Args:
+            items: List of item dicts with keys: name, price, quantity, is_physical, private_data
+            header_type: Type of header/view being rendered
+            currency_symbol: Currency symbol
+            show_private_data: Whether to show private_data (keys/codes)
+            separate_digital_physical: Separate digital and physical items
+            use_spacing_alignment: Use spacing for right-aligned amounts
+            entity: BotEntity for localization
+
+        Returns:
+            Tuple of (formatted_items_string, subtotal)
+        """
+        if not items:
+            return "", 0.0
+
+        message = ""
+        subtotal = sum(item['price'] * item['quantity'] for item in items)
+
+        if header_type == "partial_cancellation":
+            # Partial cancellation: Show digital (kept) and physical (refunded) separately
+            digital_items = [item for item in items if not item.get('is_physical', False)]
+            physical_items = [item for item in items if item.get('is_physical', False)]
+
+            if digital_items:
+                digital_title = Localizator.get_text(BotEntity.COMMON, 'partial_cancel_digital_items_title')
+                message += f"<b>{digital_title}</b>\n"
+                for item in digital_items:
+                    line_total = item['price'] * item['quantity']
+                    message += f"{item['quantity']}x {item['name']} {currency_symbol}{line_total:.2f}\n"
+                digital_status = Localizator.get_text(BotEntity.COMMON, 'partial_cancel_digital_status')
+                message += f"<i>{digital_status}</i>\n\n"
+
+            if physical_items:
+                physical_title = Localizator.get_text(BotEntity.COMMON, 'partial_cancel_physical_items_title')
+                message += f"<b>{physical_title}</b>\n"
+                for item in physical_items:
+                    line_total = item['price'] * item['quantity']
+                    message += f"{item['quantity']}x {item['name']} {currency_symbol}{line_total:.2f}\n"
+                physical_status = Localizator.get_text(BotEntity.COMMON, 'partial_cancel_physical_status')
+                message += f"<i>{physical_status}</i>\n\n"
+
+        elif separate_digital_physical:
+            # Separate digital and physical items - used for ALL order confirmations
+            digital_items = [item for item in items if not item.get('is_physical', False)]
+            physical_items = [item for item in items if item.get('is_physical', False)]
+
+            if digital_items:
+                digital_label = Localizator.get_text(BotEntity.COMMON, "digital_items_label")
+                message += InvoiceFormatterService._format_items_section(
+                    items=digital_items,
+                    section_label=digital_label,
+                    currency_symbol=currency_symbol,
+                    show_private_data=show_private_data,
+                    entity=entity
+                )
+
+            if physical_items:
+                physical_label = Localizator.get_text(BotEntity.COMMON, "physical_items_label")
+                message += InvoiceFormatterService._format_items_section(
+                    items=physical_items,
+                    section_label=physical_label,
+                    currency_symbol=currency_symbol,
+                    show_private_data=show_private_data,
+                    entity=entity
+                )
+
+        else:
+            # Unified items list with optional spacing alignment (payment screens)
+            if header_type in ["admin_cancellation"]:
+                message += f"<b>{Localizator.get_text(entity, 'admin_cancel_invoice_items')}</b>\n"
+                message += "─────────────────────────────\n"
+
+            for item in items:
+                line_total = item['price'] * item['quantity']
+                if use_spacing_alignment:
+                    # Payment screen format with spacing
+                    spacing = ' ' * (20 - len(item['name']))
+                    message += f"{item['quantity']}x {item['name']}\n"
+                    message += f"  {currency_symbol}{item['price']:.2f} × {item['quantity']}{spacing}{currency_symbol}{line_total:.2f}\n"
+                else:
+                    # Simple format
+                    message += f"{item['quantity']}x {item['name']} {currency_symbol}{item['price']:.2f}\n"
+
+            if header_type in ["admin_cancellation"]:
+                message += "─────────────────────────────\n"
+            else:
+                message += "\n"
+
+        return message, subtotal
+
+    @staticmethod
+    def _format_pricing_breakdown(
+        header_type: str,
+        subtotal: Optional[float],
+        shipping_cost: float,
+        shipping_type_name: Optional[str],
+        wallet_used: float,
+        total_price: Optional[float],
+        crypto_payment_needed: float,
+        currency_symbol: str,
+        use_spacing_alignment: bool,
+        entity: BotEntity
+    ) -> str:
+        """
+        Format pricing breakdown section (subtotal, shipping, wallet, total).
+
+        Returns:
+            Formatted pricing breakdown string
+        """
+        message = ""
+
+        if header_type in ["cancellation_refund"]:
+            # Skip pricing breakdown for cancellation refund screens
+            return message
+
+        # Subtotal line
+        if subtotal is not None and use_spacing_alignment:
+            subtotal_label = Localizator.get_text(entity, "admin_cancel_invoice_subtotal") if header_type == "admin_cancellation" else "Subtotal"
+            subtotal_spacing = " " * (29 - len(subtotal_label)) if header_type == "admin_cancellation" else " " * 18
+            message += f"{subtotal_label}{subtotal_spacing}{currency_symbol}{subtotal:.2f}\n"
+
+        # Shipping line (always show for physical items, even if €0.00)
+        if shipping_cost >= 0:
+            # Build shipping label with type if available
+            if shipping_type_name:
+                shipping_display = f"Shipping ({shipping_type_name})" if use_spacing_alignment else f"Versand ({shipping_type_name})"
+            else:
+                shipping_display = "Shipping" if use_spacing_alignment else "Versand"
+
+            if use_spacing_alignment:
+                if header_type == "admin_cancellation":
+                    shipping_label = Localizator.get_text(entity, "admin_cancel_invoice_shipping")
+                    if shipping_type_name:
+                        shipping_label += f" ({shipping_type_name})"
+                    shipping_spacing = " " * (29 - len(shipping_label))
+                    message += f"{shipping_label}{shipping_spacing}{currency_symbol}{shipping_cost:.2f}\n"
+                else:
+                    # Calculate spacing based on shipping_display length
+                    spacing_needed = max(26 - len(shipping_display), 1)
+                    message += f"{shipping_display}{' ' * spacing_needed}{currency_symbol}{shipping_cost:.2f}\n"
+            else:
+                message += f"{shipping_display} {currency_symbol}{shipping_cost:.2f}\n"
+
+        # Wallet line
+        if wallet_used > 0:
+            if use_spacing_alignment:
+                wallet_spacing = " " * 11 if header_type == "payment_screen" else " " * 20
+                wallet_line = Localizator.get_text(entity, "payment_wallet_line").format(
+                    wallet_used=wallet_used,
+                    wallet_spacing=wallet_spacing,
+                    currency_sym=currency_symbol
+                )
+                message += wallet_line
+            else:
+                message += f"Wallet-Guthaben -{currency_symbol}{wallet_used:.2f}\n"
+
+        # Separator
+        if use_spacing_alignment and header_type == "admin_cancellation":
+            message += "─────────────────────────────\n"
+        else:
+            message += "═══════════════════════\n"
+
+        # Total line
+        if total_price is not None:
+            if use_spacing_alignment:
+                if header_type == "admin_cancellation":
+                    total_label = Localizator.get_text(entity, "admin_cancel_invoice_total")
+                    total_spacing = " " * (29 - len(total_label))
+                    message += f"<b>{total_label}{total_spacing}{currency_symbol}{total_price:.2f}</b>\n"
+                else:
+                    # Align with Subtotal/Wallet lines (position at column ~26 for currency symbol)
+                    if crypto_payment_needed > 0:
+                        # "Zu zahlen:" = 10 chars, need 16 spaces to reach column 26
+                        message += f"<b>Zu zahlen:{' ' * 16}{currency_symbol}{crypto_payment_needed:.2f}</b>\n"
+                    else:
+                        # "Total:" = 6 chars, need 20 spaces to reach column 26
+                        message += f"<b>Total:{' ' * 20}{currency_symbol}{total_price:.2f}</b>\n"
+            else:
+                if crypto_payment_needed > 0:
+                    message += f"<b>Zu zahlen: {currency_symbol}{crypto_payment_needed:.2f}</b>\n"
+                else:
+                    message += f"<b>Total: {currency_symbol}{total_price:.2f}</b>\n"
+
+        # Closing separator
+        if not use_spacing_alignment or header_type not in ["admin_cancellation"]:
+            message += "═══════════════════════\n"
+
+        return message
+
+    @staticmethod
+    def _format_footer(
+        header_type: str,
+        footer_text: Optional[str],
+        shipping_address: Optional[str],
+        cancellation_reason: Optional[str],
+        order_status: Optional[OrderStatus],
+        show_retention_notice: bool,
+        entity: BotEntity
+    ) -> str:
+        """
+        Format footer section for invoice/order views.
+
+        Returns:
+            Formatted footer string
+        """
+        message = ""
+
+        # === SHIPPING ADDRESS (Admin View) ===
+        if shipping_address:
+            message += f"\n{Localizator.get_text(entity, 'shipping_address_admin_label')}\n"
+            message += f"{shipping_address}\n"
+
+        # === FOOTER ===
+        if footer_text:
+            message += f"\n{footer_text}\n"
+
+        if header_type == "admin_cancellation":
+            message += f"{Localizator.get_text(entity, 'admin_cancel_notice')}\n\n"
+            message += f"{Localizator.get_text(entity, 'admin_cancel_contact_support')}"
+
+        # Display cancellation reason in order history detail view (for CANCELLED_BY_ADMIN status)
+        if header_type in ["order_detail_admin", "order_detail_user"] and cancellation_reason:
+            if order_status == OrderStatus.CANCELLED_BY_ADMIN:
+                message += f"\n\n<b>{Localizator.get_text(BotEntity.COMMON, 'admin_cancel_reason_label')}</b>\n"
+                message += f"{cancellation_reason}"
+
+        if show_retention_notice:
+            import config
+            message += f"\n{Localizator.get_text(entity, 'purchased_items_retention_notice').format(retention_days=config.DATA_RETENTION_DAYS)}"
+
+        return message
+
+    @staticmethod
     def format_complete_order_view(
         # === HEADER SECTION ===
         header_type: str,
@@ -451,269 +843,45 @@ class InvoiceFormatterService:
             date = datetime.now().strftime("%Y-%m-%d %H:%M")
 
         # === HEADER SECTION ===
-        if header_type == "admin_order":
-            # Admin order view header
-            header = Localizator.get_text(BotEntity.ADMIN, "order_details_header").format(
-                invoice_number=invoice_number,
-                username=username or "Unknown",
-                user_id=user_id or 0
-            )
-            message += f"{header}\n\n"
-            message += f"<b>Invoice #{invoice_number}</b>\n\n"
-
-        elif header_type == "payment_screen":
-            # Payment screen header with timer
-            time_remaining = (expires_at - datetime.now()).total_seconds() / 60 if expires_at else 0
-            expires_time = expires_at.strftime("%H:%M") if expires_at else "N/A"
-            message += f"<b>Invoice #{invoice_number}</b>\n"
-            message += f"{date}\n\n"
-
-        elif header_type == "wallet_payment":
-            # Wallet payment completion header
-            message += f"<b>Invoice #{invoice_number}</b>\n"
-            message += f"{date}\n\n"
-
-        elif header_type == "cancellation_refund":
-            # Cancellation with refund header
-            message += f"❌ <b>{Localizator.get_text(entity, 'order_cancelled_title')}</b>\n\n"
-            message += f"📋 {Localizator.get_text(entity, 'order_number_label')}: {invoice_number}\n\n"
-
-        elif header_type == "partial_cancellation":
-            # Partial cancellation header (mixed order: digital kept, physical refunded)
-            message += f"🔄 <b>{Localizator.get_text(entity, 'order_partially_cancelled_title')}</b>\n\n"
-            message += f"📋 {Localizator.get_text(entity, 'order_number_label')}: {invoice_number}\n\n"
-
-        elif header_type == "admin_cancellation":
-            # Admin cancellation header
-            message += f"<b>{Localizator.get_text(BotEntity.COMMON, 'admin_cancel_invoice_header')}{invoice_number}</b>\n"
-            message += f"{Localizator.get_text(BotEntity.COMMON, 'admin_cancel_invoice_date')} {date}\n"
-            message += f"{Localizator.get_text(BotEntity.COMMON, 'admin_cancel_invoice_status')}\n\n"
-
-        elif header_type == "payment_success":
-            # Payment success notification header
-            success_header = Localizator.get_text(BotEntity.COMMON, "payment_success").format(invoice_number=invoice_number)
-            message += f"✅ <b>{success_header}</b>\n\n"
-            message += f"📋 <b>{Localizator.get_text(entity, 'invoice_number_label')}: {invoice_number}</b>\n\n"
-
-        elif header_type == "order_shipped":
-            # Order shipped notification header
-            shipped_header = Localizator.get_text(entity, "order_shipped_header")
-            message += f"📦 <b>{shipped_header}</b>\n\n"
-            message += f"📋 <b>{Localizator.get_text(entity, 'invoice_number_label')}: {invoice_number}</b>\n\n"
-
-            # Show shipped timestamp
-            if shipped_at:
-                shipped_str = shipped_at.strftime("%d.%m.%Y %H:%M")
-                shipped_label = Localizator.get_text(BotEntity.COMMON, "shipped_on_label")
-                message += f"<b>{shipped_label}:</b> {shipped_str}\n\n"
-
-        elif header_type == "order_detail_admin":
-            # Admin order detail header with status (no duplicate emoji)
-            if order_status:
-                # Get status using enum value directly (UPPERCASE)
-                status = Localizator.get_text(BotEntity.COMMON, f"order_status_{order_status.value}")
-
-                created_str = created_at.strftime("%d.%m.%Y %H:%M") if created_at else "N/A"
-                order_label = Localizator.get_text(BotEntity.COMMON, "order_label")
-                message += f"<b>{order_label} #{invoice_number}</b>\n\n"
-                created_label = Localizator.get_text(BotEntity.COMMON, "created_on_label")
-                status_label = Localizator.get_text(BotEntity.COMMON, "status_label")
-                message += f"<b>{created_label}:</b> {created_str}\n"
-                message += f"<b>{status_label}:</b> {status}\n"
-
-                # Add paid timestamp if available
-                if paid_at:
-                    paid_str = paid_at.strftime("%d.%m.%Y %H:%M")
-                    paid_info = Localizator.get_text(BotEntity.COMMON, "order_paid_on").format(paid_at=paid_str)
-                    message += f"{paid_info}\n"
-
-                # Add shipped timestamp if available
-                if shipped_at:
-                    shipped_str = shipped_at.strftime("%d.%m.%Y %H:%M")
-                    shipped_info = Localizator.get_text(BotEntity.COMMON, "order_shipped_on").format(shipped_at=shipped_str)
-                    message += f"{shipped_info}\n"
-
-                message += "\n"
-
-        elif header_type == "order_detail_user" or header_type == "purchase_history":
-            # User order detail / purchase history header with status
-            if order_status:
-                # Get status using enum value directly (UPPERCASE)
-                status = Localizator.get_text(BotEntity.COMMON, f"order_status_{order_status.value}")
-
-                created_str = created_at.strftime("%d.%m.%Y %H:%M") if created_at else "N/A"
-                order_label = Localizator.get_text(BotEntity.COMMON, "order_label")
-                message += f"<b>📋 {order_label} #{invoice_number}</b>\n\n"
-                created_label = Localizator.get_text(BotEntity.COMMON, "created_on_label")
-                status_label = Localizator.get_text(BotEntity.COMMON, "status_label")
-                message += f"<b>{created_label}:</b> {created_str}\n"
-                message += f"<b>{status_label}:</b> {status}\n"
-
-                # Add paid timestamp if available
-                if paid_at:
-                    paid_str = paid_at.strftime("%d.%m.%Y %H:%M")
-                    paid_info = Localizator.get_text(BotEntity.COMMON, "order_paid_on").format(paid_at=paid_str)
-                    message += f"{paid_info}\n"
-
-                # Add shipped timestamp if available
-                if shipped_at:
-                    shipped_str = shipped_at.strftime("%d.%m.%Y %H:%M")
-                    shipped_info = Localizator.get_text(BotEntity.COMMON, "order_shipped_on").format(shipped_at=shipped_str)
-                    message += f"{shipped_info}\n"
-
-                message += "\n"
+        message += InvoiceFormatterService._format_header(
+            header_type=header_type,
+            invoice_number=invoice_number,
+            date=date,
+            username=username,
+            user_id=user_id,
+            order_status=order_status,
+            created_at=created_at,
+            paid_at=paid_at,
+            shipped_at=shipped_at,
+            expires_at=expires_at,
+            entity=entity
+        )
 
         # === ITEMS SECTION ===
-        if items:
-            # Auto-calculate subtotal if not provided
-            if subtotal is None:
-                subtotal = sum(item['price'] * item['quantity'] for item in items)
-
-            if header_type == "partial_cancellation":
-                # Partial cancellation: Show digital (kept) and physical (refunded) separately
-                digital_items = [item for item in items if not item.get('is_physical', False)]
-                physical_items = [item for item in items if item.get('is_physical', False)]
-
-                if digital_items:
-                    digital_title = Localizator.get_text(BotEntity.COMMON, 'partial_cancel_digital_items_title')
-                    message += f"<b>{digital_title}</b>\n"
-                    for item in digital_items:
-                        line_total = item['price'] * item['quantity']
-                        message += f"{item['quantity']}x {item['name']} {currency_symbol}{line_total:.2f}\n"
-                    digital_status = Localizator.get_text(BotEntity.COMMON, 'partial_cancel_digital_status')
-                    message += f"<i>{digital_status}</i>\n\n"
-
-                if physical_items:
-                    physical_title = Localizator.get_text(BotEntity.COMMON, 'partial_cancel_physical_items_title')
-                    message += f"<b>{physical_title}</b>\n"
-                    for item in physical_items:
-                        line_total = item['price'] * item['quantity']
-                        message += f"{item['quantity']}x {item['name']} {currency_symbol}{line_total:.2f}\n"
-                    physical_status = Localizator.get_text(BotEntity.COMMON, 'partial_cancel_physical_status')
-                    message += f"<i>{physical_status}</i>\n\n"
-
-            elif separate_digital_physical:
-                # Separate digital and physical items - used for ALL order confirmations
-                digital_items = [item for item in items if not item.get('is_physical', False)]
-                physical_items = [item for item in items if item.get('is_physical', False)]
-
-                qty_unit = Localizator.get_text(BotEntity.COMMON, "quantity_unit_short")
-
-                if digital_items:
-                    digital_label = Localizator.get_text(BotEntity.COMMON, "digital_items_label")
-                    message += InvoiceFormatterService._format_items_section(
-                        items=digital_items,
-                        section_label=digital_label,
-                        currency_symbol=currency_symbol,
-                        show_private_data=show_private_data,
-                        entity=entity
-                    )
-
-                if physical_items:
-                    physical_label = Localizator.get_text(BotEntity.COMMON, "physical_items_label")
-                    message += InvoiceFormatterService._format_items_section(
-                        items=physical_items,
-                        section_label=physical_label,
-                        currency_symbol=currency_symbol,
-                        show_private_data=show_private_data,
-                        entity=entity
-                    )
-
-            else:
-                # Unified items list with optional spacing alignment (payment screens)
-                if header_type in ["admin_cancellation"]:
-                    message += f"<b>{Localizator.get_text(entity, 'admin_cancel_invoice_items')}</b>\n"
-                    message += "─────────────────────────────\n"
-
-                for item in items:
-                    line_total = item['price'] * item['quantity']
-                    if use_spacing_alignment:
-                        # Payment screen format with spacing
-                        spacing = ' ' * (20 - len(item['name']))
-                        message += f"{item['quantity']}x {item['name']}\n"
-                        message += f"  {currency_symbol}{item['price']:.2f} × {item['quantity']}{spacing}{currency_symbol}{line_total:.2f}\n"
-                    else:
-                        # Simple format
-                        message += f"{item['quantity']}x {item['name']} {currency_symbol}{item['price']:.2f}\n"
-
-                if header_type in ["admin_cancellation"]:
-                    message += "─────────────────────────────\n"
-                else:
-                    message += "\n"
+        items_output, subtotal = InvoiceFormatterService._format_items(
+            items=items,
+            header_type=header_type,
+            currency_symbol=currency_symbol,
+            show_private_data=show_private_data,
+            separate_digital_physical=separate_digital_physical,
+            use_spacing_alignment=use_spacing_alignment,
+            entity=entity
+        )
+        message += items_output
 
         # === PRICE BREAKDOWN ===
-        if header_type not in ["cancellation_refund"]:
-            # Subtotal line
-            if subtotal is not None and use_spacing_alignment:
-                subtotal_label = Localizator.get_text(entity, "admin_cancel_invoice_subtotal") if header_type == "admin_cancellation" else "Subtotal"
-                subtotal_spacing = " " * (29 - len(subtotal_label)) if header_type == "admin_cancellation" else " " * 18
-                message += f"{subtotal_label}{subtotal_spacing}{currency_symbol}{subtotal:.2f}\n"
-
-            # Shipping line (always show for physical items, even if €0.00)
-            if shipping_cost >= 0:
-                # Build shipping label with type if available
-                if shipping_type_name:
-                    shipping_display = f"Shipping ({shipping_type_name})" if use_spacing_alignment else f"Versand ({shipping_type_name})"
-                else:
-                    shipping_display = "Shipping" if use_spacing_alignment else "Versand"
-
-                if use_spacing_alignment:
-                    if header_type == "admin_cancellation":
-                        shipping_label = Localizator.get_text(entity, "admin_cancel_invoice_shipping")
-                        if shipping_type_name:
-                            shipping_label += f" ({shipping_type_name})"
-                        shipping_spacing = " " * (29 - len(shipping_label))
-                        message += f"{shipping_label}{shipping_spacing}{currency_symbol}{shipping_cost:.2f}\n"
-                    else:
-                        # Calculate spacing based on shipping_display length
-                        spacing_needed = max(26 - len(shipping_display), 1)
-                        message += f"{shipping_display}{' ' * spacing_needed}{currency_symbol}{shipping_cost:.2f}\n"
-                else:
-                    message += f"{shipping_display} {currency_symbol}{shipping_cost:.2f}\n"
-
-            # Wallet line
-            if wallet_used > 0:
-                if use_spacing_alignment:
-                    wallet_spacing = " " * 11 if header_type == "payment_screen" else " " * 20
-                    wallet_line = Localizator.get_text(entity, "payment_wallet_line").format(
-                        wallet_used=wallet_used,
-                        wallet_spacing=wallet_spacing,
-                        currency_sym=currency_symbol
-                    )
-                    message += wallet_line
-                else:
-                    message += f"Wallet-Guthaben -{currency_symbol}{wallet_used:.2f}\n"
-
-            # Separator
-            if use_spacing_alignment and header_type == "admin_cancellation":
-                message += "─────────────────────────────\n"
-            else:
-                message += "═══════════════════════\n"
-
-            # Total line
-            if total_price is not None:
-                if use_spacing_alignment:
-                    if header_type == "admin_cancellation":
-                        total_label = Localizator.get_text(entity, "admin_cancel_invoice_total")
-                        total_spacing = " " * (29 - len(total_label))
-                        message += f"<b>{total_label}{total_spacing}{currency_symbol}{total_price:.2f}</b>\n"
-                    else:
-                        # Align with Subtotal/Wallet lines (position at column ~26 for currency symbol)
-                        if crypto_payment_needed > 0:
-                            # "Zu zahlen:" = 10 chars, need 16 spaces to reach column 26
-                            message += f"<b>Zu zahlen:{' ' * 16}{currency_symbol}{crypto_payment_needed:.2f}</b>\n"
-                        else:
-                            # "Total:" = 6 chars, need 20 spaces to reach column 26
-                            message += f"<b>Total:{' ' * 20}{currency_symbol}{total_price:.2f}</b>\n"
-                else:
-                    if crypto_payment_needed > 0:
-                        message += f"<b>Zu zahlen: {currency_symbol}{crypto_payment_needed:.2f}</b>\n"
-                    else:
-                        message += f"<b>Total: {currency_symbol}{total_price:.2f}</b>\n"
-
-            # Closing separator
-            if not use_spacing_alignment or header_type not in ["admin_cancellation"]:
-                message += "═══════════════════════\n"
+        message += InvoiceFormatterService._format_pricing_breakdown(
+            header_type=header_type,
+            subtotal=subtotal,
+            shipping_cost=shipping_cost,
+            shipping_type_name=shipping_type_name,
+            wallet_used=wallet_used,
+            total_price=total_price,
+            crypto_payment_needed=crypto_payment_needed,
+            currency_symbol=currency_symbol,
+            use_spacing_alignment=use_spacing_alignment,
+            entity=entity
+        )
 
         # === PAYMENT DETAILS (Payment Screen) ===
         if header_type == "payment_screen" and payment_address:
@@ -828,27 +996,15 @@ class InvoiceFormatterService:
 
                 message += f"{reason_text}\n\n"
 
-        # === SHIPPING ADDRESS (Admin View) ===
-        if shipping_address:
-            message += f"\n{Localizator.get_text(entity, 'shipping_address_admin_label')}\n"
-            message += f"{shipping_address}\n"
-
         # === FOOTER ===
-        if footer_text:
-            message += f"\n{footer_text}\n"
-
-        if header_type == "admin_cancellation":
-            message += f"{Localizator.get_text(entity, 'admin_cancel_notice')}\n\n"
-            message += f"{Localizator.get_text(entity, 'admin_cancel_contact_support')}"
-
-        # Display cancellation reason in order history detail view (for CANCELLED_BY_ADMIN status)
-        if header_type in ["order_detail_admin", "order_detail_user"] and cancellation_reason:
-            if order_status == OrderStatus.CANCELLED_BY_ADMIN:
-                message += f"\n\n<b>{Localizator.get_text(BotEntity.COMMON, 'admin_cancel_reason_label')}</b>\n"
-                message += f"{cancellation_reason}"
-
-        if show_retention_notice:
-            import config
-            message += f"\n{Localizator.get_text(entity, 'purchased_items_retention_notice').format(retention_days=config.DATA_RETENTION_DAYS)}"
+        message += InvoiceFormatterService._format_footer(
+            header_type=header_type,
+            footer_text=footer_text,
+            shipping_address=shipping_address,
+            cancellation_reason=cancellation_reason,
+            order_status=order_status,
+            show_retention_notice=show_retention_notice,
+            entity=entity
+        )
 
         return message
