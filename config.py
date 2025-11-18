@@ -11,7 +11,22 @@ from ngrok_executor import start_ngrok
 # Load .env but don't override existing environment variables
 # This allows test scripts to set RUNTIME_ENVIRONMENT=TEST before import
 load_dotenv(".env", override=False)
-RUNTIME_ENVIRONMENT = RuntimeEnvironment(os.environ.get("RUNTIME_ENVIRONMENT"))
+
+# Parse RUNTIME_ENVIRONMENT with clear error message on misconfiguration
+try:
+    _runtime_env_str = os.environ.get("RUNTIME_ENVIRONMENT")
+    if not _runtime_env_str:
+        raise ValueError("RUNTIME_ENVIRONMENT environment variable is not set")
+    RUNTIME_ENVIRONMENT = RuntimeEnvironment(_runtime_env_str)
+except ValueError as e:
+    valid_values = [env.value for env in RuntimeEnvironment]
+    import sys
+    print(f"\n ERROR: Invalid RUNTIME_ENVIRONMENT configuration\n", file=sys.stderr)
+    print(f"Reason: {e}", file=sys.stderr)
+    print(f"Valid values: {', '.join(valid_values)}", file=sys.stderr)
+    print(f"Current value: {os.environ.get('RUNTIME_ENVIRONMENT', '(not set)')}", file=sys.stderr)
+    print(f"\nAdd to .env: RUNTIME_ENVIRONMENT={valid_values[0]}\n", file=sys.stderr)
+    sys.exit(1)
 
 # Webhook configuration (initialized lazily at startup to avoid side-effects)
 WEBHOOK_HOST = None
@@ -76,8 +91,22 @@ TOKEN = os.environ.get("TOKEN")
 # - Sending notifications (new orders, errors, system events)
 # - Startup messages
 # - Admin-specific features
-ADMIN_ID_LIST = os.environ.get("ADMIN_ID_LIST").split(',')
-ADMIN_ID_LIST = [int(admin_id) for admin_id in ADMIN_ID_LIST]
+try:
+    _admin_id_list_str = os.environ.get("ADMIN_ID_LIST")
+    if not _admin_id_list_str or len(_admin_id_list_str.strip()) == 0:
+        raise ValueError("ADMIN_ID_LIST environment variable is not set or empty")
+    ADMIN_ID_LIST = _admin_id_list_str.split(',')
+    ADMIN_ID_LIST = [int(admin_id.strip()) for admin_id in ADMIN_ID_LIST]
+    if len(ADMIN_ID_LIST) == 0:
+        raise ValueError("ADMIN_ID_LIST must contain at least one admin ID")
+except ValueError as e:
+    import sys
+    print(f"\n ERROR: Invalid ADMIN_ID_LIST configuration\n", file=sys.stderr)
+    print(f"Reason: {e}", file=sys.stderr)
+    print(f"Expected format: comma-separated list of Telegram user IDs", file=sys.stderr)
+    print(f"Example: ADMIN_ID_LIST=123456789,987654321", file=sys.stderr)
+    print(f"Current value: {os.environ.get('ADMIN_ID_LIST', '(not set)')}\n", file=sys.stderr)
+    sys.exit(1)
 
 # Generate hashes for secure verification (computed at runtime)
 # These are used for permission checks without storing hashes in env
@@ -96,11 +125,42 @@ SUPPORT_LINK = os.environ.get("SUPPORT_LINK")
 DB_ENCRYPTION = os.environ.get("DB_ENCRYPTION", False) == 'true'
 DB_NAME = os.environ.get("DB_NAME")
 DB_PASS = os.environ.get("DB_PASS")
-PAGE_ENTRIES = int(os.environ.get("PAGE_ENTRIES"))
+
+# Parse PAGE_ENTRIES with error handling
+try:
+    _page_entries_str = os.environ.get("PAGE_ENTRIES")
+    if not _page_entries_str:
+        raise ValueError("PAGE_ENTRIES environment variable is not set")
+    PAGE_ENTRIES = int(_page_entries_str)
+    if PAGE_ENTRIES <= 0:
+        raise ValueError(f"PAGE_ENTRIES must be positive (got: {PAGE_ENTRIES})")
+except ValueError as e:
+    import sys
+    print(f"\n ERROR: Invalid PAGE_ENTRIES configuration\n", file=sys.stderr)
+    print(f"Reason: {e}", file=sys.stderr)
+    print(f"Expected: Positive integer (e.g., 10, 20, 50)", file=sys.stderr)
+    print(f"Current value: {os.environ.get('PAGE_ENTRIES', '(not set)')}\n", file=sys.stderr)
+    sys.exit(1)
+
 BOT_LANGUAGE = os.environ.get("BOT_LANGUAGE", "en")  # Default to English
 SHIPPING_COUNTRY = os.environ.get("SHIPPING_COUNTRY", "de")  # Default to Germany
 MULTIBOT = os.environ.get("MULTIBOT", False) == 'true'
-CURRENCY = Currency(os.environ.get("CURRENCY"))
+
+# Parse CURRENCY with error handling
+try:
+    _currency_str = os.environ.get("CURRENCY")
+    if not _currency_str:
+        raise ValueError("CURRENCY environment variable is not set")
+    CURRENCY = Currency(_currency_str)
+except ValueError as e:
+    valid_currencies = [c.value for c in Currency]
+    import sys
+    print(f"\n ERROR: Invalid CURRENCY configuration\n", file=sys.stderr)
+    print(f"Reason: {e}", file=sys.stderr)
+    print(f"Valid values: {', '.join(valid_currencies)}", file=sys.stderr)
+    print(f"Current value: {os.environ.get('CURRENCY', '(not set)')}", file=sys.stderr)
+    print(f"\nAdd to .env: CURRENCY={valid_currencies[0]}\n", file=sys.stderr)
+    sys.exit(1)
 KRYPTO_EXPRESS_API_KEY = os.environ.get("KRYPTO_EXPRESS_API_KEY")
 KRYPTO_EXPRESS_API_URL = os.environ.get("KRYPTO_EXPRESS_API_URL")
 KRYPTO_EXPRESS_API_SECRET = os.environ.get("KRYPTO_EXPRESS_API_SECRET")
@@ -161,7 +221,7 @@ LOG_MASK_SECRETS = os.environ.get("LOG_MASK_SECRETS", "true") == "true"  # Mask 
 # Log Retention: Environment-specific defaults
 # Dev: Use DATA_RETENTION_DAYS (30 days default) for debugging
 # Prod: Use 5 days default to save disk space
-if RUNTIME_ENVIRONMENT == "dev":
+if RUNTIME_ENVIRONMENT == RuntimeEnvironment.DEV:
     LOG_RETENTION_DAYS = int(os.environ.get("LOG_RETENTION_DAYS", str(DATA_RETENTION_DAYS)))
 else:
     LOG_RETENTION_DAYS = int(os.environ.get("LOG_RETENTION_DAYS", "5"))

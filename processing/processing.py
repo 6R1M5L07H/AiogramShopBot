@@ -6,6 +6,11 @@ import re
 from fastapi import APIRouter, Request, HTTPException
 
 import config
+
+# Validate critical configuration even if processing_router is mounted standalone
+# This prevents None secret crashes when used outside of bot.py
+from utils.config_validator import validate_or_exit
+validate_or_exit(config)
 from db import get_db_session, session_commit
 from models.deposit import DepositDTO
 from models.payment import ProcessingPaymentDTO
@@ -21,13 +26,31 @@ processing_router = APIRouter(prefix=f"{config.WEBHOOK_PATH}cryptoprocessing")
 
 
 def __security_check(x_signature_header: str | None, payload: bytes):
+    """
+    Validate HMAC-SHA512 signature from payment provider webhook.
+
+    Security: Missing signature header is treated as authentication failure.
+    Only valid signatures are accepted.
+
+    Args:
+        x_signature_header: X-Signature header from webhook request
+        payload: Raw request body bytes
+
+    Returns:
+        bool: True if signature is valid, False otherwise
+    """
+    import logging
+
     if x_signature_header is None:
-        return True
-    else:
-        secret_key = config.KRYPTO_EXPRESS_API_SECRET.encode("utf-8")
-        hmac_sha512 = hmac.new(secret_key, re.sub(rb'\s+', b'', payload), hashlib.sha512)
-        generated_signature = hmac_sha512.hexdigest()
-        return hmac.compare_digest(generated_signature, x_signature_header)
+        logging.warning("Payment webhook rejected: Missing X-Signature header")
+        return False
+
+    secret_key = config.KRYPTO_EXPRESS_API_SECRET.encode("utf-8")
+    hmac_sha512 = hmac.new(secret_key, re.sub(rb'\s+', b'', payload), hashlib.sha512)
+    generated_signature = hmac_sha512.hexdigest()
+
+    # Use timing-safe comparison to prevent timing attacks
+    return hmac.compare_digest(generated_signature, x_signature_header)
 
 
 @processing_router.post("/event")
@@ -39,17 +62,17 @@ async def fetch_crypto_event(payment_dto: ProcessingPaymentDTO, request: Request
     import logging
     request_body = await request.body()
 
-    # Enhanced logging for webhook events
-    logging.info("=" * 80)
-    logging.info("🔔 KRYPTOEXPRESS WEBHOOK RECEIVED")
-    logging.info(f"Payment ID: {payment_dto.id}")
-    logging.info(f"Payment Type: {payment_dto.paymentType}")
-    logging.info(f"Is Paid: {payment_dto.isPaid}")
+    # Enhanced logging for webhook events (DEBUG level to prevent PII exposure in production logs)
+    logging.debug("=" * 80)
+    logging.debug("🔔 KRYPTOEXPRESS WEBHOOK RECEIVED")
+    logging.debug(f"Payment ID: {payment_dto.id}")
+    logging.debug(f"Payment Type: {payment_dto.paymentType}")
+    logging.debug(f"Is Paid: {payment_dto.isPaid}")
     crypto_amount_str = format_crypto_amount(payment_dto.cryptoAmount) if payment_dto.cryptoAmount is not None else "N/A"
-    logging.info(f"Crypto: {payment_dto.cryptoCurrency} | Amount: {crypto_amount_str}")
-    logging.info(f"Fiat: {payment_dto.fiatCurrency} | Amount: {payment_dto.fiatAmount if payment_dto.fiatAmount is not None else 'N/A'}")
-    logging.info(f"Raw Body: {request_body.decode('utf-8')}")
-    logging.info("=" * 80)
+    logging.debug(f"Crypto: {payment_dto.cryptoCurrency} | Amount: {crypto_amount_str}")
+    logging.debug(f"Fiat: {payment_dto.fiatCurrency} | Amount: {payment_dto.fiatAmount if payment_dto.fiatAmount is not None else 'N/A'}")
+    logging.debug(f"Raw Body: {request_body.decode('utf-8')}")
+    logging.debug("=" * 80)
 
     is_security_pass = __security_check(request.headers.get("X-Signature"), request_body)
     if is_security_pass is False:
