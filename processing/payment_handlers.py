@@ -382,8 +382,9 @@ async def _handle_second_underpayment(payment_dto, invoice, order, session):
     # Send notification to user about cancellation and wallet credit with detailed breakdown
     from utils.localizator import Localizator
 
-    # Calculate shortfall
-    required_fiat = invoice.payment_amount_fiat
+    # Calculate shortfall (use full order amount, not just second invoice)
+    # invoice.payment_amount_fiat is only the remainder, but total_paid_fiat includes both payments
+    required_fiat = order.total_price
     shortfall_fiat = required_fiat - total_paid_fiat
 
     await NotificationService.payment_cancelled_underpayment(

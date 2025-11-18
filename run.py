@@ -15,6 +15,25 @@ from utils.logging_config import setup_logging
 setup_logging()
 
 from bot import dp, main, redis
+
+# Force-silence noisy third-party loggers AFTER Aiogram initialization
+# Aiogram may reset logger levels during Bot/Dispatcher init
+import logging as log_module
+
+# Aggressively silence SQL loggers
+# Must be done AFTER bot import as Aiogram/SQLAlchemy reset logger levels
+for logger_name in ['aiosqlite', 'sqlalchemy', 'sqlalchemy.engine', 'sqlalchemy.pool', 'sqlalchemy.orm']:
+    logger = log_module.getLogger(logger_name)
+    logger.setLevel(log_module.CRITICAL)  # Only CRITICAL and above (basically nothing)
+    logger.propagate = False  # Don't propagate to root logger
+    logger.disabled = True  # Nuclear option: completely disable the logger
+    # Remove all existing handlers
+    for handler in logger.handlers[:]:
+        logger.removeHandler(handler)
+    # Add NullHandler to prevent "No handler" warnings
+    logger.addHandler(log_module.NullHandler())
+
+logging.info("🔇 SQL loggers silenced (aiosqlite, sqlalchemy.*)")
 from enums.bot_entity import BotEntity
 from middleware.database import DBSessionMiddleware
 from middleware.throttling_middleware import ThrottlingMiddleware
@@ -112,6 +131,44 @@ main_router.include_router(shipping_management_router)
 main_router.include_routers(users_routers)
 main_router.message.middleware(DBSessionMiddleware())
 main_router.callback_query.middleware(DBSessionMiddleware())
+
+# Global catch-all for web_app_data (BEFORE any routing)
+@dp.message(F.web_app_data)
+async def catch_all_web_app_data(message: Message):
+    """Log web_app_data messages without exposing sensitive data."""
+    logging.info(
+        f"WebApp data received: user_id={message.from_user.id}, "
+        f"data_length={len(message.web_app_data.data)}, "
+        f"button_text={message.web_app_data.button_text}"
+    )
+
+# Global Update Logger (for debugging)
+@dp.update.outer_middleware()
+async def log_all_updates(handler, event, data):
+    """Log ALL updates to debug what Telegram is sending."""
+    update_type = "unknown"
+    details = ""
+    user_id = None
+
+    # Extract update info
+    if hasattr(event, 'message') and event.message:
+        update_type = "message"
+        user_id = event.message.from_user.id if event.message.from_user else None
+
+        if hasattr(event.message, 'web_app_data') and event.message.web_app_data:
+            update_type = "web_app_data"
+            details = f"user={user_id}, data_length={len(event.message.web_app_data.data)}"
+            # DO NOT log data content - may contain PII (addresses, personal info)
+        elif event.message.text:
+            details = f"user={user_id}, text={event.message.text[:30]}"
+    elif hasattr(event, 'callback_query') and event.callback_query:
+        update_type = "callback_query"
+        user_id = event.callback_query.from_user.id if event.callback_query.from_user else None
+        details = f"user={user_id}, data={event.callback_query.data[:30] if event.callback_query.data else 'None'}"
+
+    logging.warning(f"[🔍 UPDATE] Type: {update_type} | {details}")
+
+    return await handler(event, data)
 
 # Register handlers at module level (not inside if __name__ == '__main__')
 # This ensures handlers are available when uvicorn worker imports this module

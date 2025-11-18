@@ -164,6 +164,13 @@ def setup_logging():
     root_logger.addHandler(file_handler)
     root_logger.addHandler(console_handler)
 
+    # Silence noisy third-party loggers
+    # SQLAlchemy and aiosqlite spam DEBUG logs - set them to WARNING unless DEBUG mode
+    if log_level > logging.DEBUG:
+        logging.getLogger('sqlalchemy.engine').setLevel(logging.WARNING)
+        logging.getLogger('sqlalchemy.pool').setLevel(logging.WARNING)
+        logging.getLogger('aiosqlite').setLevel(logging.WARNING)
+
     # Log initialization message
     logging.info("=" * 80)
     logging.info(f"Logging initialized: Level={log_level_str}, Retention={retention_days} days, Masking={'ENABLED' if mask_secrets else 'DISABLED'}")

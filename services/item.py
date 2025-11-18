@@ -96,14 +96,19 @@ class ItemService:
         with open(path_to_file, 'r', encoding='utf-8') as file:
             data = load(file)
 
+            # DEBUG: Log data structure
+            logger.info(f"📦 JSON loaded: type={type(data)}, keys={list(data.keys()) if isinstance(data, dict) else 'NOT A DICT'}")
+
             # Support both legacy format (flat items array) and new format (dict with items + subcategories)
             if isinstance(data, dict) and 'items' in data:
                 items = data['items']
                 subcategories_with_tiers = data.get('subcategories', [])
+                logger.info(f"📦 New format: {len(items)} items, type={type(items)}")
             else:
                 # Legacy format: flat array
                 items = data
                 subcategories_with_tiers = []
+                logger.info(f"📦 Legacy format: {len(items)} items, type={type(items)}")
 
             # Track shipping_tiers per subcategory (from both items and subcategories section)
             subcategory_shipping_tiers = {}
@@ -214,6 +219,9 @@ class ItemService:
             await session_commit(session)
             return Localizator.get_text(BotEntity.ADMIN, "add_items_success").format(adding_result=len(items))
         except Exception as e:
-            return Localizator.get_text(BotEntity.ADMIN, "add_items_err").format(adding_result=e)
+            import traceback
+            logger.error(f"❌ Failed to add items from {path_to_file}: {e}")
+            logger.error(f"Full traceback:\n{traceback.format_exc()}")
+            return Localizator.get_text(BotEntity.ADMIN, "add_items_err").format(adding_result=str(e))
         finally:
             Path(path_to_file).unlink(missing_ok=True)

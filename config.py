@@ -1,4 +1,5 @@
 import os
+import logging
 
 from dotenv import load_dotenv
 
@@ -29,11 +30,12 @@ def initialize_webhook_config():
     Side effects:
     - DEV mode: Starts ngrok tunnel (subprocess)
     - PROD mode: Makes HTTP request to sslipio.com
+    - Sets BOT_DOMAIN automatically from WEBHOOK_HOST if not configured
 
     Returns:
         str: The webhook URL
     """
-    global WEBHOOK_HOST, WEBHOOK_URL
+    global WEBHOOK_HOST, WEBHOOK_URL, BOT_DOMAIN
 
     # TEST mode: No webhook needed
     if RUNTIME_ENVIRONMENT == RuntimeEnvironment.TEST:
@@ -45,12 +47,24 @@ def initialize_webhook_config():
     elif RUNTIME_ENVIRONMENT == RuntimeEnvironment.DEV:
         WEBHOOK_HOST = start_ngrok()
         WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
+
+        # Auto-set BOT_DOMAIN from ngrok URL if not configured
+        if not BOT_DOMAIN:
+            BOT_DOMAIN = WEBHOOK_HOST
+            logging.info(f"[Init] BOT_DOMAIN auto-configured from ngrok: {BOT_DOMAIN}")
+
         return WEBHOOK_URL
 
     # PROD mode: Get external IP
     else:
         WEBHOOK_HOST = get_sslipio_external_url()
         WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
+
+        # Auto-set BOT_DOMAIN from external IP if not configured
+        if not BOT_DOMAIN:
+            BOT_DOMAIN = WEBHOOK_HOST
+            logging.info(f"[Init] BOT_DOMAIN auto-configured from external IP: {BOT_DOMAIN}")
+
         return WEBHOOK_URL
 
 WEBAPP_HOST = os.environ.get("WEBAPP_HOST")
@@ -130,6 +144,10 @@ REFERRAL_DATA_RETENTION_DAYS = int(os.environ.get("REFERRAL_DATA_RETENTION_DAYS"
 
 # Shipping Management Configuration
 SHIPPING_ADDRESS_SECRET = os.environ.get("SHIPPING_ADDRESS_SECRET", "")  # Validated at startup
+
+# PGP Encryption Configuration
+BOT_DOMAIN = os.environ.get("BOT_DOMAIN", "")  # Base domain for webapp URLs (e.g., "example.com" or "https://example.com")
+PGP_PUBLIC_KEY_BASE64 = os.environ.get("PGP_PUBLIC_KEY_BASE64", "")  # Base64-encoded PGP public key for client-side encryption
 
 # Strike System Configuration
 MAX_STRIKES_BEFORE_BAN = int(os.environ.get("MAX_STRIKES_BEFORE_BAN", "3"))  # Default: 3 strikes = ban

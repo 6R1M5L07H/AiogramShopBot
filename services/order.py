@@ -307,15 +307,8 @@ class OrderService:
             from repositories.invoice import InvoiceRepository
 
             invoice = await InvoiceRepository.get_by_order_id(order_id, session)
-            if invoice:
-                invoice_number = invoice.invoice_number
-            else:
-                from datetime import datetime
-                invoice_number = "N/A"
-
             await NotificationService.order_awaiting_shipment(
-                user_id=order.user_id,
-                invoice_number=invoice_number,
+                order_id=order.id,
                 session=session
             )
             logging.info(f"📢 Admin notification sent: Order {order_id} awaiting shipment")
@@ -1165,10 +1158,13 @@ class OrderService:
             return Localizator.get_text(BotEntity.USER, "shipping_upsell_no_upgrade"), kb_builder
 
         # Get upgrade option
+        # NOTE: Caller (show_shipping_upsell handler) checks for upgrade availability
+        # before calling this method, so we can safely assume upgrade exists here
         upgrade = ShippingUpsellService.get_upgrade_for_shipping_type(base_shipping_key)
 
         if not upgrade:
-            # No upgrade available - show simple message with continue button
+            # This should never happen - caller checks first
+            # Fallback to prevent crashes
             kb_builder = InlineKeyboardBuilder()
             kb_builder.button(
                 text=Localizator.get_text(BotEntity.COMMON, "continue"),

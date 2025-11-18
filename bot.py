@@ -53,6 +53,8 @@ from db import create_db_and_tables
 import uvicorn
 from fastapi.responses import JSONResponse
 from processing.processing import processing_router
+from web.mini_app_router import mini_app_router
+from web.api_router import api_router
 from services.notification import NotificationService
 from jobs.payment_timeout_job import PaymentTimeoutJob
 from jobs.database_backup_job import backup_scheduler
@@ -155,13 +157,23 @@ if config.WEBHOOK_CORS_ALLOWED_ORIGINS:
         allow_origins=config.WEBHOOK_CORS_ALLOWED_ORIGINS,
         allow_credentials=False,
         allow_methods=["POST"],  # Only allow POST for webhooks
-        allow_headers=["Content-Type", "X-Telegram-Bot-Api-Secret-Token"],
+        allow_headers=["Content-Type", "X-Telegram-Bot-Api-Secret-Token", "X-Telegram-Init-Data"],
     )
     logging.info(f"[Startup] CORS middleware enabled for origins: {config.WEBHOOK_CORS_ALLOWED_ORIGINS}")
 else:
     logging.debug("[Startup] CORS middleware disabled (no allowed origins configured)")
 
 app.include_router(processing_router)
+app.include_router(mini_app_router)
+app.include_router(api_router)
+
+
+# Health check endpoint (for Docker container monitoring)
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for Docker healthcheck."""
+    return {"status": "healthy"}
+
 
 # Initialize payment timeout job
 payment_timeout_job = PaymentTimeoutJob(check_interval_seconds=60)

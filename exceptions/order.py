@@ -67,3 +67,15 @@ class InvalidOrderStateException(OrderException):
         self.order_id = order_id
         self.current_state = current_state
         self.required_state = required_state
+
+
+class OrderOwnershipException(OrderException):
+    """Raised when user attempts to access/modify order they don't own."""
+
+    def __init__(self, order_id: int, user_id: int):
+        super().__init__(
+            f"User {user_id} does not have permission to access order {order_id}",
+            details={'order_id': order_id, 'user_id': user_id}
+        )
+        self.order_id = order_id
+        self.user_id = user_id
