@@ -38,37 +38,54 @@ def validate_shipping_secret(secret: str) -> None:
         )
 
 
-def validate_webhook_config(
-    deployment_mode: str,
-    webhook_secret: Optional[str],
-    webhook_path: Optional[str]
-) -> None:
+def validate_webhook_secret(webhook_secret: Optional[str]) -> None:
     """
-    Validate webhook configuration for webhook deployment mode.
+    Validate Telegram webhook secret token.
 
     Args:
-        deployment_mode: DEPLOYMENT_MODE value (WEBHOOK or POLLING)
         webhook_secret: WEBHOOK_SECRET_TOKEN value
-        webhook_path: WEBHOOK_PATH value
 
     Raises:
-        ConfigValidationError: If webhook mode is configured incorrectly
+        ConfigValidationError: If secret is missing, empty, or too weak
     """
-    if deployment_mode.upper() != "WEBHOOK":
-        # Polling mode - no webhook validation needed
-        return
-
-    if not webhook_secret:
+    if not webhook_secret or len(webhook_secret.strip()) == 0:
         raise ConfigValidationError(
-            "WEBHOOK_SECRET_TOKEN is required when DEPLOYMENT_MODE=WEBHOOK!\n"
+            "WEBHOOK_SECRET_TOKEN is required and must not be empty!\n"
             "Generate a secure token with: openssl rand -hex 32\n"
             "Add to .env: WEBHOOK_SECRET_TOKEN=<your-generated-token>"
         )
 
-    if not webhook_path:
+    if len(webhook_secret) < 32:
         raise ConfigValidationError(
-            "WEBHOOK_PATH is required when DEPLOYMENT_MODE=WEBHOOK!\n"
-            "Add to .env: WEBHOOK_PATH=/webhook/your-secret-path"
+            f"WEBHOOK_SECRET_TOKEN is too weak (length: {len(webhook_secret)}, minimum: 32)!\n"
+            "Generate a secure token with: openssl rand -hex 32\n"
+            "This prevents brute-force attacks on webhook authentication."
+        )
+
+
+def validate_payment_secret(payment_secret: Optional[str]) -> None:
+    """
+    Validate payment provider API secret.
+
+    Args:
+        payment_secret: KRYPTO_EXPRESS_API_SECRET value
+
+    Raises:
+        ConfigValidationError: If secret is missing, empty, or too weak
+    """
+    if not payment_secret or len(payment_secret.strip()) == 0:
+        raise ConfigValidationError(
+            "KRYPTO_EXPRESS_API_SECRET is required and must not be empty!\n"
+            "This secret is used to verify payment webhook signatures.\n"
+            "Get your API secret from your payment provider dashboard.\n"
+            "Add to .env: KRYPTO_EXPRESS_API_SECRET=<your-api-secret>"
+        )
+
+    if len(payment_secret) < 32:
+        raise ConfigValidationError(
+            f"KRYPTO_EXPRESS_API_SECRET is too weak (length: {len(payment_secret)}, minimum: 32)!\n"
+            "Payment webhook signatures require strong secrets to prevent HMAC bypass.\n"
+            "Contact your payment provider if the provided secret is too short."
         )
 
 
@@ -104,11 +121,12 @@ def validate_startup_config(config_module) -> None:
     # Validate shipping secret
     validate_shipping_secret(config_module.SHIPPING_ADDRESS_SECRET)
 
-    # Validate webhook config if in webhook mode
-    deployment_mode = getattr(config_module, 'DEPLOYMENT_MODE', 'POLLING')
+    # Validate webhook secrets (always required - system runs on webhooks)
     webhook_secret = getattr(config_module, 'WEBHOOK_SECRET_TOKEN', None)
-    webhook_path = getattr(config_module, 'WEBHOOK_PATH', None)
-    validate_webhook_config(deployment_mode, webhook_secret, webhook_path)
+    validate_webhook_secret(webhook_secret)
+
+    payment_secret = getattr(config_module, 'KRYPTO_EXPRESS_API_SECRET', None)
+    validate_payment_secret(payment_secret)
 
     # Validate bot token
     token = getattr(config_module, 'TOKEN', None)

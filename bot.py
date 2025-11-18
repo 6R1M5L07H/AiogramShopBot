@@ -182,12 +182,21 @@ payment_timeout_job = PaymentTimeoutJob(check_interval_seconds=60)
 @app.post(config.WEBHOOK_PATH)
 async def webhook(request: Request):
     secret_token = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
-    if secret_token != config.WEBHOOK_SECRET_TOKEN:
+
+    # Security: Reject requests without secret token header
+    if secret_token is None:
+        logging.warning("Webhook request rejected: Missing X-Telegram-Bot-Api-Secret-Token header")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
+
+    # Security: Use timing-safe comparison to prevent timing attacks
+    import secrets
+    if not secrets.compare_digest(secret_token, config.WEBHOOK_SECRET_TOKEN):
+        logging.warning("Webhook request rejected: Invalid secret token")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
 
     try:
         update_data = await request.json()
-        logging.info(f"📥 Webhook received update: {update_data}")
+        logging.debug(f"📥 Webhook received update: {update_data}")
         await dp.feed_webhook_update(bot, update_data)
         logging.info(f"✅ Webhook processed successfully")
         return {"status": "ok"}
