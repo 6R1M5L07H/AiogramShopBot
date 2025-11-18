@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 ## 2025-11-18
 
+### Security Fixes
+
+**Webhook Authentication**
+- Fixed Telegram webhook bypass vulnerability - requests without X-Telegram-Bot-Api-Secret-Token header now rejected
+- Fixed payment webhook signature bypass - requests without X-Signature header now rejected
+- Added timing-safe comparison for webhook secret token validation to prevent timing attacks
+- Added startup validation for webhook secrets to prevent empty string bypasses
+- Enforced minimum 32-character length requirement for all cryptographic secrets
+
+**Configuration Hardening**
+- Fixed RUNTIME_ENVIRONMENT enum comparison bug in log retention configuration
+- Added comprehensive error handling for all environment variable parsing
+- Added validation for ADMIN_ID_LIST, PAGE_ENTRIES, and CURRENCY with actionable error messages
+- Improved fail-fast behavior with clear guidance on misconfiguration
+
+**Logging Security**
+- Moved sensitive webhook payload logging to DEBUG level to prevent PII exposure in production
+- Restricted Telegram update logging to DEBUG level
+- Restricted payment webhook details logging to DEBUG level
+
 ### PGP Shipping Address Encryption
 
 **Zero-Knowledge Shipping**
