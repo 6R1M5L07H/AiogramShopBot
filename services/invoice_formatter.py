@@ -270,12 +270,13 @@ class InvoiceFormatterService:
 
         # Wallet usage line
         if show_wallet_line and wallet_used > 0:
-            # "Wallet-Guthaben" is in payment_wallet_line localization key
-            message += f"Wallet-Guthaben -{currency_symbol}{wallet_used:.2f}\n"
+            wallet_label = Localizator.get_text(BotEntity.USER, "wallet_balance_label")
+            message += f"{wallet_label} -{currency_symbol}{wallet_used:.2f}\n"
 
         # Total
         if crypto_payment_needed > 0:
-            message += f"\n<b>Zu zahlen: {currency_symbol}{crypto_payment_needed:.2f}</b>\n"
+            amount_due_label = Localizator.get_text(BotEntity.USER, "amount_due_label")
+            message += f"\n<b>{amount_due_label}: {currency_symbol}{crypto_payment_needed:.2f}</b>\n"
         else:
             message += f"\n<b>Total: {currency_symbol}{total_price:.2f}</b>\n"
 
@@ -682,7 +683,8 @@ class InvoiceFormatterService:
                     )
                     message += wallet_line
                 else:
-                    message += f"Wallet-Guthaben -{currency_symbol}{wallet_used:.2f}\n"
+                    wallet_label = Localizator.get_text(BotEntity.USER, "wallet_balance_label")
+                    message += f"{wallet_label} -{currency_symbol}{wallet_used:.2f}\n"
 
             # Separator
             if use_spacing_alignment and header_type == "admin_cancellation":
@@ -700,14 +702,16 @@ class InvoiceFormatterService:
                     else:
                         # Align with Subtotal/Wallet lines (position at column ~26 for currency symbol)
                         if crypto_payment_needed > 0:
+                            amount_due_label = Localizator.get_text(BotEntity.USER, "amount_due_label")
                             # "Zu zahlen:" = 10 chars, need 16 spaces to reach column 26
-                            message += f"<b>Zu zahlen:{' ' * 16}{currency_symbol}{crypto_payment_needed:.2f}</b>\n"
+                            message += f"<b>{amount_due_label}:{' ' * 16}{currency_symbol}{crypto_payment_needed:.2f}</b>\n"
                         else:
                             # "Total:" = 6 chars, need 20 spaces to reach column 26
                             message += f"<b>Total:{' ' * 20}{currency_symbol}{total_price:.2f}</b>\n"
                 else:
                     if crypto_payment_needed > 0:
-                        message += f"<b>Zu zahlen: {currency_symbol}{crypto_payment_needed:.2f}</b>\n"
+                        amount_due_label = Localizator.get_text(BotEntity.USER, "amount_due_label")
+                        message += f"<b>{amount_due_label}: {currency_symbol}{crypto_payment_needed:.2f}</b>\n"
                     else:
                         message += f"<b>Total: {currency_symbol}{total_price:.2f}</b>\n"
 

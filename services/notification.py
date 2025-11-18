@@ -693,20 +693,40 @@ class NotificationService:
         await NotificationService.send_to_user(msg, user.telegram_id)
 
     @staticmethod
-    async def order_awaiting_shipment(user_id: int, invoice_number: str, session: AsyncSession | Session):
+    async def order_awaiting_shipment(order_id: int, session: AsyncSession | Session):
         """
         Sends notification to admins when a new order with physical items is awaiting shipment.
+        Shows basic order info with button to view details in shipping management.
         """
+        from repositories.order import OrderRepository
         from repositories.user import UserRepository
+        from repositories.invoice import InvoiceRepository
 
-        user = await UserRepository.get_by_id(user_id, session)
+        # Load basic order info
+        order_dto = await OrderRepository.get_by_id(order_id, session)
+        user = await UserRepository.get_by_id(order_dto.user_id, session)
+        invoice = await InvoiceRepository.get_by_order_id(order_id, session)
+
+        # Format username
         username = f"@{safe_html(user.telegram_username)}" if user.telegram_username else f"ID:{user.telegram_id}"
 
+        # Simple notification message
         msg = Localizator.get_text(BotEntity.ADMIN, "order_awaiting_shipment_notification").format(
-            invoice_number=invoice_number,
+            invoice_number=invoice.invoice_number,
             username=username
         )
-        await NotificationService.send_to_admins(msg, None)
+
+        # Add button to shipping management (direct to order detail view)
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+        from callbacks import ShippingManagementCallback
+
+        kb_builder = InlineKeyboardBuilder()
+        kb_builder.button(
+            text=Localizator.get_text(BotEntity.ADMIN, "view_order_details_button"),
+            callback_data=ShippingManagementCallback.create(level=2, order_id=order_id)
+        )
+
+        await NotificationService.send_to_admins(msg, kb_builder.as_markup())
 
     @staticmethod
     async def notify_user_banned(user, strike_count: int):
@@ -769,3 +789,66 @@ class NotificationService:
             strike_count=strike_count
         )
         await NotificationService.send_to_user(msg, user.telegram_id)
+
+    @staticmethod
+    async def notify_admins_api_error(
+        correlation_id: str,
+        endpoint: str,
+        user_id: int,
+        order_id: int | None,
+        exception: Exception,
+        traceback_str: str
+    ):
+        """
+        Send API error notification to admins with debugging information.
+
+        Args:
+            correlation_id: Unique ID for request tracing
+            endpoint: API endpoint that failed
+            user_id: Telegram user ID
+            order_id: Order ID (if applicable)
+            exception: The exception that was raised
+            traceback_str: Full stack trace
+
+        Example:
+            await NotificationService.notify_admins_api_error(
+                correlation_id="20251118-143022-a3f9d2c1",
+                endpoint="/api/shipping/address",
+                user_id=123456,
+                order_id=789,
+                exception=OrderNotFoundException(789),
+                traceback_str=traceback.format_exc()
+            )
+        """
+        from datetime import datetime
+
+        order_info = f"Order: {order_id}\n" if order_id else ""
+
+        message = (
+            f"🚨 <b>API Error</b>\n\n"
+            f"<b>Correlation-ID:</b> <code>{correlation_id}</code>\n"
+            f"<b>Timestamp:</b> {datetime.now().isoformat()}\n"
+            f"<b>Endpoint:</b> {endpoint}\n"
+            f"<b>User:</b> {user_id}\n"
+            f"{order_info}\n"
+            f"<b>Exception:</b> {type(exception).__name__}\n"
+            f"<b>Message:</b> {str(exception)}\n\n"
+            f"<b>Traceback:</b>\n<pre>{safe_html(traceback_str[:3000])}</pre>"
+        )
+
+        # If traceback too long, send as file
+        if len(traceback_str) > 3000:
+            file_content = (
+                f"Correlation-ID: {correlation_id}\n"
+                f"Timestamp: {datetime.now().isoformat()}\n"
+                f"Endpoint: {endpoint}\n"
+                f"User: {user_id}\n"
+                f"{order_info}\n"
+                f"Exception: {type(exception).__name__}: {str(exception)}\n\n"
+                f"Full Traceback:\n{traceback_str}"
+            )
+            byte_array = bytearray(file_content, 'utf-8')
+            document = BufferedInputFile(byte_array, f"api_error_{correlation_id}.txt")
+            await NotificationService.send_to_admins(document, None)
+        else:
+            await NotificationService.send_to_admins(message, None)

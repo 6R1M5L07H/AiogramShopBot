@@ -100,7 +100,7 @@ class ShippingService:
         session: AsyncSession | Session
     ):
         """
-        Encrypt and save shipping address for an order.
+        Encrypt and save shipping address for an order (AES mode).
 
         Args:
             order_id: Order ID
@@ -115,25 +115,107 @@ class ShippingService:
             order_id=order_id,
             encrypted_address=encrypted,
             nonce=nonce,
-            tag=tag
+            tag=tag,
+            encryption_mode='aes'
         )
         session.add(shipping_address)
         await session_commit(session)
 
     @staticmethod
+    async def save_encrypted_shipping_address(
+        order_id: int,
+        encrypted_address: str,
+        encryption_mode: str,
+        user_id: int,
+        session: AsyncSession | Session
+    ):
+        """
+        Save PGP/AES encrypted shipping address from WebApp.
+
+        Business logic:
+        - Validates order ownership (user must own the order)
+        - Validates order status (only PENDING_PAYMENT_AND_ADDRESS or PENDING_PAYMENT)
+        - Stores encrypted address (no decryption - zero-knowledge)
+
+        Args:
+            order_id: Order ID
+            encrypted_address: PGP or AES encrypted address string
+            encryption_mode: "pgp" or "aes"
+            user_id: Telegram user ID (for ownership verification)
+            session: Database session
+
+        Raises:
+            OrderNotFoundException: If order not found
+            OrderOwnershipException: If user doesn't own the order
+            InvalidOrderStateException: If order status doesn't allow address changes
+        """
+        from repositories.order import OrderRepository
+        from enums.order_status import OrderStatus
+        from exceptions.order import (
+            OrderNotFoundException,
+            OrderOwnershipException,
+            InvalidOrderStateException
+        )
+
+        # Get order (with error handling)
+        try:
+            order_dto = await OrderRepository.get_by_id(order_id, session)
+        except Exception:
+            raise OrderNotFoundException(order_id)
+
+        # Verify order ownership (compare telegram_id with telegram_id)
+        from repositories.user import UserRepository
+        user = await UserRepository.get_by_id(order_dto.user_id, session)
+        if user.telegram_id != user_id:
+            raise OrderOwnershipException(order_id, user_id)
+
+        # Verify order status allows address changes (one-time submission only)
+        if order_dto.status != OrderStatus.PENDING_PAYMENT_AND_ADDRESS:
+            raise InvalidOrderStateException(
+                order_id,
+                current_state=order_dto.status.value,
+                required_state=OrderStatus.PENDING_PAYMENT_AND_ADDRESS.value
+            )
+
+        # Save encrypted address to database
+        # NOTE: We store the entire PGP message including headers
+        # Format: "-----BEGIN PGP MESSAGE-----\n...\n-----END PGP MESSAGE-----"
+        shipping_address = ShippingAddress(
+            order_id=order_id,
+            encrypted_address=encrypted_address.encode('utf-8'),
+            nonce=b'',  # Not used for PGP mode
+            tag=b'',    # Not used for PGP mode
+            encryption_mode=encryption_mode
+        )
+        session.add(shipping_address)
+        await session_commit(session)
+
+        # Update order status: address requirement fulfilled
+        await OrderRepository.update_status(
+            order_id,
+            OrderStatus.PENDING_PAYMENT,
+            session
+        )
+        await session_commit(session)
+
+    @staticmethod
     async def get_shipping_address(
         order_id: int,
-        session: AsyncSession | Session
+        session: AsyncSession | Session,
+        return_encrypted_for_pgp: bool = False
     ) -> str | None:
         """
-        Retrieve and decrypt shipping address for an order.
+        Retrieve shipping address for an order.
 
         Args:
             order_id: Order ID
             session: Database session
+            return_encrypted_for_pgp: If True, return PGP addresses encrypted (for admin display)
 
         Returns:
-            Decrypted plain text address or None if not found
+            - AES mode: Decrypted plaintext address
+            - PGP mode: Encrypted PGP block (if return_encrypted_for_pgp=True) or placeholder
+            - None if not found
         """
         stmt = select(ShippingAddress).where(ShippingAddress.order_id == order_id)
         result = await session_execute(stmt, session)
@@ -142,7 +224,16 @@ class ShippingService:
         if not shipping_address:
             return None
 
-        # Decrypt and return
+        # PGP mode: Return encrypted block for admin display
+        if shipping_address.encryption_mode == 'pgp':
+            if return_encrypted_for_pgp:
+                return shipping_address.encrypted_address.decode('utf-8')
+            else:
+                from utils.localizator import Localizator
+                from enums.bot_entity import BotEntity
+                return Localizator.get_text(BotEntity.ADMIN, "pgp_encrypted_placeholder")
+
+        # AES mode: Decrypt and return
         try:
             return ShippingService.decrypt_address(
                 shipping_address.encrypted_address,
@@ -154,8 +245,10 @@ class ShippingService:
             # Decryption failed (wrong key, corrupted data, etc.)
             # Log error and return fallback message
             import logging
+            from utils.localizator import Localizator
+            from enums.bot_entity import BotEntity
             logging.error(f"Failed to decrypt shipping address for order {order_id}: {e}")
-            return "[DECRYPTION FAILED - Encryption key may have changed or data is corrupted]"
+            return Localizator.get_text(BotEntity.ADMIN, "decryption_failed_message")
 
     @staticmethod
     async def delete_shipping_address(
@@ -269,13 +362,18 @@ class ShippingService:
         }
 
     @staticmethod
-    async def get_order_details_data(order_id: int, session: AsyncSession | Session) -> dict | None:
+    async def get_order_details_data(
+        order_id: int,
+        session: AsyncSession | Session,
+        return_encrypted_pgp: bool = True
+    ) -> dict | None:
         """
         Get complete order details including items, invoice, user, and shipping address.
 
         Args:
             order_id: Order ID
             session: Database session
+            return_encrypted_pgp: If True, return PGP addresses encrypted (for admin view)
 
         Returns:
             Dict with order details or None if order not found
@@ -298,7 +396,11 @@ class ShippingService:
 
         invoice = await InvoiceRepository.get_by_order_id(order_id, session)
         user = await UserRepository.get_by_id(order.user_id, session)
-        shipping_address = await ShippingService.get_shipping_address(order_id, session)
+        shipping_address = await ShippingService.get_shipping_address(
+            order_id,
+            session,
+            return_encrypted_for_pgp=return_encrypted_pgp
+        )
 
         # Format user display (escape for HTML safety)
         username = f"@{safe_html(user.telegram_username)}" if user.telegram_username else str(user.telegram_id)

@@ -143,6 +143,14 @@ async def _handle_physical_items_flow(
         retention_days=config.DATA_RETENTION_DAYS
     )
     kb_builder = InlineKeyboardBuilder()
+
+    # Try to add PGP-encrypted input button (if configured)
+    from handlers.user.shipping_handlers import get_pgp_input_button
+    pgp_button = get_pgp_input_button(order_id=order.id, lang=config.BOT_LANGUAGE)
+    if pgp_button:
+        # Merge PGP button into keyboard
+        kb_builder.attach(pgp_button)
+
     kb_builder.button(
         text=Localizator.get_text(BotEntity.COMMON, "cancel"),
         callback_data=OrderCallback.create(level=4, order_id=order.id)
@@ -728,7 +736,17 @@ async def show_shipping_upsell(**kwargs):
         await process_payment(callback=callback, session=session, state=state, order_id=order_id)
         return
 
-    # Show upsell screen
+    # Check if upgrade is available
+    from services.shipping_upsell import ShippingUpsellService
+    order = await OrderRepository.get_by_id(order_id, session)
+    upgrade = ShippingUpsellService.get_upgrade_for_shipping_type(order.shipping_type_key)
+
+    if not upgrade:
+        # No upgrade available - skip upsell screen and go directly to payment
+        await process_payment(callback=callback, session=session, state=state, order_id=order_id)
+        return
+
+    # Show upsell screen (upgrade available)
     msg, kb_builder = await OrderService.show_shipping_upsell_screen(order_id, session)
     await callback.message.edit_text(text=msg, reply_markup=kb_builder.as_markup())
 

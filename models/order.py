@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from pydantic import BaseModel
-from sqlalchemy import Column, Integer, Float, DateTime, ForeignKey, String, func, CheckConstraint, Enum as SQLEnum, Text
+from sqlalchemy import Column, Integer, Float, DateTime, ForeignKey, String, func, CheckConstraint, Enum as SQLEnum, Text, LargeBinary
 from sqlalchemy.orm import relationship
 
 from enums.currency import Currency
@@ -26,6 +26,11 @@ class Order(Base):
     # Shipping Fields
     shipping_cost = Column(Float, nullable=False, default=0.0)
     shipping_type_key = Column(String(100), nullable=True)  # Key referencing shipping_types config (e.g., "paeckchen", "paket_2kg")
+
+    # Unified Shipping Address Encryption (Migration 014)
+    # Replaces shipping_addresses table with unified storage
+    encryption_mode = Column(Text, nullable=True)  # 'aes-gcm' | 'pgp'
+    encrypted_payload = Column(LargeBinary, nullable=True)  # Combined ciphertext+nonce+tag (AES) or PGP message
 
     # Payment Validation Fields
     total_paid_crypto = Column(Float, nullable=False, default=0.0)  # Sum of all partial payments

@@ -2,6 +2,40 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2025-11-18
+
+### PGP Shipping Address Encryption
+
+**Zero-Knowledge Shipping**
+- Client-side PGP encryption for shipping addresses prevents server from accessing plaintext data
+- Telegram Mini App encrypts addresses in browser before submission via HTTP POST API
+- Addresses stored as encrypted PGP messages, only decryptable with admin private key
+- Configurable automatic deletion after specified retention period for data minimization
+
+**Security Architecture**
+- Telegram WebApp initData HMAC validation prevents unauthorized submissions
+- Order ownership verification ensures users can only submit addresses for their own orders
+- One-time address submission with order state validation prevents replay attacks
+- Offline decryption tool allows admins to decrypt addresses without server access
+
+**Admin Workflow**
+- Shipment notifications display encrypted PGP messages in copyable code blocks
+- Admin panel shows full order details with PGP-encrypted addresses
+- Shipping upsell screen skipped when no upgrade options available
+- Simplified notification flow with direct navigation to order details
+
+**Technical Foundation**
+- Dual encryption mode support: PGP for zero-knowledge, AES-GCM for server-side fallback
+- Database migration adds encryption_mode column to shipping_addresses table
+- SQLCipher compatibility ensured with proper session handling and URL format
+- All user-facing strings moved to localization files for internationalization
+
+**Developer Experience**
+- BOT_DOMAIN auto-configuration with ngrok detection for local development
+- Production deployment script with safety confirmation
+- Health check endpoint for Docker container monitoring
+- Comprehensive documentation of SQLCipher backup issues for future resolution
+
 ## 2025-11-14
 
 ### Tiered Shipping with Dynamic Upselling

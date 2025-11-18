@@ -1334,6 +1334,14 @@ class CartService:
                 retention_days=config.DATA_RETENTION_DAYS
             )
             kb_builder = InlineKeyboardBuilder()
+
+            # Try to add PGP-encrypted input button (if configured)
+            from handlers.user.shipping_handlers import get_pgp_input_button
+            pgp_button = get_pgp_input_button(order_id=0, lang=config.BOT_LANGUAGE)
+            if pgp_button:
+                # Merge PGP button into keyboard
+                kb_builder.attach(pgp_button)
+
             kb_builder.button(
                 text=Localizator.get_text(BotEntity.COMMON, "cancel"),
                 callback_data=CartCallback.create(0)
@@ -1703,6 +1711,7 @@ class CartService:
         data = await state.get_data()
         order_id = data.get("order_id")
         shipping_address = data.get("shipping_address")
+        encryption_mode = data.get("encryption_mode")  # "pgp" or None
 
         if not order_id:
             kb_builder.row(CartCallback.create(0).get_back_button(0))
@@ -1730,10 +1739,15 @@ class CartService:
                 session=session
             )
 
-            # 5. Save shipping address if provided
+            # 5. Save shipping address if provided (supports both PGP and AES-GCM)
             if shipping_address:
-                from services.shipping import ShippingService
-                await ShippingService.save_shipping_address(order.id, shipping_address, session)
+                from services.encryption_wrapper import EncryptionWrapper
+                await EncryptionWrapper.save_shipping_address_unified(
+                    order_id=order.id,
+                    plaintext_or_pgp=shipping_address,
+                    encryption_mode=encryption_mode or "aes-gcm",  # Default to AES-GCM for plaintext
+                    session=session
+                )
 
             # 6. Clear cart (items already reserved in Level 3)
             cart_items = await CartItemRepository.get_all_by_user_id(user.id, session)
