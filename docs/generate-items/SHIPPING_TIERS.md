@@ -190,4 +190,4 @@ print(get_shipping_type_for_quantity(tiers, 10))  # → "paeckchen"
 - `utils/shipping_validation.py` - Validation functions
 - `utils/shipping_types_loader.py` - Loads shipping_types/{country}.json
 - `migrations/add_shipping_tiers.py` - Database migration
-- `docs/generate-items/shipping_types/{country}.json` - Shipping type definitions
+- `shipping_types/{country}.json` - Shipping type definitions

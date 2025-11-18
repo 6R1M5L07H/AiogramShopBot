@@ -104,6 +104,7 @@ class TestPricingService:
             session=session
         )
 
+        # Classic tiered pricing: 3 items at tier 1 price (11.0 EUR/item)
         assert result.total == 33.0  # 3 × 11.0
         assert result.average_unit_price == 11.0
         assert len(result.breakdown) == 1
@@ -135,13 +136,15 @@ class TestPricingService:
             session=session
         )
 
-        # DP should find optimal: 10 × 9.0 + 2 × 11.0 = 90 + 22 = 112
-        assert result.total == 112.0
-        assert result.average_unit_price == round(112.0 / 12, 2)
+        # Classic tiered pricing: 12 items reach tier 3 (10+ items @ 9.0 EUR)
+        # All 12 items: 12 × 9.0 = 108.0 EUR
+        assert result.total == 108.0
+        assert result.average_unit_price == 9.0
 
-        # Check breakdown contains both tiers
-        quantities = [item.quantity for item in result.breakdown]
-        assert sum(quantities) == 12
+        # Classic tiered pricing always has exactly 1 breakdown entry
+        assert len(result.breakdown) == 1
+        assert result.breakdown[0].quantity == 12
+        assert result.breakdown[0].unit_price == 9.0
 
     @pytest.mark.asyncio
     async def test_large_quantity(self, session, test_subcategory, test_item_with_tiers):
@@ -162,11 +165,15 @@ class TestPricingService:
     @pytest.mark.asyncio
     async def test_non_canonical_tiers(self, session, test_category, test_subcategory):
         """
-        Test non-canonical tier structure where DP finds better solution than greedy.
+        Test non-canonical tier structure with classic tiered pricing.
 
-        Example: 6 items with tiers [1→€10, 3→€7, 5→€9]
-        - Greedy: 5×9 + 1×10 = 45 + 10 = 55 EUR
-        - DP:     2×3×7 = 14 + 14 = 42 EUR (saves 13 EUR!)
+        With classic tiered pricing, quantity 6 items with tiers [1→€10, 3→€7, 5→€9]
+        reaches tier "5→€9", so all 6 items are priced at 9 EUR each.
+
+        Result: 6 × €9 = €54
+
+        Note: This differs from incremental/DP pricing which could optimize to €42.
+        Classic pricing is simpler and standard in e-commerce.
         """
         # Create new subcategory for this test
         subcat = Subcategory(name="Non-canonical Test")
@@ -204,9 +211,13 @@ class TestPricingService:
             session=session
         )
 
-        # DP should find 2×3 = 42 EUR (not greedy's 5+1 = 55 EUR)
-        assert result.total == 42.0, f"Expected 42.0 EUR (2×3 tiers), got {result.total}"
-        assert result.average_unit_price == 7.0
+        # Classic tiered pricing: 6 items reach tier "5→€9"
+        # All 6 items: 6 × 9.0 = 54.0 EUR
+        assert result.total == 54.0, f"Expected 54.0 EUR (6×9), got {result.total}"
+        assert result.average_unit_price == 9.0
+        assert len(result.breakdown) == 1
+        assert result.breakdown[0].quantity == 6
+        assert result.breakdown[0].unit_price == 9.0
 
     @pytest.mark.asyncio
     async def test_no_tiers_flat_pricing(self, session, test_category):
@@ -325,13 +336,12 @@ class TestPricingService:
         assert len(result.breakdown) == 1
 
     @pytest.mark.asyncio
-    async def test_dp_state_isolation(self, session, test_category, test_subcategory, test_item_with_tiers):
+    async def test_calculation_idempotence(self, session, test_category, test_subcategory, test_item_with_tiers):
         """
-        Test that DP states are isolated (no shared DTO mutation).
+        Test that calculation is idempotent (repeated calls produce identical results).
 
-        Regression test for shallow copy bug where prev_breakdown.copy()
-        only copied the list, not the DTOs inside, causing mutations to
-        propagate across DP states and corrupt results.
+        Regression test to ensure calculations are consistent and don't have
+        hidden state or mutation bugs.
         """
         # Calculate for quantity 10
         result_10 = await PricingService.calculate_optimal_price(
@@ -340,7 +350,7 @@ class TestPricingService:
             session=session
         )
 
-        # Calculate for quantity 12 (which reuses dp[10] internally)
+        # Calculate for quantity 12
         result_12 = await PricingService.calculate_optimal_price(
             subcategory_id=test_subcategory.id,
             quantity=12,
@@ -354,7 +364,7 @@ class TestPricingService:
             session=session
         )
 
-        # Verify results are identical (no mutation from qty 12 calculation)
+        # Verify results are identical (idempotent)
         assert result_10.total == result_10_again.total
         assert result_10.average_unit_price == result_10_again.average_unit_price
         assert len(result_10.breakdown) == len(result_10_again.breakdown)
@@ -365,8 +375,8 @@ class TestPricingService:
             assert orig.total == again.total
 
     @pytest.mark.asyncio
-    async def test_format_tier_breakdown_single_tier(self):
-        """Test formatting for single tier (simple format)"""
+    async def test_format_tier_breakdown(self):
+        """Test formatting for classic tiered pricing (always single breakdown entry)"""
         from models.price_tier import TierPricingResultDTO, TierBreakdownItemDTO
 
         pricing_result = TierPricingResultDTO(
@@ -380,26 +390,4 @@ class TestPricingService:
         formatted = PricingService.format_tier_breakdown(pricing_result)
 
         assert "5 × 11.00 € = 55.00 €" in formatted
-        assert "Staffelpreise:" not in formatted  # No header for single tier
-
-    @pytest.mark.asyncio
-    async def test_format_tier_breakdown_multiple_tiers(self):
-        """Test formatting for multiple tiers (detailed format)"""
-        from models.price_tier import TierPricingResultDTO, TierBreakdownItemDTO
-
-        pricing_result = TierPricingResultDTO(
-            total=112.0,
-            average_unit_price=9.33,
-            breakdown=[
-                TierBreakdownItemDTO(quantity=10, unit_price=9.0, total=90.0),
-                TierBreakdownItemDTO(quantity=2, unit_price=11.0, total=22.0),
-            ]
-        )
-
-        formatted = PricingService.format_tier_breakdown(pricing_result)
-
-        assert "<b>Staffelpreise:</b>" in formatted
-        assert "10 ×  9.00 € =   90.00 €" in formatted or "10 ×" in formatted
-        assert "2 × 11.00 € =   22.00 €" in formatted or "2 ×" in formatted
-        assert "112.00" in formatted
-        assert "9.33" in formatted
+        assert "Staffelpreise:" not in formatted  # Simple format, no header

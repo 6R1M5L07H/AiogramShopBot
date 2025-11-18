@@ -19,25 +19,26 @@ class PricingService:
         session: Session | AsyncSession
     ) -> TierPricingResultDTO:
         """
-        Calculate price using incremental tiered pricing.
+        Calculate price using classic tiered pricing.
 
-        Incremental pricing means each tier applies only to items within its quantity range,
-        not to all items retroactively. This is the original design.
+        Classic tiered pricing means all items receive the lowest unit price from the
+        highest tier reached by the quantity. This is standard e-commerce behavior.
 
         Algorithm:
         1. Sort tiers by min_quantity ascending
-        2. For each tier, calculate how many items fall into that tier
-        3. Apply tier's unit_price only to items in that tier's range
-        4. Sum up all tier costs
+        2. Find the highest tier where min_quantity <= quantity
+        3. Apply that tier's unit_price to ALL items
 
-        Example with 17 items and tiers [1→€11, 5→€10, 10→€9]:
-            - Items 1-4:   4 × €11 = €44  (Tier 1)
-            - Items 5-9:   5 × €10 = €50  (Tier 2)
-            - Items 10-17: 8 × €9  = €72  (Tier 3)
-            - Total: €166, Average: €9.76/item
+        Example with 24 items and tiers [1→€11, 5→€10, 16→€9, 26→€8]:
+            - Quantity 24 reaches tier "16→€9" (but not tier "26→€8")
+            - All 24 items: 24 × €9 = €216
+            - Simple and transparent for customers
 
-        Contrast with "classic" staffelpreise (all 17 × €9 = €153):
-            Incremental rewards bulk buyers while charging full price for initial items.
+        Benefits over incremental pricing:
+        - Easier to understand for customers
+        - Standard e-commerce behavior
+        - Stronger incentive to reach next tier (clear jumps)
+        - Simpler invoice display
 
         Args:
             subcategory_id: ID of the subcategory
@@ -45,7 +46,7 @@ class PricingService:
             session: Database session
 
         Returns:
-            TierPricingResultDTO with total, average, and breakdown per tier
+            TierPricingResultDTO with total, average (same as unit), and single breakdown item
 
         Raises:
             ItemNotFoundException: If no items exist in subcategory
@@ -88,67 +89,30 @@ class PricingService:
                 )]
             )
 
-        # Incremental Tiered Pricing Algorithm
+        # Classic Tiered Pricing Algorithm
         sorted_tiers = sorted(tiers, key=lambda t: t.min_quantity)
 
-        breakdown = []
-        total_cost = 0.0
-        remaining_qty = quantity
-        current_item_index = 1  # Track which item number we're on
-
-        for i, tier in enumerate(sorted_tiers):
-            # Determine how many items fall into this tier
-            tier_start = tier.min_quantity
-
-            # Find tier end (next tier's start - 1, or infinity for last tier)
-            if i < len(sorted_tiers) - 1:
-                tier_end = sorted_tiers[i + 1].min_quantity - 1
+        # Find the highest tier that applies to this quantity
+        applicable_tier = sorted_tiers[0]  # Default to first tier
+        for tier in sorted_tiers:
+            if tier.min_quantity <= quantity:
+                applicable_tier = tier
             else:
-                # Last tier - takes all remaining items
-                tier_end = None  # Unbounded
-
-            # Calculate items in this tier
-            if current_item_index < tier_start:
-                # We haven't reached this tier yet, skip to it
-                current_item_index = tier_start
-
-            # How many items are priced at this tier?
-            if tier_end is None:
-                # Last tier - all remaining items
-                items_in_tier = quantity - current_item_index + 1
-            else:
-                # Limited tier - don't exceed tier_end
-                items_in_tier = min(quantity - current_item_index + 1, tier_end - current_item_index + 1)
-
-            # Stop if no more items to process
-            if items_in_tier <= 0:
+                # Tiers are sorted ascending, so we can stop here
                 break
 
-            # Calculate cost for this tier
-            tier_cost = items_in_tier * tier.unit_price
-            total_cost += tier_cost
-
-            # Add to breakdown
-            breakdown.append(TierBreakdownItemDTO(
-                quantity=items_in_tier,
-                unit_price=round(tier.unit_price, 2),
-                total=round(tier_cost, 2)
-            ))
-
-            # Move to next items
-            current_item_index += items_in_tier
-
-            # Stop if we've processed all items
-            if current_item_index > quantity:
-                break
-
-        total = round(total_cost, 2)
-        average_unit_price = round(total / quantity, 2)
+        # Apply the tier's unit price to ALL items
+        unit_price = round(applicable_tier.unit_price, 2)
+        total = round(unit_price * quantity, 2)
 
         return TierPricingResultDTO(
             total=total,
-            average_unit_price=average_unit_price,
-            breakdown=breakdown
+            average_unit_price=unit_price,
+            breakdown=[TierBreakdownItemDTO(
+                quantity=quantity,
+                unit_price=unit_price,
+                total=total
+            )]
         )
 
     @staticmethod
@@ -156,56 +120,23 @@ class PricingService:
         """
         Format tier breakdown for display in messages.
 
-        If only 1 tier exists, shows simple fixed price format.
-        If multiple tiers exist, shows tiered pricing breakdown.
+        With classic tiered pricing, the breakdown always contains exactly one item
+        (all items at the same unit price), so we always show the simple format.
 
-        Example output (multiple tiers):
+        Example output:
             ```
-            Staffelpreise:
-             10 ×  9,00 € =   90,00 €
-              5 × 10,00 € =   50,00 €
-              2 × 11,00 € =   22,00 €
-            ───────────────────────────
-                       Σ  162,00 €
-                       Ø    9,53 €/Stk.
-            ```
-
-        Example output (single tier/fixed price):
-            ```
-            5 × 11,00 € = 55,00 €
+            24 × 9,00 € = 216,00 €
             ```
 
         Args:
             pricing_result: Result from calculate_optimal_price()
 
         Returns:
-            Formatted string with aligned columns
+            Formatted string with quantity × unit_price = total
         """
-        # If only 1 tier, show simple line item without tier header/footer
-        if len(pricing_result.breakdown) == 1:
-            item = pricing_result.breakdown[0]
-            return f"{item.quantity} × {item.unit_price:.2f} € = {item.total:.2f} €"
-
-        # Multiple tiers - show full breakdown
-        lines = ["<b>Staffelpreise:</b>"]
-
-        # Build breakdown lines with aligned formatting
-        for item in pricing_result.breakdown:
-            qty_str = f"{item.quantity:>3}"
-            price_str = f"{item.unit_price:>6.2f}"
-            total_str = f"{item.total:>8.2f}"
-            lines.append(f" {qty_str} × {price_str} € = {total_str} €")
-
-        # Separator line
-        lines.append("─" * 30)
-
-        # Total and average
-        total_str = f"{pricing_result.total:>8.2f}"
-        avg_str = f"{pricing_result.average_unit_price:>6.2f}"
-        lines.append(f"{'':>17}Σ {total_str} €")
-        lines.append(f"{'':>17}Ø {avg_str} €/Stk.")
-
-        return "\n".join(lines)
+        # Classic tiered pricing always has exactly 1 breakdown item
+        item = pricing_result.breakdown[0]
+        return f"{item.quantity} × {item.unit_price:.2f} € = {item.total:.2f} €"
 
     @staticmethod
     async def format_available_tiers(
