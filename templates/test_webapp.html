@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebApp Test</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background-color: var(--tg-theme-bg-color, #ffffff);
+            color: var(--tg-theme-text-color, #000000);
+        }
+        #status {
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 8px;
+            background-color: #f0f0f0;
+        }
+        button {
+            width: 100%;
+            padding: 15px;
+            font-size: 16px;
+            border: none;
+            border-radius: 8px;
+            background-color: var(--tg-theme-button-color, #2481cc);
+            color: var(--tg-theme-button-text-color, #ffffff);
+            cursor: pointer;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 WebApp Test</h1>
+    <p>This is a minimal test to verify Telegram WebApp integration.</p>
+
+    <div id="status">
+        <strong>Status:</strong> <span id="status-text">Loading...</span>
+    </div>
+
+    <button id="test-btn">🚀 Send Test Data</button>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        const statusText = document.getElementById('status-text');
+        const testBtn = document.getElementById('test-btn');
+
+        // Log everything to console
+        console.log('=== WebApp Test Starting ===');
+        console.log('window.Telegram:', window.Telegram);
+        console.log('window.Telegram.WebApp:', window.Telegram.WebApp);
+        console.log('tg.platform:', tg.platform);
+        console.log('tg.version:', tg.version);
+        console.log('tg.initData:', tg.initData);
+
+        // Expand to full height
+        tg.expand();
+        console.log('WebApp expanded');
+
+        // Set status
+        if (window.Telegram && window.Telegram.WebApp) {
+            statusText.textContent = '✅ WebApp API available!';
+            statusText.style.color = 'green';
+        } else {
+            statusText.textContent = '❌ WebApp API NOT available!';
+            statusText.style.color = 'red';
+        }
+
+        // Test button click
+        testBtn.addEventListener('click', () => {
+            console.log('Test button clicked!');
+            console.log('Attempting to send data...');
+
+            try {
+                const testData = JSON.stringify({
+                    test: true,
+                    message: 'Hello from WebApp!',
+                    timestamp: Date.now()
+                });
+
+                console.log('Data to send:', testData);
+
+                tg.sendData(testData);
+
+                console.log('tg.sendData() called successfully!');
+                statusText.textContent = '✅ Data sent! Check bot logs...';
+                statusText.style.color = 'green';
+
+                tg.HapticFeedback.notificationOccurred('success');
+            } catch (error) {
+                console.error('ERROR sending data:', error);
+                console.error('Error stack:', error.stack);
+                statusText.textContent = '❌ Error: ' + error.message;
+                statusText.style.color = 'red';
+
+                tg.HapticFeedback.notificationOccurred('error');
+            }
+        });
+
+        // Configure main button as alternative
+        tg.MainButton.text = "Send via MainButton";
+        tg.MainButton.show();
+
+        tg.MainButton.onClick(() => {
+            console.log('MainButton clicked!');
+            try {
+                tg.sendData(JSON.stringify({
+                    source: 'main_button',
+                    test: true
+                }));
+                console.log('Data sent via MainButton!');
+            } catch (error) {
+                console.error('MainButton error:', error);
+            }
+        });
+
+        // Notify ready
+        tg.ready();
+        console.log('WebApp ready() called');
+    </script>
+</body>
+</html>

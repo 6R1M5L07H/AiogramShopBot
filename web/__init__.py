@@ -1,0 +1,1 @@
+"""Web endpoints for Telegram Mini Apps and web interfaces."""

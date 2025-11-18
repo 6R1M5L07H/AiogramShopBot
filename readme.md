@@ -145,8 +145,32 @@ After copying the appropriate template, fill in all empty values and customize a
 | KRYPTO_EXPRESS_API_KEY    | API KEY from KryptoExpress profile                                                                                                                                                                                                                                                                                          | No recommended value                                                |   
 | KRYPTO_EXPRESS_API_URL    | API URL from KryptoExpress service                                                                                                                                                                                                                                                                                          | https://KryptoExpress.pro/api                                       |   
 | KRYPTO_EXPRESS_API_SECRET | Required variable, used to protect requests coming from KryptoExpress servers from spoofing.                                                                                                                                                                                                                                | Any string you want                                                 |   
-| REDIS_PASSWORD            | Required variable, needed to make the throttling mechanism work.                                                                                                                                                                                                                                                            | Any string you want                                                 |   
-| REDIS_HOST                | Required variable, needed to make the throttling mechanism work.                                                                                                                                                                                                                                                            | "redis" for docker-compose.yml                                      |   
+| REDIS_PASSWORD            | Required variable, needed to make the throttling mechanism work.                                                                                                                                                                                                                                                            | Any string you want                                                 |
+| REDIS_HOST                | Required variable, needed to make the throttling mechanism work.                                                                                                                                                                                                                                                            | "redis" for docker-compose.yml                                      |
+| BOT_DOMAIN                | Domain for Telegram Mini App (PGP encryption feature). HTTPS required. Supports auto-configuration: leave empty in development (auto-set from ngrok URL), set explicitly in production (your domain or external IP). See "BOT_DOMAIN Auto-Configuration" section below for details.                                          | Empty (dev) or "bot.yourdomain.com" (prod)                          |
+
+#### BOT_DOMAIN Auto-Configuration
+
+The `BOT_DOMAIN` variable is used for the PGP-encrypted shipping address feature (Telegram Mini App). The bot automatically configures this value at startup if left empty:
+
+**Development (ngrok)**:
+- Leave `BOT_DOMAIN` empty in `.env`
+- Bot starts ngrok tunnel → receives URL (e.g., `https://abc123.ngrok.io`)
+- Automatically sets `BOT_DOMAIN` to ngrok URL
+- Bot logs: `[Init] BOT_DOMAIN auto-configured from ngrok: https://abc123.ngrok.io`
+
+**Production (external IP/domain)**:
+- Option 1: Leave `BOT_DOMAIN` empty for auto-configuration with external IP
+  - Bot calls sslipio → receives URL (e.g., `https://203.0.113.42.sslip.io`)
+  - Automatically sets `BOT_DOMAIN` to external IP URL
+  - Bot logs: `[Init] BOT_DOMAIN auto-configured from external IP: https://203.0.113.42.sslip.io`
+
+- Option 2: Set `BOT_DOMAIN` explicitly to your custom domain
+  - Example: `BOT_DOMAIN=bot.yourdomain.com` or `BOT_DOMAIN=https://bot.yourdomain.com`
+  - Recommended for production deployments with fixed domains
+  - Requires valid SSL certificate for the domain
+
+Auto-configuration ensures the Mini App works immediately without manual URL configuration, while still allowing explicit configuration for production environments with custom domains.
 
 ### 1.1 Starting AiogramShopBot with Docker-compose
 

@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>{{ page_title }}</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script type="module">
+        import * as openpgp from 'https://cdn.jsdelivr.net/npm/openpgp@5.11.0/dist/openpgp.min.mjs';
+        window.openpgp = openpgp;
+    </script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--tg-theme-bg-color, #ffffff);
+            color: var(--tg-theme-text-color, #000000);
+            padding: 16px;
+            line-height: 1.5;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: var(--tg-theme-text-color, #000000);
+        }
+
+        .description {
+            font-size: 14px;
+            color: var(--tg-theme-hint-color, #999999);
+            margin-bottom: 16px;
+        }
+
+        .security-info {
+            background-color: var(--tg-theme-secondary-bg-color, #f1f1f1);
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            font-size: 13px;
+        }
+
+        .security-info strong {
+            display: block;
+            margin-bottom: 4px;
+            color: var(--tg-theme-link-color, #2481cc);
+        }
+
+        label {
+            display: block;
+            font-weight: 500;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        textarea {
+            width: 100%;
+            min-height: 120px;
+            padding: 12px;
+            border: 1px solid var(--tg-theme-hint-color, #cccccc);
+            border-radius: 8px;
+            font-size: 14px;
+            font-family: inherit;
+            background-color: var(--tg-theme-bg-color, #ffffff);
+            color: var(--tg-theme-text-color, #000000);
+            resize: vertical;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: var(--tg-theme-button-color, #2481cc);
+        }
+
+        #error {
+            display: none;
+            background-color: #ff3b30;
+            color: white;
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 16px;
+            font-size: 14px;
+        }
+
+        #status {
+            margin-top: 16px;
+            font-size: 13px;
+            color: var(--tg-theme-hint-color, #999999);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>{{ page_title }}</h1>
+        <p class="description">{{ description }}</p>
+
+        <div class="security-info">
+            <strong>{{ security_title }}</strong>
+            {{ security_text }}
+        </div>
+
+        <label for="address">{{ input_label }}</label>
+        <textarea
+            id="address"
+            placeholder="{{ input_placeholder }}"
+            autocomplete="off"
+            spellcheck="false"
+        ></textarea>
+
+        <div id="error"></div>
+        <div id="status"></div>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        const orderId = {{ order_id }};
+        const pgpPublicKey = `{{ pgp_public_key }}`;
+
+        // Localized strings from backend
+        const i18n = {
+            errorTitle: "{{ error_title }}",
+            errorEmptyAddress: "{{ error_empty_address }}",
+            errorEncryption: "{{ error_encryption }}",
+            statusEncrypting: "{{ status_encrypting }}",
+            statusSending: "{{ status_sending }}"
+        };
+
+        // Expand Telegram WebApp to full height
+        tg.expand();
+
+        // Configure main button
+        tg.MainButton.text = "{{ main_button_text }}";
+        tg.MainButton.show();
+
+        // Handle main button click
+        tg.MainButton.onClick(async () => {
+            const addressInput = document.getElementById('address');
+            const address = addressInput.value.trim();
+            const errorDiv = document.getElementById('error');
+            const statusDiv = document.getElementById('status');
+
+            // Clear previous errors
+            errorDiv.style.display = 'none';
+            errorDiv.textContent = '';
+
+            // Validate input
+            if (!address) {
+                errorDiv.textContent = i18n.errorEmptyAddress;
+                errorDiv.style.display = 'block';
+                tg.HapticFeedback.notificationOccurred('error');
+                return;
+            }
+
+            // Browser confirmation BEFORE encryption (KISS principle)
+            if (!confirm("Adresse jetzt verschlüsseln und senden?\n\nDu kannst sie danach nicht mehr ändern.")) {
+                return; // User cancelled
+            }
+
+            try {
+                console.log('[PGP] Starting encryption process...');
+                console.log('[PGP] Address length:', address.length);
+                console.log('[PGP] Order ID:', orderId);
+                console.log('[PGP] OpenPGP available:', !!window.openpgp);
+
+                // Disable input during encryption
+                addressInput.disabled = true;
+                tg.MainButton.showProgress();
+                statusDiv.textContent = i18n.statusEncrypting;
+
+                console.log('[PGP] Reading public key...');
+                // Encrypt address with PGP public key
+                const publicKey = await window.openpgp.readKey({ armoredKey: pgpPublicKey });
+                console.log('[PGP] Public key loaded successfully');
+
+                console.log('[PGP] Encrypting message...');
+                const encrypted = await window.openpgp.encrypt({
+                    message: await window.openpgp.createMessage({ text: address }),
+                    encryptionKeys: publicKey
+                });
+                console.log('[PGP] Encryption successful, length:', encrypted.length);
+
+                statusDiv.textContent = i18n.statusSending;
+
+                console.log('[PGP] Sending data to bot via HTTP POST...');
+
+                // Send encrypted data to API endpoint
+                const response = await fetch('/api/shipping/address', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Telegram-Init-Data': tg.initData
+                    },
+                    body: JSON.stringify({
+                        order_id: orderId,
+                        encrypted_address: encrypted,
+                        encryption_mode: 'pgp'
+                    })
+                });
+
+                console.log('[PGP] Response status:', response.status);
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
+                    throw new Error(errorData.detail || `HTTP ${response.status}`);
+                }
+
+                const result = await response.json();
+                console.log('[PGP] Data sent successfully:', result);
+
+                // Success haptic feedback
+                tg.HapticFeedback.notificationOccurred('success');
+
+                // Close WebApp after successful submission
+                tg.close();
+
+            } catch (error) {
+                console.error('[PGP] Encryption error:', error);
+                console.error('[PGP] Error stack:', error.stack);
+                errorDiv.textContent = `${i18n.errorTitle} ${error.message}`;
+                errorDiv.style.display = 'block';
+                addressInput.disabled = false;
+                tg.MainButton.hideProgress();
+                tg.HapticFeedback.notificationOccurred('error');
+                statusDiv.textContent = '';
+            }
+        });
+
+        // Notify backend that WebApp is ready
+        tg.ready();
+    </script>
+</body>
+</html>

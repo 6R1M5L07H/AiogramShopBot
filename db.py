@@ -38,27 +38,40 @@ from models.referral_usage import ReferralUsage
 from models.referral_discount import ReferralDiscount
 
 # SQLAlchemy logging configuration
-# Echo SQL queries only if log level is DEBUG
-# This prevents logs from being cluttered with SQL statements in production
-sql_echo = getattr(config, "LOG_LEVEL", "INFO").upper() == "DEBUG"
+# HARD DISABLE SQL echo - use separate SQL_DEBUG env var if needed in future
+# This prevents logs from being cluttered with SQL statements
+sql_echo = False
 
 url = ""
 engine = None
 session_maker = None
 if config.DB_ENCRYPTION:
-    url += f"sqlite+pysqlcipher://:{config.DB_PASS}@/data/{DB_NAME}"
-    engine = create_engine(url, echo=sql_echo, module=sqlcipher)
+    # DEBUG: Check if password is loaded
+    db_pass = config.DB_PASS
+    logging.critical(f"🔐 DB_ENCRYPTION=True, DB_PASS={'<empty>' if not db_pass else f'<{len(db_pass)} chars>'}")
+
+    if not db_pass:
+        raise ValueError("DB_ENCRYPTION=true but DB_PASS is empty! Check .env configuration.")
+
+    # SQLCipher: Password in URL (ilyarolf's original approach)
+    # Format: sqlite+pysqlcipher://:{password}@////absolute/path (4 slashes for absolute path)
+    # Container path: /bot/data/ (mounted from ./data on host)
+    # IMPORTANT: Relative paths (3 slashes) do NOT work with SQLAlchemy + SQLCipher
+    url = f"sqlite+pysqlcipher://:{db_pass}@////bot/data/{DB_NAME}"
+    engine = create_engine(
+        url,
+        echo=sql_echo,
+        module=sqlcipher,
+        connect_args={'check_same_thread': False}
+    )
     session_maker = sessionmaker(engine, expire_on_commit=False)
 else:
-    url += f"sqlite+aiosqlite:///data/{DB_NAME}"
+    url = f"sqlite+aiosqlite:///data/{DB_NAME}"
     engine = create_async_engine(url, echo=sql_echo)
     session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
-# Configure SQLAlchemy logger to respect application log level
-# This prevents SQL queries from appearing even if echo=False but sqlalchemy logger is too verbose
-if not sql_echo:
-    logging.getLogger('sqlalchemy.engine').setLevel(logging.WARNING)
-    logging.getLogger('sqlalchemy.pool').setLevel(logging.WARNING)
+# Note: SQLAlchemy/aiosqlite logger configuration moved to utils/logging_config.py
+# This ensures proper initialization order (after root logger setup)
 
 data_folder = Path("data")
 if data_folder.exists() is False:
@@ -110,9 +123,12 @@ async def session_commit(session: AsyncSession | Session) -> None:
 @event.listens_for(Engine, "connect")
 def set_sqlite_pragma(dbapi_connection, connection_record):
     cursor = dbapi_connection.cursor()
-    cursor.execute("PRAGMA foreign_keys=ON")
     if config.DB_ENCRYPTION:
+        # CRITICAL: Set encryption key FIRST, before any other PRAGMA
+        # URL password alone is not sufficient for CREATE operations
+        cursor.execute(f"PRAGMA key = '{config.DB_PASS}'")
         cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute("PRAGMA foreign_keys=ON")
     cursor.close()
 
 

@@ -167,13 +167,13 @@ async def show_order_details(**kwargs):
             crypto_payments = payment_history['crypto_payments']
 
             if wallet_used > 0 and len(crypto_payments) > 0:
-                payment_method = "Gemischt (Guthaben + Krypto)"
+                payment_method = Localizator.get_text(BotEntity.ADMIN, "order_payment_method_mixed")
             elif wallet_used > 0:
-                payment_method = "Guthaben"
+                payment_method = Localizator.get_text(BotEntity.ADMIN, "order_payment_method_wallet")
             elif len(crypto_payments) > 0:
-                payment_method = "Kryptowährung"
+                payment_method = Localizator.get_text(BotEntity.ADMIN, "order_payment_method_crypto")
             else:
-                payment_method = "Unbekannt"
+                payment_method = Localizator.get_text(BotEntity.ADMIN, "order_payment_method_unknown")
 
             message_text += f"<b>{Localizator.get_text(BotEntity.ADMIN, 'order_payment_method')}:</b> {payment_method}\n\n"
 
