@@ -2,6 +2,7 @@ from aiogram.types import CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
+from decimal import Decimal, ROUND_HALF_UP
 
 import config
 from callbacks import AllCategoriesCallback, CartCallback, OrderCallback
@@ -621,10 +622,15 @@ class CartService:
         subcategory_ids = list({cart_item.subcategory_id for cart_item in cart_items})
         subcategories_dict = await SubcategoryRepository.get_by_ids(subcategory_ids, session)
 
+        # Batch-load all price tiers for subcategories (eliminates N+1 queries)
+        from repositories.price_tier import PriceTierRepository
+        tiers_by_subcategory = await PriceTierRepository.get_by_subcategories(subcategory_ids, session)
+
         items_data = []
         items_total = 0.0
         max_shipping_cost = 0.0
         has_physical_items = False
+        total_savings = 0.0
 
         for cart_item in cart_items:
             subcategory = subcategories_dict.get(cart_item.subcategory_id)
@@ -648,63 +654,114 @@ class CartService:
                 try:
                     tier_breakdown = json.loads(cart_item.tier_breakdown)
 
-                    # Check if multi-tier (more than 1 breakdown entry)
-                    is_multi_tier = len(tier_breakdown) > 1
-
                     # Calculate total for this item
                     line_total = sum(item['total'] for item in tier_breakdown)
                     items_total += line_total
 
-                    if is_multi_tier:
-                        # Multi-tier item with detailed breakdown
-                        items_data.append({
-                            'name': subcategory.name,
-                            'is_tier': True,
-                            'tier_breakdown': tier_breakdown,
-                            'line_total': line_total
-                        })
-                    elif tier_breakdown:
-                        # Single tier - store with calculation details
-                        item = tier_breakdown[0]
-                        items_data.append({
-                            'name': subcategory.name,
-                            'is_tier': False,
-                            'qty': item['quantity'],
-                            'unit_price': item['unit_price'],
-                            'line_total': line_total
-                        })
-                    else:
-                        # Empty tier_breakdown - fall through to exception handler
-                        raise ValueError("Empty tier breakdown")
+                    # Get tier data from pre-loaded dict (no N+1 query)
+                    tiers = tiers_by_subcategory.get(cart_item.subcategory_id, [])
+
+                    # Build available_tiers list with min/max quantities
+                    available_tiers = []
+                    if tiers:
+                        sorted_tiers = sorted(tiers, key=lambda t: t.min_quantity)
+                        for idx, tier in enumerate(sorted_tiers):
+                            max_qty = None
+                            if idx < len(sorted_tiers) - 1:
+                                max_qty = sorted_tiers[idx + 1].min_quantity - 1
+                            available_tiers.append({
+                                'min_quantity': tier.min_quantity,
+                                'max_quantity': max_qty,
+                                'unit_price': tier.unit_price
+                            })
+
+                    # Determine current tier index
+                    current_unit_price = tier_breakdown[0]['unit_price'] if tier_breakdown else 0
+                    current_tier_idx = 0
+                    for idx, tier in enumerate(available_tiers):
+                        if abs(tier['unit_price'] - current_unit_price) < 0.01:  # Float comparison
+                            current_tier_idx = idx
+                            break
+
+                    # Calculate next tier info (for upselling)
+                    next_tier_info = None
+                    if current_tier_idx < len(available_tiers) - 1:
+                        next_tier = available_tiers[current_tier_idx + 1]
+                        items_needed = next_tier['min_quantity'] - cart_item.quantity
+                        # Use Decimal for precise currency calculation
+                        extra_savings_decimal = (
+                            Decimal(str(current_unit_price)) - Decimal(str(next_tier['unit_price']))
+                        ) * Decimal(str(cart_item.quantity + items_needed))
+                        extra_savings = float(extra_savings_decimal.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
+                        next_tier_info = {
+                            'items_needed': items_needed,
+                            'unit_price': next_tier['unit_price'],
+                            'extra_savings': extra_savings
+                        }
+
+                    # Calculate savings vs single price (highest tier)
+                    savings_vs_single = 0.0
+                    if available_tiers:
+                        single_price = available_tiers[0]['unit_price']  # First tier = most expensive
+                        # Use Decimal for precise currency calculation
+                        savings_decimal = (
+                            Decimal(str(single_price)) - Decimal(str(current_unit_price))
+                        ) * Decimal(str(cart_item.quantity))
+                        savings_vs_single = float(savings_decimal.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
+                        total_savings += savings_vs_single
+
+                    # Unified item structure
+                    items_data.append({
+                        'name': subcategory.name,
+                        'quantity': cart_item.quantity,
+                        'unit_price': current_unit_price,
+                        'line_total': line_total,
+                        'available_tiers': available_tiers if available_tiers else None,
+                        'current_tier_idx': current_tier_idx,
+                        'next_tier_info': next_tier_info,
+                        'savings_vs_single': round(savings_vs_single, 2)
+                    })
 
                 except (json.JSONDecodeError, KeyError, ValueError):
                     # Fallback to flat pricing (no tier breakdown)
                     item_dto = ItemDTO(category_id=cart_item.category_id, subcategory_id=cart_item.subcategory_id)
                     price = await ItemRepository.get_price(item_dto, session)
-                    line_total = price * cart_item.quantity
+                    # Use Decimal for precise currency calculation
+                    line_total_decimal = Decimal(str(price)) * Decimal(str(cart_item.quantity))
+                    line_total = float(line_total_decimal.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
                     items_total += line_total
                     items_data.append({
                         'name': subcategory.name,
-                        'is_tier': False,
-                        'qty': cart_item.quantity,
+                        'quantity': cart_item.quantity,
                         'unit_price': price,
-                        'line_total': line_total
+                        'line_total': line_total,
+                        'available_tiers': None,
+                        'current_tier_idx': 0,
+                        'next_tier_info': None,
+                        'savings_vs_single': 0.0
                     })
             else:
                 # Flat pricing (no tier breakdown stored)
                 item_dto = ItemDTO(category_id=cart_item.category_id, subcategory_id=cart_item.subcategory_id)
                 price = await ItemRepository.get_price(item_dto, session)
-                line_total = price * cart_item.quantity
+                # Use Decimal for precise currency calculation
+                line_total_decimal = Decimal(str(price)) * Decimal(str(cart_item.quantity))
+                line_total = float(line_total_decimal.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
                 items_total += line_total
                 items_data.append({
                     'name': subcategory.name,
-                    'is_tier': False,
-                    'qty': cart_item.quantity,
+                    'quantity': cart_item.quantity,
                     'unit_price': price,
-                    'line_total': line_total
+                    'line_total': line_total,
+                    'available_tiers': None,
+                    'current_tier_idx': 0,
+                    'next_tier_info': None,
+                    'savings_vs_single': 0.0
                 })
 
-        grand_total = items_total + max_shipping_cost
+        # Use Decimal for precise grand total calculation
+        grand_total_decimal = Decimal(str(items_total)) + Decimal(str(max_shipping_cost))
+        grand_total = float(grand_total_decimal.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
 
         return {
             'items': items_data,
@@ -712,6 +769,7 @@ class CartService:
             'has_physical_items': has_physical_items,
             'max_shipping_cost': max_shipping_cost,
             'grand_total': grand_total,
+            'total_savings': round(total_savings, 2),
             'message_key': 'cart_confirm_checkout_process'
         }
 
@@ -720,74 +778,34 @@ class CartService:
         """
         Format checkout summary message from checkout data dict.
 
-        Takes raw data from get_checkout_summary_data() and builds HTML message.
-        This is pure formatting - no database calls, no business logic.
+        Delegates formatting to InvoiceFormatterService for consistent
+        presentation across checkout and invoice views.
 
         Args:
             checkout_data: Dict from get_checkout_summary_data() with keys:
-                - items: list[dict]
+                - items: list[dict] (with tier data)
                 - subtotal: float
                 - has_physical_items: bool
                 - max_shipping_cost: float
                 - grand_total: float
+                - total_savings: float
                 - message_key: str
 
         Returns:
             HTML formatted message string
         """
-        currency_sym = Localizator.get_currency_symbol()
+        from services.invoice_formatter import InvoiceFormatterService
 
-        # Header
-        message_text = Localizator.get_text(BotEntity.USER, checkout_data["message_key"])
-        message_text += "\n\n"
-
-        # === PHASE 1: Multi-Tier Detailed Breakdowns ===
-        multi_tier_items = [item for item in checkout_data["items"] if item.get("is_tier") and item.get("tier_breakdown")]
-
-        if multi_tier_items:
-            message_text += f"<b>{Localizator.get_text(BotEntity.USER, 'cart_tier_calculations_header')}</b>\n\n"
-            for item in multi_tier_items:
-                message_text += f"<b>{safe_html(item['name'])}:</b>\n"
-                for breakdown_item in item['tier_breakdown']:
-                    qty = breakdown_item['quantity']
-                    unit_price = breakdown_item['unit_price']
-                    total = breakdown_item['total']
-                    message_text += f" {qty:>2} × {unit_price:>6.2f} {currency_sym} = {total:>8.2f} {currency_sym}\n"
-
-                # Calculate average
-                total_qty = sum(b['quantity'] for b in item['tier_breakdown'])
-                avg_price = item['line_total'] / total_qty if total_qty > 0 else 0
-
-                message_text += "─" * 30 + "\n"
-                unit_text = Localizator.get_text(BotEntity.USER, 'unit_per_piece')
-                message_text += f"{'':>17}Σ {item['line_total']:>7.2f} {currency_sym}  (Ø {avg_price:.2f} {currency_sym}{unit_text})\n\n"
-
-            message_text += "═" * 30 + "\n\n"
-
-        # === PHASE 2: Compact Item Summary ===
-        message_text += f"<b>{Localizator.get_text(BotEntity.USER, 'cart_items_in_cart_header')}</b>\n"
-        for item in checkout_data["items"]:
-            if item.get("is_tier") and item.get("tier_breakdown"):
-                # Multi-tier item - show only result
-                message_text += f"{safe_html(item['name'])}: {item['line_total']:.2f} {currency_sym}\n"
-            else:
-                # Single-tier or flat - show calculation
-                message_text += f"{safe_html(item['name'])}: {item['qty']} × {item['unit_price']:.2f} {currency_sym} = {item['line_total']:.2f} {currency_sym}\n"
-
-        # === PHASE 3: Totals ===
-        message_text += "\n" + "═" * 30 + "\n"
-        subtotal_label = Localizator.get_text(BotEntity.USER, 'cart_subtotal_label')
-        message_text += f"{subtotal_label} {checkout_data['subtotal']:>8.2f} {currency_sym}\n"
-
-        if checkout_data["has_physical_items"]:
-            shipping_label = Localizator.get_text(BotEntity.USER, 'cart_shipping_max_label')
-            message_text += f"{shipping_label}  {checkout_data['max_shipping_cost']:>7.2f} {currency_sym}\n"
-
-        message_text += "═" * 30 + "\n"
-        total_label = Localizator.get_text(BotEntity.USER, 'cart_total_label')
-        message_text += f"<b>{total_label}        {checkout_data['grand_total']:>8.2f} {currency_sym}</b>"
-
-        return message_text
+        return InvoiceFormatterService.format_checkout_summary(
+            items=checkout_data["items"],
+            subtotal=checkout_data["subtotal"],
+            shipping_cost=checkout_data["max_shipping_cost"],
+            total=checkout_data["grand_total"],
+            total_savings=checkout_data["total_savings"],
+            has_physical_items=checkout_data["has_physical_items"],
+            currency_symbol=Localizator.get_currency_symbol(),
+            entity=BotEntity.USER
+        )
 
     @staticmethod
     async def get_delete_confirmation_data(
