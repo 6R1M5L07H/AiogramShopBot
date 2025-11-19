@@ -174,20 +174,37 @@ Auto-configuration ensures the Mini App works immediately without manual URL con
 
 ### 1.1 Starting AiogramShopBot with Docker-compose
 
-#### Production Deployment (Recommended)
+#### First-Time Setup
 
-For production deployment with Caddy reverse proxy and automatic TLS:
+Docker Compose files are stored as templates to prevent local customizations from being overwritten:
 
 ```bash
 # Clone the project
 git clone https://github.com/ilyarolf/AiogramShopBot.git
 cd AiogramShopBot
 
-# Set up production environment
-cp .env.prod.template .env
-# Edit .env and fill in all required values
+# Copy the appropriate template for your environment:
+# For production:
+cp docker-compose.prod.yml.template docker-compose.prod.yml
 
-# Set your domain in docker-compose.prod.yml (line 50)
+# For development:
+cp docker-compose.dev.yml.template docker-compose.dev.yml
+```
+
+> **Important**
+> The `.template` files are version-controlled. Your local `docker-compose.prod.yml` and `docker-compose.dev.yml` files are ignored by git, so you can customize them without worrying about changes being overwritten during updates.
+
+#### Production Deployment (Recommended)
+
+For production deployment with Caddy reverse proxy and automatic TLS:
+
+```bash
+# Set up production environment (if not done already)
+cp .env.prod.template .env
+cp docker-compose.prod.yml.template docker-compose.prod.yml
+
+# Edit .env and fill in all required values
+# Edit docker-compose.prod.yml and set your domain (line 50)
 # Replace YOUR-DOMAIN-GOES-HERE with:
 #   - Your domain: bot.yourdomain.com
 #   - Or sslip.io: 203.0.113.42.sslip.io (replace with your server IP)
@@ -214,6 +231,10 @@ Features:
 For local development, run only Redis in Docker while running the bot directly on your machine:
 
 ```bash
+# First-time setup
+cp .env.dev.template .env
+cp docker-compose.dev.yml.template docker-compose.dev.yml
+
 # Start Redis
 docker-compose -f docker-compose.dev.yml up -d
 
@@ -228,18 +249,8 @@ docker-compose -f docker-compose.dev.yml down
 ```
 
 > **Note**
-> The `docker-compose.dev.yml` file is configured with a default Redis password: `dev-redis-password-123`.
+> The `docker-compose.dev.yml` template is configured with a default Redis password: `dev-redis-password-123`.
 > Update your `.env` file with: `REDIS_PASSWORD=dev-redis-password-123`
-
-#### Universal Docker Compose (Legacy)
-
-For backward compatibility, you can use the universal `docker-compose.yml`:
-
-```bash
-docker-compose up -d
-```
-
-However, we recommend using environment-specific files (`docker-compose.prod.yml` or `docker-compose.dev.yml`) for optimized configurations.
 
 #### Development and production mode
 

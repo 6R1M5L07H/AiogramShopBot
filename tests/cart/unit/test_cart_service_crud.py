@@ -541,254 +541,6 @@ class TestGetPendingOrderData:
         pass
 
 
-class TestGetCheckoutSummaryData:
-    """Test get_checkout_summary_data() - Pure data method for checkout confirmation."""
-
-    @pytest.mark.asyncio
-    async def test_get_checkout_summary_flat_pricing(self, mock_session):
-        """Checkout summary with flat pricing (no tiers)."""
-        # Mock cart items without tier_breakdown
-        mock_cart_items = [
-            MagicMock(
-                id=1,
-                category_id=1,
-                subcategory_id=1,
-                quantity=5,
-                tier_breakdown=None
-            ),
-            MagicMock(
-                id=2,
-                category_id=1,
-                subcategory_id=2,
-                quantity=3,
-                tier_breakdown=None
-            )
-        ]
-
-        # Mock subcategories
-        subcat1 = MagicMock()
-        subcat1.id = 1
-        subcat1.name = "Digital Goods"
-
-        subcat2 = MagicMock()
-        subcat2.id = 2
-        subcat2.name = "Hardware"
-
-        # Mock physical item for shipping calculation
-        mock_physical_item = MagicMock()
-        mock_physical_item.is_physical = True
-        mock_physical_item.shipping_cost = 5.0
-
-        mock_digital_item = MagicMock()
-        mock_digital_item.is_physical = False
-        mock_digital_item.shipping_cost = 0.0
-
-        with patch('repositories.cartItem.CartItemRepository.get_all_by_user_id', return_value=mock_cart_items):
-            with patch('repositories.subcategory.SubcategoryRepository.get_by_ids') as mock_subcats:
-                mock_subcats.return_value = {1: subcat1, 2: subcat2}
-                with patch('repositories.item.ItemRepository.get_single') as mock_get_single:
-                    # Return digital item for first call, physical for second
-                    mock_get_single.side_effect = [mock_digital_item, mock_physical_item]
-                    with patch('repositories.item.ItemRepository.get_price', return_value=10.0):
-                        result = await CartService.get_checkout_summary_data(
-                            user_id=1,
-                            session=mock_session
-                        )
-
-                        # Verify structure
-                        assert result['message_key'] == 'cart_confirm_checkout_process'
-                        assert result['has_physical_items'] is True
-                        assert result['max_shipping_cost'] == 5.0
-
-                        # Verify items
-                        assert len(result['items']) == 2
-
-                        # First item (digital goods)
-                        assert result['items'][0]['name'] == 'Digital Goods'
-                        assert result['items'][0]['is_tier'] is False
-                        assert result['items'][0]['qty'] == 5
-                        assert result['items'][0]['unit_price'] == 10.0
-                        assert result['items'][0]['line_total'] == 50.0
-
-                        # Second item (hardware)
-                        assert result['items'][1]['name'] == 'Hardware'
-                        assert result['items'][1]['is_tier'] is False
-                        assert result['items'][1]['qty'] == 3
-                        assert result['items'][1]['unit_price'] == 10.0
-                        assert result['items'][1]['line_total'] == 30.0
-
-                        # Verify totals
-                        assert result['subtotal'] == 80.0  # 50 + 30
-                        assert result['grand_total'] == 85.0  # 80 + 5 shipping
-
-    @pytest.mark.asyncio
-    async def test_get_checkout_summary_single_tier(self, mock_session):
-        """Checkout summary with single-tier pricing (tier_breakdown with 1 entry)."""
-        import json
-
-        # Mock cart item with single tier breakdown
-        tier_breakdown = [
-            {'quantity': 10, 'unit_price': 9.0, 'total': 90.0}
-        ]
-        mock_cart_items = [
-            MagicMock(
-                id=1,
-                category_id=1,
-                subcategory_id=1,
-                quantity=10,
-                tier_breakdown=json.dumps(tier_breakdown)
-            )
-        ]
-
-        subcat1 = MagicMock()
-        subcat1.id = 1
-        subcat1.name = "Bulk Items"
-
-        mock_digital_item = MagicMock()
-        mock_digital_item.is_physical = False
-        mock_digital_item.shipping_cost = 0.0
-
-        with patch('repositories.cartItem.CartItemRepository.get_all_by_user_id', return_value=mock_cart_items):
-            with patch('repositories.subcategory.SubcategoryRepository.get_by_ids') as mock_subcats:
-                mock_subcats.return_value = {1: subcat1}
-                with patch('repositories.item.ItemRepository.get_single', return_value=mock_digital_item):
-                    result = await CartService.get_checkout_summary_data(
-                        user_id=1,
-                        session=mock_session
-                    )
-
-                    # Single tier should be treated as non-tier (is_tier=False)
-                    assert len(result['items']) == 1
-                    assert result['items'][0]['name'] == 'Bulk Items'
-                    assert result['items'][0]['is_tier'] is False
-                    assert result['items'][0]['qty'] == 10
-                    assert result['items'][0]['unit_price'] == 9.0
-                    assert result['items'][0]['line_total'] == 90.0
-
-                    # Verify totals
-                    assert result['subtotal'] == 90.0
-                    assert result['has_physical_items'] is False
-                    assert result['max_shipping_cost'] == 0.0
-                    assert result['grand_total'] == 90.0
-
-    @pytest.mark.asyncio
-    async def test_get_checkout_summary_multi_tier(self, mock_session):
-        """Checkout summary with multi-tier pricing (tier_breakdown with >1 entry)."""
-        import json
-
-        # Mock cart item with multi-tier breakdown
-        tier_breakdown = [
-            {'quantity': 5, 'unit_price': 10.0, 'total': 50.0},
-            {'quantity': 10, 'unit_price': 9.0, 'total': 90.0},
-            {'quantity': 20, 'unit_price': 8.0, 'total': 160.0}
-        ]
-        mock_cart_items = [
-            MagicMock(
-                id=1,
-                category_id=1,
-                subcategory_id=1,
-                quantity=35,
-                tier_breakdown=json.dumps(tier_breakdown)
-            )
-        ]
-
-        subcat1 = MagicMock()
-        subcat1.id = 1
-        subcat1.name = "Tiered Product"
-
-        mock_digital_item = MagicMock()
-        mock_digital_item.is_physical = False
-        mock_digital_item.shipping_cost = 0.0
-
-        with patch('repositories.cartItem.CartItemRepository.get_all_by_user_id', return_value=mock_cart_items):
-            with patch('repositories.subcategory.SubcategoryRepository.get_by_ids') as mock_subcats:
-                mock_subcats.return_value = {1: subcat1}
-                with patch('repositories.item.ItemRepository.get_single', return_value=mock_digital_item):
-                    result = await CartService.get_checkout_summary_data(
-                        user_id=1,
-                        session=mock_session
-                    )
-
-                    # Multi-tier should have is_tier=True and tier_breakdown
-                    assert len(result['items']) == 1
-                    assert result['items'][0]['name'] == 'Tiered Product'
-                    assert result['items'][0]['is_tier'] is True
-                    assert result['items'][0]['tier_breakdown'] == tier_breakdown
-                    assert result['items'][0]['line_total'] == 300.0  # 50 + 90 + 160
-
-                    # Verify totals
-                    assert result['subtotal'] == 300.0
-                    assert result['grand_total'] == 300.0
-
-    @pytest.mark.asyncio
-    async def test_get_checkout_summary_mixed_items(self, mock_session):
-        """Checkout summary with mixed flat and tier pricing."""
-        import json
-
-        # Mock cart items with mixed pricing
-        tier_breakdown = [
-            {'quantity': 10, 'unit_price': 9.0, 'total': 90.0},
-            {'quantity': 20, 'unit_price': 8.5, 'total': 170.0}
-        ]
-        mock_cart_items = [
-            MagicMock(
-                id=1,
-                category_id=1,
-                subcategory_id=1,
-                quantity=30,
-                tier_breakdown=json.dumps(tier_breakdown)
-            ),
-            MagicMock(
-                id=2,
-                category_id=1,
-                subcategory_id=2,
-                quantity=5,
-                tier_breakdown=None  # Flat pricing
-            )
-        ]
-
-        subcat1 = MagicMock()
-        subcat1.id = 1
-        subcat1.name = "Tiered Item"
-
-        subcat2 = MagicMock()
-        subcat2.id = 2
-        subcat2.name = "Flat Item"
-
-        mock_digital_item = MagicMock()
-        mock_digital_item.is_physical = False
-        mock_digital_item.shipping_cost = 0.0
-
-        with patch('repositories.cartItem.CartItemRepository.get_all_by_user_id', return_value=mock_cart_items):
-            with patch('repositories.subcategory.SubcategoryRepository.get_by_ids') as mock_subcats:
-                mock_subcats.return_value = {1: subcat1, 2: subcat2}
-                with patch('repositories.item.ItemRepository.get_single', return_value=mock_digital_item):
-                    with patch('repositories.item.ItemRepository.get_price', return_value=15.0):
-                        result = await CartService.get_checkout_summary_data(
-                            user_id=1,
-                            session=mock_session
-                        )
-
-                        # Verify items
-                        assert len(result['items']) == 2
-
-                        # First item (multi-tier)
-                        assert result['items'][0]['name'] == 'Tiered Item'
-                        assert result['items'][0]['is_tier'] is True
-                        assert result['items'][0]['line_total'] == 260.0
-
-                        # Second item (flat)
-                        assert result['items'][1]['name'] == 'Flat Item'
-                        assert result['items'][1]['is_tier'] is False
-                        assert result['items'][1]['qty'] == 5
-                        assert result['items'][1]['unit_price'] == 15.0
-                        assert result['items'][1]['line_total'] == 75.0
-
-                        # Verify totals
-                        assert result['subtotal'] == 335.0  # 260 + 75
-                        assert result['grand_total'] == 335.0
-
-
 class TestGetDeleteConfirmationData:
     """Test get_delete_confirmation_data() - Pure data method for delete confirmation."""
 
@@ -818,6 +570,260 @@ class TestGetDeleteConfirmationData:
                 assert result["subcategory_name"] == "USB Sticks"
                 assert result["quantity"] == 3
                 assert result["message_key"] == "delete_cart_item_confirmation"
+
+
+@pytest.mark.asyncio
+class TestCartServiceCheckoutEnrichedData:
+    """Tests for enriched checkout data with tier information."""
+
+    @pytest.fixture
+    def mock_session(self):
+        return MagicMock()
+
+    async def test_get_checkout_with_available_tiers(self, mock_session):
+        """Test that available_tiers are loaded correctly."""
+        import json
+
+        # Mock cart item with tiers
+        tier_breakdown = [
+            {'quantity': 16, 'unit_price': 9.0, 'total': 144.0}
+        ]
+        mock_cart_items = [
+            MagicMock(
+                id=1,
+                category_id=1,
+                subcategory_id=1,
+                quantity=16,
+                tier_breakdown=json.dumps(tier_breakdown)
+            )
+        ]
+
+        subcat1 = MagicMock()
+        subcat1.id = 1
+        subcat1.name = "USB-Sticks 32GB"
+
+        mock_digital_item = MagicMock()
+        mock_digital_item.is_physical = False
+        mock_digital_item.shipping_cost = 0.0
+
+        # Mock price tiers
+        mock_tiers = [
+            MagicMock(min_quantity=1, unit_price=12.00),
+            MagicMock(min_quantity=6, unit_price=10.00),
+            MagicMock(min_quantity=16, unit_price=9.00),
+            MagicMock(min_quantity=26, unit_price=8.00),
+        ]
+
+        with patch('repositories.cartItem.CartItemRepository.get_all_by_user_id', return_value=mock_cart_items):
+            with patch('repositories.subcategory.SubcategoryRepository.get_by_ids') as mock_subcats:
+                mock_subcats.return_value = {1: subcat1}
+                with patch('repositories.item.ItemRepository.get_item_metadata', return_value=mock_digital_item):
+                    with patch('repositories.price_tier.PriceTierRepository.get_by_subcategories', return_value={1: mock_tiers}):
+                        result = await CartService.get_checkout_summary_data(
+                            user_id=1,
+                            session=mock_session
+                        )
+
+                        # Check that available_tiers are loaded
+                        item = result['items'][0]
+                        assert item['available_tiers'] is not None
+                        assert len(item['available_tiers']) == 4
+
+                        # Check tier structure
+                        assert item['available_tiers'][0]['min_quantity'] == 1
+                        assert item['available_tiers'][0]['max_quantity'] == 5
+                        assert item['available_tiers'][0]['unit_price'] == 12.00
+
+                        assert item['available_tiers'][3]['min_quantity'] == 26
+                        assert item['available_tiers'][3]['max_quantity'] is None
+                        assert item['available_tiers'][3]['unit_price'] == 8.00
+
+    async def test_get_checkout_current_tier_idx(self, mock_session):
+        """Test that current_tier_idx is calculated correctly."""
+        import json
+
+        tier_breakdown = [
+            {'quantity': 16, 'unit_price': 9.0, 'total': 144.0}
+        ]
+        mock_cart_items = [
+            MagicMock(
+                id=1,
+                category_id=1,
+                subcategory_id=1,
+                quantity=16,
+                tier_breakdown=json.dumps(tier_breakdown)
+            )
+        ]
+
+        subcat1 = MagicMock()
+        subcat1.id = 1
+        subcat1.name = "USB-Sticks 32GB"
+
+        mock_digital_item = MagicMock()
+        mock_digital_item.is_physical = False
+
+        mock_tiers = [
+            MagicMock(min_quantity=1, unit_price=12.00),
+            MagicMock(min_quantity=6, unit_price=10.00),
+            MagicMock(min_quantity=16, unit_price=9.00),
+            MagicMock(min_quantity=26, unit_price=8.00),
+        ]
+
+        with patch('repositories.cartItem.CartItemRepository.get_all_by_user_id', return_value=mock_cart_items):
+            with patch('repositories.subcategory.SubcategoryRepository.get_by_ids') as mock_subcats:
+                mock_subcats.return_value = {1: subcat1}
+                with patch('repositories.item.ItemRepository.get_item_metadata', return_value=mock_digital_item):
+                    with patch('repositories.price_tier.PriceTierRepository.get_by_subcategories', return_value={1: mock_tiers}):
+                        result = await CartService.get_checkout_summary_data(
+                            user_id=1,
+                            session=mock_session
+                        )
+
+                        # Current price is 9.00, which is tier index 2
+                        item = result['items'][0]
+                        assert item['current_tier_idx'] == 2
+
+    async def test_get_checkout_next_tier_info(self, mock_session):
+        """Test that next_tier_info is calculated correctly."""
+        import json
+
+        tier_breakdown = [
+            {'quantity': 16, 'unit_price': 9.0, 'total': 144.0}
+        ]
+        mock_cart_items = [
+            MagicMock(
+                id=1,
+                category_id=1,
+                subcategory_id=1,
+                quantity=16,
+                tier_breakdown=json.dumps(tier_breakdown)
+            )
+        ]
+
+        subcat1 = MagicMock()
+        subcat1.id = 1
+        subcat1.name = "USB-Sticks 32GB"
+
+        mock_digital_item = MagicMock()
+        mock_digital_item.is_physical = False
+
+        mock_tiers = [
+            MagicMock(min_quantity=1, unit_price=12.00),
+            MagicMock(min_quantity=6, unit_price=10.00),
+            MagicMock(min_quantity=16, unit_price=9.00),
+            MagicMock(min_quantity=26, unit_price=8.00),
+        ]
+
+        with patch('repositories.cartItem.CartItemRepository.get_all_by_user_id', return_value=mock_cart_items):
+            with patch('repositories.subcategory.SubcategoryRepository.get_by_ids') as mock_subcats:
+                mock_subcats.return_value = {1: subcat1}
+                with patch('repositories.item.ItemRepository.get_item_metadata', return_value=mock_digital_item):
+                    with patch('repositories.price_tier.PriceTierRepository.get_by_subcategories', return_value={1: mock_tiers}):
+                        result = await CartService.get_checkout_summary_data(
+                            user_id=1,
+                            session=mock_session
+                        )
+
+                        # Next tier is at 26 items (need 10 more)
+                        item = result['items'][0]
+                        assert item['next_tier_info'] is not None
+                        assert item['next_tier_info']['items_needed'] == 10
+                        assert item['next_tier_info']['unit_price'] == 8.00
+                        assert item['next_tier_info']['extra_savings'] == 26.00
+
+    async def test_get_checkout_savings_vs_single(self, mock_session):
+        """Test that savings_vs_single is calculated correctly."""
+        import json
+
+        tier_breakdown = [
+            {'quantity': 16, 'unit_price': 9.0, 'total': 144.0}
+        ]
+        mock_cart_items = [
+            MagicMock(
+                id=1,
+                category_id=1,
+                subcategory_id=1,
+                quantity=16,
+                tier_breakdown=json.dumps(tier_breakdown)
+            )
+        ]
+
+        subcat1 = MagicMock()
+        subcat1.id = 1
+        subcat1.name = "USB-Sticks 32GB"
+
+        mock_digital_item = MagicMock()
+        mock_digital_item.is_physical = False
+
+        mock_tiers = [
+            MagicMock(min_quantity=1, unit_price=12.00),  # Single price
+            MagicMock(min_quantity=6, unit_price=10.00),
+            MagicMock(min_quantity=16, unit_price=9.00),  # Current
+            MagicMock(min_quantity=26, unit_price=8.00),
+        ]
+
+        with patch('repositories.cartItem.CartItemRepository.get_all_by_user_id', return_value=mock_cart_items):
+            with patch('repositories.subcategory.SubcategoryRepository.get_by_ids') as mock_subcats:
+                mock_subcats.return_value = {1: subcat1}
+                with patch('repositories.item.ItemRepository.get_item_metadata', return_value=mock_digital_item):
+                    with patch('repositories.price_tier.PriceTierRepository.get_by_subcategories', return_value={1: mock_tiers}):
+                        result = await CartService.get_checkout_summary_data(
+                            user_id=1,
+                            session=mock_session
+                        )
+
+                        # Savings: (12.00 - 9.00) * 16 = 48.00
+                        item = result['items'][0]
+                        assert item['savings_vs_single'] == 48.00
+
+                        # Total savings should match
+                        assert result['total_savings'] == 48.00
+
+    async def test_get_checkout_max_tier_reached(self, mock_session):
+        """Test that next_tier_info is None when max tier reached."""
+        import json
+
+        tier_breakdown = [
+            {'quantity': 30, 'unit_price': 8.0, 'total': 240.0}
+        ]
+        mock_cart_items = [
+            MagicMock(
+                id=1,
+                category_id=1,
+                subcategory_id=1,
+                quantity=30,
+                tier_breakdown=json.dumps(tier_breakdown)
+            )
+        ]
+
+        subcat1 = MagicMock()
+        subcat1.id = 1
+        subcat1.name = "USB-Sticks 32GB"
+
+        mock_digital_item = MagicMock()
+        mock_digital_item.is_physical = False
+
+        mock_tiers = [
+            MagicMock(min_quantity=1, unit_price=12.00),
+            MagicMock(min_quantity=6, unit_price=10.00),
+            MagicMock(min_quantity=16, unit_price=9.00),
+            MagicMock(min_quantity=26, unit_price=8.00),
+        ]
+
+        with patch('repositories.cartItem.CartItemRepository.get_all_by_user_id', return_value=mock_cart_items):
+            with patch('repositories.subcategory.SubcategoryRepository.get_by_ids') as mock_subcats:
+                mock_subcats.return_value = {1: subcat1}
+                with patch('repositories.item.ItemRepository.get_item_metadata', return_value=mock_digital_item):
+                    with patch('repositories.price_tier.PriceTierRepository.get_by_subcategories', return_value={1: mock_tiers}):
+                        result = await CartService.get_checkout_summary_data(
+                            user_id=1,
+                            session=mock_session
+                        )
+
+                        # Max tier reached - no next tier
+                        item = result['items'][0]
+                        assert item['current_tier_idx'] == 3
+                        assert item['next_tier_info'] is None
 
 
 if __name__ == "__main__":

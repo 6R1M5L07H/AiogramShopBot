@@ -152,3 +152,67 @@ class PriceTierRepository:
 
         # Get all tiers for that item
         return await PriceTierRepository.get_by_item_id(item_id, session)
+
+    @staticmethod
+    async def get_by_subcategories(
+        subcategory_ids: list[int],
+        session: Session | AsyncSession
+    ) -> dict[int, list[PriceTierDTO]]:
+        """
+        Batch-load price tiers for multiple subcategories (prevents N+1 queries).
+        All items in the same subcategory share the same pricing tiers.
+
+        Args:
+            subcategory_ids: List of subcategory IDs
+            session: Database session
+
+        Returns:
+            Dict mapping subcategory_id to list of PriceTierDTO sorted by min_quantity ascending
+            Example: {1: [tier1, tier2], 2: [tier1, tier2, tier3]}
+        """
+        from models.item import Item
+
+        if not subcategory_ids:
+            return {}
+
+        # Get one representative item_id per subcategory that HAS tiers
+        item_stmt = (
+            select(Item.id, Item.subcategory_id)
+            .join(PriceTier, PriceTier.item_id == Item.id)
+            .where(Item.subcategory_id.in_(subcategory_ids))
+            .distinct(Item.subcategory_id)
+        )
+        item_result = await session_execute(item_stmt, session)
+        item_rows = item_result.all()
+
+        # Map subcategory_id -> item_id
+        subcategory_to_item = {row.subcategory_id: row.id for row in item_rows}
+
+        # Get all item_ids
+        item_ids = list(subcategory_to_item.values())
+
+        if not item_ids:
+            return {}
+
+        # Batch-load all tiers for all items
+        stmt = (
+            select(PriceTier)
+            .where(PriceTier.item_id.in_(item_ids))
+            .order_by(PriceTier.item_id, PriceTier.min_quantity.asc())
+        )
+        result = await session_execute(stmt, session)
+        all_tiers = result.scalars().all()
+
+        # Group tiers by item_id
+        tiers_by_item = {}
+        for tier in all_tiers:
+            if tier.item_id not in tiers_by_item:
+                tiers_by_item[tier.item_id] = []
+            tiers_by_item[tier.item_id].append(PriceTierDTO.model_validate(tier, from_attributes=True))
+
+        # Remap to subcategory_id
+        result_dict = {}
+        for subcategory_id, item_id in subcategory_to_item.items():
+            result_dict[subcategory_id] = tiers_by_item.get(item_id, [])
+
+        return result_dict

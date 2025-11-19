@@ -653,13 +653,32 @@ class NotificationService:
         order = await OrderRepository.get_by_id(order_id, session)
         order_items = await ItemRepository.get_by_order_id(order.id, session)
 
+        # Parse tier breakdown from order (NO recalculation!)
+        from services.order import OrderService
+        tier_breakdown_list = OrderService._parse_tier_breakdown_from_order(order)
+
         # Batch-load subcategories
         subcategory_ids = list({item.subcategory_id for item in order_items})
         subcategories_dict = await SubcategoryRepository.get_by_ids(subcategory_ids, session)
 
-        # Build items list with private_data
+        # Fallback: If tier_breakdown_json not available (old orders), recalculate
+        if not tier_breakdown_list:
+            logging.warning(f"Order {order.id} has no tier_breakdown_json, falling back to recalculation")
+            tier_breakdown_list = await OrderService._group_items_with_tier_pricing(
+                order_items, subcategories_dict, session
+            )
+
+        # Build items list with private_data and tier_breakdown
         items_raw = []
         for item in order_items:
+            # Find corresponding tier breakdown from tier_breakdown_list
+            tier_breakdown = None
+            for tier_item in tier_breakdown_list:
+                subcategory = subcategories_dict.get(item.subcategory_id)
+                if subcategory and tier_item['subcategory_name'] == subcategory.name:
+                    tier_breakdown = tier_item.get('breakdown')
+                    break
+
             subcategory = subcategories_dict.get(item.subcategory_id)
             if subcategory:
                 items_raw.append({
@@ -667,11 +686,11 @@ class NotificationService:
                     'price': item.price,
                     'quantity': 1,
                     'is_physical': item.is_physical,
-                    'private_data': item.private_data
+                    'private_data': item.private_data,
+                    'tier_breakdown': tier_breakdown if not item.private_data else None  # Don't show tier breakdown for individual items with codes
                 })
 
-        # Group items by (name, price, is_physical, private_data)
-        from services.order import OrderService
+        # Group items by (name, price, is_physical, private_data) while preserving tier_breakdown
         items_list = OrderService._group_items_for_display(items_raw)
 
         # Format with InvoiceFormatter
