@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2025-11-19
+
+### User Experience
+
+**GPG Public Key Transparency**
+- Cart view displays shop's public PGP key with encryption explanation before checkout
+- Users can view fingerprint, expiration date, and key details on-device
+- Shortened key display in tappable code block for easy clipboard copy
+- Automatic metadata extraction from configured PGP key
+- Multi-language support for encryption information
+
 ## 2025-11-18
 
 ### Security Fixes

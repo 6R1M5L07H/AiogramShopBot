@@ -534,6 +534,15 @@
     "address_already_set_error": "Adresse kann nicht mehr geändert werden.",
     "generic_error": "Ein Fehler ist aufgetreten. Unser Team wurde benachrichtigt.",
     "address_encrypted_success": "✅ Deine Lieferadresse wurde verschlüsselt empfangen!\n\n🔒 Die Adresse wurde asymmetrisch mit PGP verschlüsselt und hat im Klartext niemals dein Gerät verlassen.",
-    "proceed_to_payment": "Weiter"
+    "proceed_to_payment": "Weiter",
+    "cart_gpg_button": "🔐 PGP-Verschlüsselung",
+    "gpg_info_header": "🔐 <b>Ende-zu-Ende-Verschlüsselung</b>",
+    "gpg_info_text": "🔒 <b>Zweischichtige Datensicherheit</b>\n\nDeine Lieferadresse wird <b>doppelt geschützt</b>:\n\n1️⃣ <b>PGP-Verschlüsselung (Client-seitig)</b>\n   • Verschlüsselung erfolgt direkt auf deinem Gerät\n   • Der Server empfängt nur verschlüsselte Daten\n   • Nur autorisierte Admins können entschlüsseln\n\n2️⃣ <b>Verschlüsselte Datenbank</b>\n   • Alle Daten werden zusätzlich in einer verschlüsselten DB gespeichert\n   • Schutz vor unbefugtem Datenbankzugriff\n\n⏰ <b>Automatische Löschung nach {retention_days} Tagen</b>\n   • Datensparsamkeit: Nur so lange wie nötig\n   • Keine dauerhafte Speicherung\n\n💡 <b>So funktioniert's:</b>\nBeim Checkout wirst du nach deiner Adresse gefragt. Die Verschlüsselung erfolgt auf deinem Gerät vor dem Versenden mit unserem öffentlichen PGP-Schlüssel.\n\n📚 <b>Mehr über PGP:</b> <a href=\"https://gnupg.org\">gnupg.org</a>",
+    "gpg_public_key_header": "🔑 <b>Shop Public Key</b>",
+    "gpg_fingerprint": "<b>Fingerprint:</b>\n<code>{fingerprint}</code>",
+    "gpg_valid_until": "<b>Gültig bis:</b> {expiration}",
+    "gpg_key_expires_never": "Unbegrenzt",
+    "gpg_tutorial_link": "📖 <a href=\"https://gnupg.org\">PGP/GPG Tutorial</a>",
+    "pgp_key_not_configured": "⚠️ <b>PGP-Schlüssel nicht konfiguriert</b>\n\nDer Shop-Betreiber hat noch keinen öffentlichen PGP-Schlüssel hinterlegt. Bitte kontaktiere den Support."
   }
 }

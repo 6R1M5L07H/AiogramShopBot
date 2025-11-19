@@ -548,6 +548,15 @@
     "address_already_set_error": "Address cannot be changed anymore.",
     "generic_error": "An error occurred. Our team has been notified.",
     "address_encrypted_success": "✅ Your shipping address has been received encrypted!\n\n🔒 The address was asymmetrically encrypted with PGP and never left your device in plaintext.",
-    "proceed_to_payment": "Continue"
+    "proceed_to_payment": "Continue",
+    "cart_gpg_button": "🔐 PGP Encryption",
+    "gpg_info_header": "🔐 <b>End-to-End Encryption</b>",
+    "gpg_info_text": "🔒 <b>Dual-Layer Data Security</b>\n\nYour shipping address is <b>doubly protected</b>:\n\n1️⃣ <b>PGP Encryption (Client-side)</b>\n   • Encryption happens directly on your device\n   • Server only receives encrypted data\n   • Only authorized admins can decrypt\n\n2️⃣ <b>Encrypted Database</b>\n   • All data additionally stored in encrypted DB\n   • Protection against unauthorized database access\n\n⏰ <b>Automatic Deletion After {retention_days} Days</b>\n   • Data minimization: Only as long as necessary\n   • No permanent storage\n\n💡 <b>How It Works:</b>\nDuring checkout, you'll be asked for your address. Encryption happens on your device before sending, using our public PGP key.\n\n📚 <b>Learn More About PGP:</b> <a href=\"https://gnupg.org\">gnupg.org</a>",
+    "gpg_public_key_header": "🔑 <b>Shop Public Key</b>",
+    "gpg_fingerprint": "<b>Fingerprint:</b>\n<code>{fingerprint}</code>",
+    "gpg_valid_until": "<b>Valid Until:</b> {expiration}",
+    "gpg_key_expires_never": "Never expires",
+    "gpg_tutorial_link": "📖 <a href=\"https://gnupg.org\">PGP/GPG Tutorial</a>",
+    "pgp_key_not_configured": "⚠️ <b>PGP Key Not Configured</b>\n\nThe shop operator has not configured a public PGP key yet. Please contact support."
   }
 }
