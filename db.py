@@ -124,7 +124,14 @@ async def session_commit(session: AsyncSession | Session) -> None:
 def set_sqlite_pragma(dbapi_connection, connection_record):
     cursor = dbapi_connection.cursor()
     if config.DB_ENCRYPTION:
-        # CRITICAL: Set encryption key FIRST, before any other PRAGMA
+        # CRITICAL: Set cipher parameters BEFORE key
+        # These must match the parameters used when the DB was created
+        cursor.execute("PRAGMA cipher_page_size = 4096")
+        cursor.execute("PRAGMA kdf_iter = 256000")
+        cursor.execute("PRAGMA cipher_hmac_algorithm = HMAC_SHA512")
+        cursor.execute("PRAGMA cipher_kdf_algorithm = PBKDF2_HMAC_SHA512")
+
+        # Set encryption key AFTER cipher parameters
         # URL password alone is not sufficient for CREATE operations
         cursor.execute(f"PRAGMA key = '{config.DB_PASS}'")
         cursor.execute("PRAGMA journal_mode=WAL")

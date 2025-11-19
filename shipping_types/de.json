@@ -1,42 +1,58 @@
 {
   "maxibrief": {
     "name": "Maxibrief",
-    "real_cost": 2.70,
+    "real_cost": 2.90,
     "charged_cost": 0.00,
     "allows_packstation": false,
     "has_tracking": false,
     "max_weight_grams": 1000,
     "max_dimensions_cm": {
-      "length": 60,
-      "width": 30,
+      "length": 35.3,
+      "width": 25,
       "height": 5
     },
     "description": "Deutsche Post Maxibrief",
     "upgrade": {
-      "type": "maxibrief_einwurf",
-      "delta_cost": 2.35,
-      "name": "Mit Sendungsverfolgung absichern",
-      "description": "Einwurfeinschreiben mit Sendungsverfolgung"
+      "target": "maxibrief_einwurf",
+      "upsell_button_text": "Versichert versenden"
     }
   },
   "maxibrief_einwurf": {
     "name": "Maxibrief + Einwurfeinschreiben",
-    "real_cost": 5.05,
-    "charged_cost": 2.35,
+    "real_cost": 5.25,
+    "charged_cost": 4.00,
     "allows_packstation": false,
     "has_tracking": true,
     "max_weight_grams": 1000,
     "max_dimensions_cm": {
-      "length": 60,
-      "width": 30,
+      "length": 35.3,
+      "width": 25,
       "height": 5
     },
-    "description": "Maxibrief mit Sendungsverfolgung",
+    "description": "Bei Verlust: Für Neukunden (<= 5 erfüllte Bestellungen) 50% Nachlass für Re-Shipments, sonst kostenloses Re-Shipment.",
     "upgrade": null
   },
-  "paeckchen": {
-    "name": "Päckchen",
-    "real_cost": 3.99,
+  "s-paeckchen": {
+    "name": "DHL S-Päckchen",
+    "real_cost": 4.19,
+    "charged_cost": 0.00,
+    "allows_packstation": true,
+    "has_tracking": false,
+    "max_weight_grams": 2000,
+    "max_dimensions_cm": {
+      "length": 35,
+      "width": 25,
+      "height": 10
+    },
+    "description": "DHL S-Päckchen",
+    "upgrade": {
+      "target": "paket_2kg",
+      "upsell_button_text": "Versichert versenden"
+    }
+  },
+  "m-paeckchen": {
+    "name": "DHL M-Päckchen",
+    "real_cost": 5.19,
     "charged_cost": 0.00,
     "allows_packstation": true,
     "has_tracking": false,
@@ -46,45 +62,59 @@
       "width": 30,
       "height": 15
     },
-    "description": "DHL Päckchen",
+    "description": "DHL M-Päckchen",
     "upgrade": {
-      "type": "paket_2kg",
-      "delta_cost": 1.50,
-      "name": "Versichert versenden",
-      "description": "Versichertes Paket bis 500€ mit Sendungsverfolgung"
+      "target": "paket_2kg",
+      "upsell_button_text": "Versichert versenden"
     }
   },
   "paket_2kg": {
     "name": "Versichertes Paket (2kg)",
-    "real_cost": 5.49,
-    "charged_cost": 1.50,
+    "real_cost": 6.19,
+    "charged_cost": 5.00,
     "allows_packstation": true,
     "has_tracking": true,
     "max_weight_grams": 2000,
+    "max_dimensions_cm": {
+      "length": 60,
+      "width": 30,
+      "height": 15
+    },
     "insurance_amount": 500,
-    "description": "DHL Paket bis 2kg",
+    "description": "Bei Verlust: Für Neukunden (<= 5 erfüllte Bestellungen) 50% Nachlass für Re-Shipments, sonst kostenloses Re-Shipment.",
     "upgrade": null
   },
   "paket_5kg": {
-    "name": "Paket 5kg",
-    "real_cost": 6.99,
-    "charged_cost": 0.00,
+    "name": "Versichertes Paket (5kg)",
+    "real_cost": 7.69,
+    "charged_cost": 7.00,
     "allows_packstation": true,
     "has_tracking": true,
     "max_weight_grams": 5000,
     "insurance_amount": 500,
-    "description": "DHL Paket bis 5kg",
+    "description": "Bei Verlust: Für Neukunden (<= 5 erfüllte Bestellungen) 50% Nachlass für Re-Shipments, sonst kostenloses Re-Shipment.",
     "upgrade": null
   },
   "paket_10kg": {
-    "name": "Paket 10kg",
-    "real_cost": 9.49,
-    "charged_cost": 0.00,
+    "name": "Versichertes Paket (10kg)",
+    "real_cost": 10.49,
+    "charged_cost": 10.00,
     "allows_packstation": true,
     "has_tracking": true,
     "max_weight_grams": 10000,
     "insurance_amount": 500,
-    "description": "DHL Paket bis 10kg",
+    "description": "Bei Verlust: Für Neukunden (<= 5 erfüllte Bestellungen) 50% Nachlass für Re-Shipments, sonst kostenloses Re-Shipment.",
+    "upgrade": null
+  },
+  "paket_5kg_pflanze": {
+    "name": "Versichertes Paket Pflanzentransport (5kg)",
+    "real_cost": 10.00,
+    "charged_cost": 8.00,
+    "allows_packstation": true,
+    "has_tracking": true,
+    "max_weight_grams": 5000,
+    "insurance_amount": 500,
+    "description": "Bei Verlust: Für Neukunden (<= 5 erfüllte Bestellungen) 50% Nachlass für Re-Shipments, sonst kostenloses Re-Shipment.",
     "upgrade": null
   }
 }
