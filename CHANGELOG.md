@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## 2025-11-19
 
+### Performance Optimizations
+
+**Cart Service Query Optimization**
+- Eliminated N+1 query problems in all cart operations
+- Batch loading reduces database queries by up to 96% for large carts
+- Cart with 50 items now executes 2 queries instead of 51
+- Improved response times for checkout, cart display, and order processing
+
 ### Shipping System Improvements
 
 **Simplified Shipping Configuration**
