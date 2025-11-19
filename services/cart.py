@@ -293,7 +293,7 @@ class CartService:
 
         # Handle expired orders without invoice - continue to build full data
         # (Handler will detect is_expired and show appropriate message)
-        if is_expired and not has_invoice:
+        if is_expired and invoice is None:
             # Don't return early - handler needs full order data for expired orders without invoice
             pass
 
@@ -434,6 +434,7 @@ class CartService:
             subcategories_dict = await SubcategoryRepository.get_by_ids(list(subcategory_ids_set), session)
 
             # Format items list
+            from utils.html_escape import safe_html
             items_list = ""
             subtotal = 0.0
             for subcategory_id, qty in items_by_subcategory.items():
@@ -445,7 +446,7 @@ class CartService:
                 subtotal += line_total
 
                 # Format: "2x Product Name @ €5.00  €10.00"
-                name_with_qty = f"{qty}x {subcategory.name}"
+                name_with_qty = f"{qty}x {safe_html(subcategory.name)}"
                 spacing = " " * max(1, 30 - len(name_with_qty))
                 items_list += f"{name_with_qty}\n  {Localizator.get_currency_symbol()}{price:.2f} × {qty}{spacing}{Localizator.get_currency_symbol()}{line_total:.2f}\n"
 

@@ -63,28 +63,32 @@ class TestShippingEndToEnd:
         return {
             "maxibrief": {
                 "name": "Maxibrief",
-                "base_cost": 0.0,
+                "charged_cost": 0.0,
+                "real_cost": 2.70,
                 "allows_packstation": False,
                 "has_tracking": False,
+                "description": "Deutsche Post Maxibrief",
                 "upgrade": None
             },
             "paeckchen": {
                 "name": "Päckchen",
-                "base_cost": 0.0,
+                "charged_cost": 0.0,
+                "real_cost": 3.99,
                 "allows_packstation": True,
                 "has_tracking": False,
+                "description": "DHL Päckchen",
                 "upgrade": {
-                    "type": "paket_2kg",
-                    "delta_cost": 1.50,
-                    "name": "Versichert versenden",
-                    "description": "Versichertes Paket"
+                    "target": "paket_2kg",
+                    "upsell_button_text": "Versichert versenden"
                 }
             },
             "paket_2kg": {
                 "name": "Versichertes Paket (2kg)",
-                "base_cost": 1.50,
+                "charged_cost": 1.50,
+                "real_cost": 5.49,
                 "allows_packstation": True,
                 "has_tracking": True,
+                "description": "Versichertes Paket",
                 "upgrade": None
             }
         }
@@ -179,7 +183,7 @@ class TestShippingEndToEnd:
         assert len(result) == 1
         assert green_tea_subcat.id in result
         assert result[green_tea_subcat.id].shipping_type_key == "maxibrief"
-        assert result[green_tea_subcat.id].base_cost == 0.0
+        assert result[green_tea_subcat.id].charged_cost == 0.0
 
     @pytest.mark.asyncio
     async def test_single_subcategory_medium_quantity(self, session, tea_shop_setup, mock_shipping_types):
@@ -211,9 +215,9 @@ class TestShippingEndToEnd:
             result = await CartShippingService.calculate_shipping_for_cart(cart_items, session)
 
         assert result[green_tea_subcat.id].shipping_type_key == "paeckchen"
-        assert result[green_tea_subcat.id].base_cost == 0.0
+        assert result[green_tea_subcat.id].charged_cost == 0.0
         assert result[green_tea_subcat.id].upgrade is not None
-        assert result[green_tea_subcat.id].upgrade["type"] == "paket_2kg"
+        assert result[green_tea_subcat.id].upgrade["target"] == "paket_2kg"
 
     @pytest.mark.asyncio
     async def test_single_subcategory_large_quantity(self, session, tea_shop_setup, mock_shipping_types):
@@ -245,7 +249,7 @@ class TestShippingEndToEnd:
             result = await CartShippingService.calculate_shipping_for_cart(cart_items, session)
 
         assert result[green_tea_subcat.id].shipping_type_key == "paket_2kg"
-        assert result[green_tea_subcat.id].base_cost == 1.50
+        assert result[green_tea_subcat.id].charged_cost == 1.50
         assert result[green_tea_subcat.id].upgrade is None
 
     @pytest.mark.asyncio
