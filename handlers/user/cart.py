@@ -150,6 +150,13 @@ async def show_cart(**kwargs):
                 text=Localizator.get_text(BotEntity.USER, "checkout"),
                 callback_data=CartCallback.create(2, page, cart.id)
             )
+
+            # Add GPG info button (always visible when items in cart)
+            kb_builder.button(
+                text=Localizator.get_text(BotEntity.USER, "cart_gpg_button"),
+                callback_data=CartCallback.create(10, page)  # Level 10 = GPG Info
+            )
+
             kb_builder.adjust(1)
 
             # Add pagination buttons
@@ -297,6 +304,24 @@ async def create_order_handler(**kwargs):
     await create_order(**kwargs)
 
 
+async def show_gpg_info(**kwargs):
+    """
+    Level 10: Show GPG public key information.
+
+    Displays:
+    - End-to-end encryption explanation
+    - Dual-layer security (GPG + encrypted DB)
+    - Shop's public PGP key (shortened)
+    - Fingerprint and expiration date
+    - Tutorial link
+    """
+    callback = kwargs.get("callback")
+
+    # Get GPG info view from service
+    msg, kb_builder = await CartService.get_gpg_info_view()
+
+    # Send response
+    await callback.message.edit_text(msg, reply_markup=kb_builder.as_markup())
 
 
 @cart_router.callback_query(CartCallback.filter(), IsUserExistFilter())
@@ -309,6 +334,7 @@ async def navigate_cart_process(callback: CallbackQuery, callback_data: CartCall
         2: checkout_processing,
         3: create_order_handler,  # Hand off to Order domain
         4: delete_cart_item_execute,
+        10: show_gpg_info,  # GPG public key info
     }
 
     current_level_function = levels[current_level]
