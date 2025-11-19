@@ -190,9 +190,10 @@ class SubcategoryService:
         )
 
         # Build message
+        from utils.html_escape import safe_html
         message_parts = [
-            f"<b>{subcategory.name}</b>",
-            f"{item.description}\n"
+            f"<b>{safe_html(subcategory.name)}</b>",
+            f"{safe_html(item.description)}\n"
         ]
 
         # Show cart context

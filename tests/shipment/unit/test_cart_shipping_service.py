@@ -23,40 +23,44 @@ def mock_shipping_types():
     return {
         "maxibrief": {
             "name": "Maxibrief",
-            "base_cost": 0.0,
+            "charged_cost": 0.0,
+            "real_cost": 2.70,
             "allows_packstation": False,
             "has_tracking": False,
+            "description": "Deutsche Post Maxibrief",
             "upgrade": {
-                "type": "maxibrief_einwurf",
-                "delta_cost": 2.35,
-                "name": "Mit Sendungsverfolgung absichern",
-                "description": "Einwurfeinschreiben mit Sendungsverfolgung"
+                "target": "maxibrief_einwurf",
+                "upsell_button_text": "Mit Sendungsverfolgung absichern"
             }
         },
         "maxibrief_einwurf": {
             "name": "Maxibrief + Einwurfeinschreiben",
-            "base_cost": 2.35,
+            "charged_cost": 2.35,
+            "real_cost": 5.05,
             "allows_packstation": False,
             "has_tracking": True,
+            "description": "Einwurfeinschreiben mit Sendungsverfolgung",
             "upgrade": None
         },
         "paeckchen": {
             "name": "Päckchen",
-            "base_cost": 0.0,
+            "charged_cost": 0.0,
+            "real_cost": 3.99,
             "allows_packstation": True,
             "has_tracking": False,
+            "description": "DHL Päckchen",
             "upgrade": {
-                "type": "paket_2kg",
-                "delta_cost": 1.50,
-                "name": "Versichert versenden",
-                "description": "Versichertes Paket bis 500€"
+                "target": "paket_2kg",
+                "upsell_button_text": "Versichert versenden"
             }
         },
         "paket_2kg": {
             "name": "Versichertes Paket (2kg)",
-            "base_cost": 1.50,
+            "charged_cost": 1.50,
+            "real_cost": 5.49,
             "allows_packstation": True,
             "has_tracking": True,
+            "description": "Versichertes Paket bis 500€",
             "upgrade": None
         }
     }
@@ -90,7 +94,7 @@ class TestCalculateShippingForCart:
         with patch('services.cart_shipping.get_shipping_types', return_value=mock_shipping_types):
             with patch('services.cart_shipping.ShippingTierRepository.get_by_subcategory_ids',
                       return_value=mock_shipping_tiers):
-                with patch('services.cart_shipping.ItemRepository.get_single',
+                with patch('services.cart_shipping.ItemRepository.get_item_metadata',
                           return_value=MagicMock(is_physical=True, shipping_cost=0.0, allows_packstation=False)):
 
                     mock_session = AsyncMock()
@@ -99,7 +103,7 @@ class TestCalculateShippingForCart:
                     assert len(result) == 1
                     assert 3 in result
                     assert result[3].shipping_type_key == "maxibrief"
-                    assert result[3].base_cost == 0.0
+                    assert result[3].charged_cost == 0.0
 
     @pytest.mark.asyncio
     async def test_multiple_items_same_subcategory_sum_quantities(self, mock_shipping_types, mock_shipping_tiers):
@@ -112,7 +116,7 @@ class TestCalculateShippingForCart:
         with patch('services.cart_shipping.get_shipping_types', return_value=mock_shipping_types):
             with patch('services.cart_shipping.ShippingTierRepository.get_by_subcategory_ids',
                       return_value=mock_shipping_tiers):
-                with patch('services.cart_shipping.ItemRepository.get_single',
+                with patch('services.cart_shipping.ItemRepository.get_item_metadata',
                           return_value=MagicMock(is_physical=True, shipping_cost=0.0, allows_packstation=True)):
 
                     mock_session = AsyncMock()
@@ -132,7 +136,7 @@ class TestCalculateShippingForCart:
         with patch('services.cart_shipping.get_shipping_types', return_value=mock_shipping_types):
             with patch('services.cart_shipping.ShippingTierRepository.get_by_subcategory_ids',
                       return_value=mock_shipping_tiers):
-                with patch('services.cart_shipping.ItemRepository.get_single',
+                with patch('services.cart_shipping.ItemRepository.get_item_metadata',
                           return_value=MagicMock(is_physical=True, shipping_cost=0.0, allows_packstation=False)):
 
                     mock_session = AsyncMock()
@@ -149,7 +153,7 @@ class TestCalculateShippingForSubcategory:
     @pytest.mark.asyncio
     async def test_digital_items_return_none(self, mock_shipping_types):
         """Digital items should return None (no shipping)."""
-        with patch('services.cart_shipping.ItemRepository.get_single',
+        with patch('services.cart_shipping.ItemRepository.get_item_metadata',
                   return_value=MagicMock(is_physical=False)):
 
             mock_session = AsyncMock()
@@ -173,7 +177,7 @@ class TestCalculateShippingForSubcategory:
             allows_packstation=True
         )
 
-        with patch('services.cart_shipping.ItemRepository.get_single',
+        with patch('services.cart_shipping.ItemRepository.get_item_metadata',
                   return_value=mock_item):
 
             mock_session = AsyncMock()
@@ -188,7 +192,7 @@ class TestCalculateShippingForSubcategory:
 
             assert result is not None
             assert result.shipping_type_key == "legacy_flat"
-            assert result.base_cost == 5.0
+            assert result.charged_cost == 5.0
             assert result.allows_packstation is True
 
     @pytest.mark.asyncio
@@ -199,7 +203,7 @@ class TestCalculateShippingForSubcategory:
             MagicMock(min_quantity=6, max_quantity=None, shipping_type="paeckchen")
         ]
 
-        with patch('services.cart_shipping.ItemRepository.get_single',
+        with patch('services.cart_shipping.ItemRepository.get_item_metadata',
                   return_value=MagicMock(is_physical=True)):
 
             mock_session = AsyncMock()
@@ -222,7 +226,7 @@ class TestCalculateShippingForSubcategory:
             MagicMock(min_quantity=1, max_quantity=None, shipping_type="invalid_type")
         ]
 
-        with patch('services.cart_shipping.ItemRepository.get_single',
+        with patch('services.cart_shipping.ItemRepository.get_item_metadata',
                   return_value=MagicMock(is_physical=True)):
 
             mock_session = AsyncMock()
@@ -248,7 +252,7 @@ class TestUpgradeOptionLoading:
             MagicMock(min_quantity=1, max_quantity=None, shipping_type="maxibrief")
         ]
 
-        with patch('services.cart_shipping.ItemRepository.get_single',
+        with patch('services.cart_shipping.ItemRepository.get_item_metadata',
                   return_value=MagicMock(is_physical=True)):
 
             mock_session = AsyncMock()
@@ -262,7 +266,7 @@ class TestUpgradeOptionLoading:
             )
 
             assert result.upgrade is not None
-            assert result.upgrade["type"] == "maxibrief_einwurf"
+            assert result.upgrade["target"] == "maxibrief_einwurf"
             assert result.upgrade["delta_cost"] == 2.35
             assert "Sendungsverfolgung" in result.upgrade["name"]
 
@@ -273,7 +277,7 @@ class TestUpgradeOptionLoading:
             MagicMock(min_quantity=1, max_quantity=None, shipping_type="paket_2kg")
         ]
 
-        with patch('services.cart_shipping.ItemRepository.get_single',
+        with patch('services.cart_shipping.ItemRepository.get_item_metadata',
                   return_value=MagicMock(is_physical=True)):
 
             mock_session = AsyncMock()
@@ -295,7 +299,7 @@ class TestUpgradeOptionLoading:
             MagicMock(min_quantity=1, max_quantity=None, shipping_type="maxibrief")
         ]
 
-        with patch('services.cart_shipping.ItemRepository.get_single',
+        with patch('services.cart_shipping.ItemRepository.get_item_metadata',
                   return_value=MagicMock(is_physical=True)):
 
             mock_session = AsyncMock()
@@ -310,11 +314,11 @@ class TestUpgradeOptionLoading:
 
             # Base option
             assert result.shipping_type_key == "maxibrief"
-            assert result.base_cost == 0.0
+            assert result.charged_cost == 0.0
             assert result.has_tracking is False
 
             # Upgrade option
-            assert result.upgrade["type"] == "maxibrief_einwurf"
+            assert result.upgrade["target"] == "maxibrief_einwurf"
             assert result.upgrade["delta_cost"] == 2.35
 
     @pytest.mark.asyncio
@@ -324,7 +328,7 @@ class TestUpgradeOptionLoading:
             MagicMock(min_quantity=1, max_quantity=None, shipping_type="paeckchen")
         ]
 
-        with patch('services.cart_shipping.ItemRepository.get_single',
+        with patch('services.cart_shipping.ItemRepository.get_item_metadata',
                   return_value=MagicMock(is_physical=True)):
 
             mock_session = AsyncMock()
@@ -339,11 +343,11 @@ class TestUpgradeOptionLoading:
 
             # Base option
             assert result.shipping_type_key == "paeckchen"
-            assert result.base_cost == 0.0
+            assert result.charged_cost == 0.0
             assert result.has_tracking is False
 
             # Upgrade option
-            assert result.upgrade["type"] == "paket_2kg"
+            assert result.upgrade["target"] == "paket_2kg"
             assert result.upgrade["delta_cost"] == 1.50
 
 
@@ -361,7 +365,7 @@ class TestMaxShippingCost:
         with patch('services.cart_shipping.get_shipping_types', return_value=mock_shipping_types):
             with patch('services.cart_shipping.ShippingTierRepository.get_by_subcategory_ids',
                       return_value=mock_shipping_tiers):
-                with patch('services.cart_shipping.ItemRepository.get_single',
+                with patch('services.cart_shipping.ItemRepository.get_item_metadata',
                           return_value=MagicMock(is_physical=True, shipping_cost=0.0, allows_packstation=True)):
 
                     mock_session = AsyncMock()
@@ -380,7 +384,7 @@ class TestMaxShippingCost:
         with patch('services.cart_shipping.get_shipping_types', return_value=mock_shipping_types):
             with patch('services.cart_shipping.ShippingTierRepository.get_by_subcategory_ids',
                       return_value=mock_shipping_tiers):
-                with patch('services.cart_shipping.ItemRepository.get_single',
+                with patch('services.cart_shipping.ItemRepository.get_item_metadata',
                           return_value=MagicMock(is_physical=True, shipping_cost=0.0, allows_packstation=False)):
 
                     mock_session = AsyncMock()
@@ -421,7 +425,7 @@ class TestShippingSummaryText:
         with patch('services.cart_shipping.get_shipping_types', return_value=mock_shipping_types):
             with patch('services.cart_shipping.ShippingTierRepository.get_by_subcategory_ids',
                       return_value=mock_shipping_tiers):
-                with patch('services.cart_shipping.ItemRepository.get_single',
+                with patch('services.cart_shipping.ItemRepository.get_item_metadata',
                           return_value=MagicMock(is_physical=True, shipping_cost=0.0, allows_packstation=True)):
                     with patch('repositories.subcategory.SubcategoryRepository.get_by_ids',
                               return_value=mock_subcategories):

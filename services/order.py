@@ -1173,20 +1173,21 @@ class OrderService:
             return Localizator.get_text(BotEntity.USER, "shipping_upsell_no_upgrade"), kb_builder
 
         # Build message with base + upgrade details
+        from utils.html_escape import safe_html
         currency_sym = "€" if order.currency.value == "EUR" else order.currency.value
 
         message_text = Localizator.get_text(BotEntity.USER, "shipping_upsell_title")
         message_text += "\n\n"
         message_text += Localizator.get_text(BotEntity.USER, "shipping_upsell_base").format(
-            shipping_name=base_details["name"],
+            shipping_name=safe_html(base_details["name"]),
             currency_sym=currency_sym,
             base_cost=base_details["charged_cost"]
         )
         message_text += Localizator.get_text(BotEntity.USER, "shipping_upsell_upgrade").format(
-            upgrade_name=upgrade["name"],
+            upgrade_name=safe_html(upgrade["name"]),
             currency_sym=currency_sym,
             delta_cost=upgrade["delta_cost"],
-            upgrade_description=upgrade.get("description", "")
+            upgrade_description=safe_html(upgrade.get("description", ""))
         )
 
         # Build keyboard
@@ -1201,7 +1202,7 @@ class OrderService:
             callback_data=OrderCallback.create(
                 level=7,
                 order_id=order_id,
-                shipping_type_key=upgrade["type"]
+                shipping_type_key=upgrade["target"]
             )
         )
 

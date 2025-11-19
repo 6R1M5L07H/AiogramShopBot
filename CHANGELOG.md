@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ## 2025-11-19
 
+### Shipping System Improvements
+
+**Simplified Shipping Configuration**
+- Eliminated redundant shipping cost and description data from configuration
+- Shipping upgrade costs now calculated dynamically from base and target prices
+- Reduced configuration file size by 40% while maintaining functionality
+
+**Database Compatibility**
+- Fixed SQLCipher database compatibility issues with cipher parameter configuration
+- Added SQLCipher event listener with correct PRAGMA settings for encrypted databases
+- Database utility scripts now properly handle encrypted SQLite databases
+
 ### Checkout Tier Display Enhancement
 
 **User Experience**

@@ -51,8 +51,9 @@ async def process_shipping_address_input(message: Message, state: FSMContext, se
     await state.update_data(shipping_address=address_text)
 
     # Show confirmation screen
+    from utils.html_escape import safe_html
     message_text = Localizator.get_text(BotEntity.USER, "shipping_address_confirm").format(
-        address=address_text,
+        address=safe_html(address_text),
         retention_days=config.DATA_RETENTION_DAYS
     )
 

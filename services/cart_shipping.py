@@ -195,6 +195,10 @@ class CartShippingService:
             return None
 
         # Build result DTO
+        # Get upgrade option through ShippingUpsellService (calculates delta_cost)
+        from services.shipping_upsell import ShippingUpsellService
+        upgrade_details = ShippingUpsellService.get_upgrade_for_shipping_type(shipping_type_key)
+
         return ShippingSelectionResultDTO(
             shipping_type_key=shipping_type_key,
             shipping_type_name=shipping_type_config["name"],
@@ -202,7 +206,7 @@ class CartShippingService:
             real_cost=shipping_type_config["real_cost"],
             has_tracking=shipping_type_config["has_tracking"],
             allows_packstation=shipping_type_config["allows_packstation"],
-            upgrade=shipping_type_config.get("upgrade")
+            upgrade=upgrade_details
         )
 
     @staticmethod
