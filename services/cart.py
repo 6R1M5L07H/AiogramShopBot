@@ -1820,5 +1820,95 @@ class CartService:
             kb_builder.row(CartCallback.create(0).get_back_button(0))
             return f"❌ <b>Error:</b> {str(e)}", kb_builder
 
+    @staticmethod
+    async def get_gpg_info_view() -> tuple[str, InlineKeyboardBuilder]:
+        """
+        Build GPG public key information view with encryption explanation.
+
+        Shows:
+        - End-to-end encryption explanation
+        - Dual-layer security (GPG + encrypted DB)
+        - Data retention policy
+        - Shop's public PGP key (shortened for display)
+        - Fingerprint (grouped format)
+        - Expiration date
+        - Tutorial link
+
+        Returns:
+            Tuple of (message_text, keyboard_builder)
+        """
+        from utils.pgp_helper import PGPKeyHelper
+
+        kb_builder = InlineKeyboardBuilder()
+
+        # Check if PGP key is configured
+        if not config.PGP_PUBLIC_KEY_BASE64:
+            message_text = Localizator.get_text(BotEntity.USER, "pgp_key_not_configured")
+            kb_builder.row(CartCallback.create(0).get_back_button(0))
+            return message_text, kb_builder
+
+        # Parse PGP key and extract metadata
+        key_data = PGPKeyHelper.parse_public_key(config.PGP_PUBLIC_KEY_BASE64)
+
+        # Build message
+        message_parts = []
+
+        # Header
+        message_parts.append(Localizator.get_text(BotEntity.USER, "gpg_info_header"))
+        message_parts.append("")
+
+        # Info text (dual-layer security explanation)
+        message_parts.append(
+            Localizator.get_text(BotEntity.USER, "gpg_info_text").format(
+                retention_days=config.DATA_RETENTION_DAYS
+            )
+        )
+        message_parts.append("")
+        message_parts.append("─────────────────────")
+        message_parts.append("")
+
+        # Public Key Section
+        message_parts.append(Localizator.get_text(BotEntity.USER, "gpg_public_key_header"))
+        message_parts.append("")
+
+        # Show shortened key in <code> block (tappable for clipboard copy)
+        if key_data.get('key_shortened'):
+            message_parts.append(f"<code>{key_data['key_shortened']}</code>")
+            message_parts.append("")
+
+        # Show fingerprint (if available)
+        if key_data.get('fingerprint') and not key_data.get('error'):
+            message_parts.append(
+                Localizator.get_text(BotEntity.USER, "gpg_fingerprint").format(
+                    fingerprint=key_data['fingerprint']
+                )
+            )
+            message_parts.append("")
+
+        # Show expiration (if available)
+        if not key_data.get('error'):
+            if key_data.get('expiration'):
+                expiration_text = key_data['expiration']
+            else:
+                # Key never expires
+                expiration_text = Localizator.get_text(BotEntity.USER, "gpg_key_expires_never")
+
+            message_parts.append(
+                Localizator.get_text(BotEntity.USER, "gpg_valid_until").format(
+                    expiration=expiration_text
+                )
+            )
+            message_parts.append("")
+
+        # Tutorial link
+        message_parts.append(Localizator.get_text(BotEntity.USER, "gpg_tutorial_link"))
+
+        message_text = "\n".join(message_parts)
+
+        # Back button to cart
+        kb_builder.row(CartCallback.create(0).get_back_button(0))
+
+        return message_text, kb_builder
+
 
 
