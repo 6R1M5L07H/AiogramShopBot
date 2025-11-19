@@ -4,9 +4,23 @@ All notable changes to this project will be documented in this file.
 
 ## 2025-11-19
 
-### User Experience
+### Checkout Tier Display Enhancement
 
-**GPG Public Key Transparency**
+**User Experience**
+- Checkout confirmation now shows complete tier pricing structure with current tier marker
+- Displays savings calculation versus single-item pricing for transparency
+- Shows upselling information (items needed for next tier, extra savings available)
+- Consistent tier breakdown format across checkout, payment, and order completion views
+
+**Technical Improvements**
+- Checkout formatting moved from CartService to InvoiceFormatterService for centralized presentation logic
+- InvoiceFormatter calculates subtotals from tier breakdowns instead of naive price multiplication
+- Order completion notifications include tier breakdown data from stored order history
+- Reduced code duplication by reusing formatter across checkout, payment, and shipped notifications
+
+### GPG Public Key Transparency
+
+**User Experience**
 - Cart view displays shop's public PGP key with encryption explanation before checkout
 - Users can view fingerprint, expiration date, and key details on-device
 - Shortened key display in tappable code block for easy clipboard copy

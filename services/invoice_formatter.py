@@ -14,7 +14,7 @@ from datetime import datetime
 from enums.bot_entity import BotEntity
 from enums.order_status import OrderStatus
 from utils.localizator import Localizator
-from utils.html_escape import safe_html
+from utils.html_escape import safe_html, safe_url
 
 
 class InvoiceFormatterService:
@@ -33,7 +33,9 @@ class InvoiceFormatterService:
         """
         # Check if private_data contains HTML tags (already formatted)
         if any(tag in private_data for tag in ['<b>', '<i>', '<a>', '<code>', '<pre>', '<u>', '<s>']):
-            # Already HTML formatted - render directly with indentation on first line only
+            # SECURITY NOTE: Pre-formatted HTML is rendered directly without escaping.
+            # This assumes private_data is admin-controlled (from Item table).
+            # DO NOT use user-provided input here without sanitization.
             lines = private_data.split('\n')
             result = f"   {lines[0]}\n"
             if len(lines) > 1:
@@ -41,13 +43,17 @@ class InvoiceFormatterService:
             return result
         # Check if private_data is a URL (for Telegram deep links)
         elif private_data.startswith(('http://', 'https://', 't.me/')):
-            # Render as clickable link
+            # Render as clickable link with URL sanitization
             if private_data.startswith('t.me/'):
                 private_data = f"https://{private_data}"
-            return f"   <a href=\"{private_data}\">📱 Beratung starten</a>\n"
+            sanitized_url = safe_url(private_data)
+            if not sanitized_url:
+                # Invalid URL - render as escaped text
+                return f"   <code>{safe_html(private_data)}</code>\n"
+            return f"   <a href=\"{sanitized_url}\">📱 Beratung starten</a>\n"
         else:
-            # Render as code (for vouchers, keys, etc.)
-            return f"   <code>{private_data}</code>\n"
+            # Render as code (for vouchers, keys, etc.) with HTML escaping
+            return f"   <code>{safe_html(private_data)}</code>\n"
 
     @staticmethod
     def _format_items_section(
@@ -79,7 +85,7 @@ class InvoiceFormatterService:
         for item in items:
             # Check if item has tier breakdown
             if item.get('tier_breakdown'):
-                # Use tier breakdown formatting
+                # Use tier breakdown formatting (function handles escaping internally)
                 tier_text, _ = InvoiceFormatterService.format_items_with_tier_breakdown(
                     item_name=item['name'],
                     tier_breakdown=item['tier_breakdown'],
@@ -88,12 +94,13 @@ class InvoiceFormatterService:
                 )
                 message += tier_text + "\n"
             else:
-                # Flat pricing (no tier breakdown)
+                # Flat pricing (no tier breakdown) - escape item name to prevent HTML injection
+                item_name_escaped = safe_html(item['name'])
                 line_total = item['price'] * item['quantity']
                 if item['quantity'] == 1:
-                    message += f"{item['quantity']} {qty_unit} {item['name']} {currency_symbol}{item['price']:.2f}\n"
+                    message += f"{item['quantity']} {qty_unit} {item_name_escaped} {currency_symbol}{item['price']:.2f}\n"
                 else:
-                    message += f"{item['quantity']} {qty_unit} {item['name']} {currency_symbol}{item['price']:.2f} = {currency_symbol}{line_total:.2f}\n"
+                    message += f"{item['quantity']} {qty_unit} {item_name_escaped} {currency_symbol}{item['price']:.2f} = {currency_symbol}{line_total:.2f}\n"
 
             # Show private data if applicable
             if show_private_data and item.get('private_data'):
@@ -126,13 +133,15 @@ class InvoiceFormatterService:
         qty_unit = Localizator.get_text(BotEntity.COMMON, "quantity_unit_short")
 
         for (name, price), qty in items_dict.items():
+            # Escape item name to prevent HTML injection
+            name_escaped = safe_html(name)
             line_total = price * qty
             total += line_total
 
             if qty == 1 or not show_line_totals:
-                items_text += f"{qty} {qty_unit} {name} {currency_symbol}{price:.2f}\n"
+                items_text += f"{qty} {qty_unit} {name_escaped} {currency_symbol}{price:.2f}\n"
             else:
-                items_text += f"{qty} {qty_unit} {name} {currency_symbol}{price:.2f} = {currency_symbol}{line_total:.2f}\n"
+                items_text += f"{qty} {qty_unit} {name_escaped} {currency_symbol}{price:.2f} = {currency_symbol}{line_total:.2f}\n"
 
         return items_text, total
 
@@ -568,7 +577,15 @@ class InvoiceFormatterService:
         if items:
             # Auto-calculate subtotal if not provided
             if subtotal is None:
-                subtotal = sum(item['price'] * item['quantity'] for item in items)
+                subtotal = 0.0
+                for item in items:
+                    # Check if item has tier breakdown
+                    if item.get('tier_breakdown'):
+                        # Sum tier breakdown totals
+                        subtotal += sum(tier['total'] for tier in item['tier_breakdown'])
+                    else:
+                        # Use simple price * quantity
+                        subtotal += item['price'] * item['quantity']
 
             if header_type == "partial_cancellation":
                 # Partial cancellation: Show digital (kept) and physical (refunded) separately
@@ -835,7 +852,8 @@ class InvoiceFormatterService:
         # === SHIPPING ADDRESS (Admin View) ===
         if shipping_address:
             message += f"\n{Localizator.get_text(entity, 'shipping_address_admin_label')}\n"
-            message += f"{shipping_address}\n"
+            # Escape shipping address to prevent HTML injection
+            message += f"{safe_html(shipping_address)}\n"
 
         # === FOOTER ===
         if footer_text:
@@ -854,5 +872,216 @@ class InvoiceFormatterService:
         if show_retention_notice:
             import config
             message += f"\n{Localizator.get_text(entity, 'purchased_items_retention_notice').format(retention_days=config.DATA_RETENTION_DAYS)}"
+
+        return message
+
+    @staticmethod
+    def _format_tier_item_detail(
+        item: dict,
+        currency_symbol: str,
+        entity: BotEntity
+    ) -> str:
+        """
+        Format a single tiered item with full tier structure, savings, and upsell.
+
+        Args:
+            item: Dict with keys:
+                - name: str
+                - quantity: int
+                - unit_price: float
+                - line_total: float
+                - available_tiers: list[dict] with min_quantity, max_quantity, unit_price
+                - current_tier_idx: int
+                - next_tier_info: dict or None (items_needed, unit_price, extra_savings)
+                - savings_vs_single: float
+            currency_symbol: Currency symbol
+            entity: BotEntity for localization
+
+        Returns:
+            Formatted HTML string for this item
+        """
+        lines = []
+
+        # Item name and quantity
+        item_name = safe_html(item['name'])
+        lines.append(f"📦 <b>{item_name}</b>")
+        quantity_text = Localizator.get_text(entity, 'checkout_quantity_label').format(
+            quantity=item['quantity']
+        )
+        lines.append(f"   {quantity_text}")
+        lines.append("")
+
+        # Tier structure
+        tier_label = Localizator.get_text(entity, 'checkout_tier_prices_label')
+        lines.append(f"   {tier_label}")
+
+        available_tiers = item.get('available_tiers', [])
+        current_tier_idx = item.get('current_tier_idx', 0)
+
+        # Get localized quantity unit
+        qty_unit = Localizator.get_text(BotEntity.COMMON, "quantity_unit_short")
+
+        # Build tier table with <code> to preserve space alignment in Telegram
+        tier_lines = []
+        for idx, tier in enumerate(available_tiers):
+            # Format range with localized quantity unit
+            if tier.get('max_quantity') is not None:
+                range_str = f"{tier['min_quantity']}-{tier['max_quantity']} {qty_unit}"
+            else:
+                range_str = f"{tier['min_quantity']}+ {qty_unit}"
+
+            # Format price
+            price_str = f"{tier['unit_price']:.2f}{currency_symbol}"
+
+            # Mark current tier
+            if idx == current_tier_idx:
+                marker = Localizator.get_text(entity, 'checkout_tier_your_price')
+                tier_lines.append(f"• {range_str:>15}:  {price_str:>8}  {marker}")
+            else:
+                tier_lines.append(f"• {range_str:>15}:  {price_str:>8}")
+
+        # Wrap tier table in <code> to preserve alignment (Telegram collapses spaces in HTML)
+        lines.append(f"   <code>{chr(10).join(tier_lines)}</code>")
+
+        lines.append("")
+
+        # Savings vs single price
+        savings_vs_single = item.get('savings_vs_single', 0)
+        if savings_vs_single > 0:
+            savings_text = Localizator.get_text(entity, 'checkout_savings').format(
+                amount=f"{savings_vs_single:.2f}{currency_symbol}"
+            )
+            lines.append(f"   {savings_text}")
+
+        # Upselling hint
+        next_tier_info = item.get('next_tier_info')
+        if next_tier_info:
+            upsell_text = Localizator.get_text(entity, 'checkout_upsell').format(
+                items=next_tier_info['items_needed'],
+                price=f"{next_tier_info['unit_price']:.2f}{currency_symbol}",
+                savings=f"{next_tier_info['extra_savings']:.2f}{currency_symbol}"
+            )
+            lines.append(f"   {upsell_text}")
+        else:
+            # Max tier reached
+            max_tier_text = Localizator.get_text(entity, 'checkout_max_tier')
+            lines.append(f"   {max_tier_text}")
+
+        return "\n".join(lines)
+
+    @staticmethod
+    def format_checkout_summary(
+        items: list[dict],
+        subtotal: float,
+        shipping_cost: float,
+        total: float,
+        total_savings: float,
+        has_physical_items: bool,
+        currency_symbol: str = "€",
+        entity: BotEntity = BotEntity.USER
+    ) -> str:
+        """
+        Format checkout summary with tier details, savings, and upselling.
+
+        This method provides a consistent checkout view that matches the invoice
+        format shown after purchase, ensuring no surprises for the user.
+
+        Args:
+            items: List of item dicts with keys:
+                - name: str
+                - quantity: int
+                - unit_price: float
+                - line_total: float
+                - available_tiers: list[dict] (optional, for tiered items)
+                - current_tier_idx: int (optional)
+                - next_tier_info: dict or None (optional)
+                - savings_vs_single: float (optional)
+            subtotal: Order subtotal
+            shipping_cost: Shipping cost (can be 0.00)
+            total: Grand total
+            total_savings: Sum of all item savings
+            has_physical_items: Whether cart contains physical items
+            currency_symbol: Currency symbol
+            entity: BotEntity for localization
+
+        Returns:
+            Formatted HTML checkout summary string
+
+        Example output structure:
+            🛒 Warenkorb
+
+            📦 USB-Sticks 32GB
+               Menge: 16 Stück
+
+               Staffelpreise:
+               •    1-5 Stück:   12,00€
+               •   6-15 Stück:   10,00€
+               •  16-25 Stück:    9,00€  ← Dein Preis
+               •     26+ Stück:    8,00€
+
+               Ersparnis: 48,00€ gegenüber Einzelpreis
+               Noch 10 Stück für 8,00€/Stk. (weitere 16,00€ Ersparnis möglich)
+
+            ═══════════════════════════════════
+            Positionen:
+            ───────────────────────────────────
+            USB-Sticks 32GB × 16      144,00€
+            Grüner Tee Bio × 8        104,00€
+            ───────────────────────────────────
+            Zwischensumme:            428,00€
+            Versandkosten:              0,00€
+            ═══════════════════════════════════
+            Gesamt:                   428,00€
+
+            Gesamtersparnis: 84,00€
+        """
+        message = f"<b>{Localizator.get_text(entity, 'checkout_header')}</b>\n\n"
+
+        # === SECTION 1: Detailed Tier Information ===
+        # Only show for items with tier structure
+        tiered_items = [item for item in items if item.get('available_tiers')]
+
+        for item in tiered_items:
+            message += InvoiceFormatterService._format_tier_item_detail(
+                item, currency_symbol, entity
+            )
+            message += "\n\n"
+
+        # === SECTION 2: Line Items Summary ===
+        separator = Localizator.get_text(entity, 'checkout_line_separator')
+        message += separator + "\n"
+
+        positions_header = Localizator.get_text(entity, 'checkout_positions_header')
+        message += f"<b>{positions_header}</b>\n"
+        message += "─" * len(separator) + "\n"
+
+        for item in items:
+            item_name = safe_html(item['name'])
+            qty = item['quantity']
+            line_total = item['line_total']
+            message += f"{item_name} × {qty:>2}      {line_total:>8.2f}{currency_symbol}\n"
+
+        # === SECTION 3: Totals ===
+        message += "─" * len(separator) + "\n"
+
+        subtotal_label = Localizator.get_text(entity, 'cart_subtotal_label')
+        message += f"{subtotal_label:<25}{subtotal:>8.2f}{currency_symbol}\n"
+
+        if has_physical_items:
+            shipping_label = Localizator.get_text(entity, 'cart_shipping_max_label')
+            message += f"{shipping_label:<25}{shipping_cost:>7.2f}{currency_symbol}\n"
+
+        message += separator + "\n"
+
+        total_label = Localizator.get_text(entity, 'cart_total_label')
+        message += f"<b>{total_label:<25}{total:>8.2f}{currency_symbol}</b>\n"
+
+        # === SECTION 4: Total Savings ===
+        if total_savings > 0:
+            message += "\n"
+            savings_text = Localizator.get_text(entity, 'checkout_total_savings').format(
+                amount=f"{total_savings:.2f}{currency_symbol}"
+            )
+            message += f"<b>{savings_text}</b>"
 
         return message
