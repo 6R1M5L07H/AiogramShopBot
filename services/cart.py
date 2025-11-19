@@ -191,17 +191,17 @@ class CartService:
         subcategory_ids = list({ci.subcategory_id for ci in cart_items})
         subcategories_dict = await SubcategoryRepository.get_by_ids(subcategory_ids, session)
 
+        # Batch load prices (prevent N+1 queries)
+        item_keys = [(ci.category_id, ci.subcategory_id) for ci in cart_items]
+        prices_dict = await ItemRepository.get_prices_batch(item_keys, session)
+
         # Build items list
         items_data = []
         for cart_item in cart_items:
-            item_dto = ItemDTO(
-                category_id=cart_item.category_id,
-                subcategory_id=cart_item.subcategory_id
-            )
-            price = await ItemRepository.get_price(item_dto, session)
+            price = prices_dict.get((cart_item.category_id, cart_item.subcategory_id))
             subcategory = subcategories_dict.get(cart_item.subcategory_id)
 
-            if subcategory:
+            if subcategory and price is not None:
                 items_data.append({
                     "cart_item_id": cart_item.id,
                     "subcategory_name": subcategory.name,
@@ -364,9 +364,12 @@ class CartService:
         subcategory_ids = list({cart_item.subcategory_id for cart_item in cart_items})
         subcategories_dict = await SubcategoryRepository.get_by_ids(subcategory_ids, session)
 
+        # Batch load prices (prevent N+1 queries)
+        item_keys = [(ci.category_id, ci.subcategory_id) for ci in cart_items]
+        prices_dict = await ItemRepository.get_prices_batch(item_keys, session)
+
         for cart_item in cart_items:
-            item_dto = ItemDTO(category_id=cart_item.category_id, subcategory_id=cart_item.subcategory_id)
-            price = await ItemRepository.get_price(item_dto, session)
+            price = prices_dict.get((cart_item.category_id, cart_item.subcategory_id))
             subcategory = subcategories_dict.get(cart_item.subcategory_id)
             if not subcategory:
                 continue
@@ -627,6 +630,10 @@ class CartService:
         from repositories.price_tier import PriceTierRepository
         tiers_by_subcategory = await PriceTierRepository.get_by_subcategories(subcategory_ids, session)
 
+        # Batch load prices for fallback/flat pricing (prevent N+1 queries)
+        item_keys = [(ci.category_id, ci.subcategory_id) for ci in cart_items]
+        prices_dict = await ItemRepository.get_prices_batch(item_keys, session)
+
         items_data = []
         items_total = 0.0
         max_shipping_cost = 0.0
@@ -725,8 +732,7 @@ class CartService:
 
                 except (json.JSONDecodeError, KeyError, ValueError):
                     # Fallback to flat pricing (no tier breakdown)
-                    item_dto = ItemDTO(category_id=cart_item.category_id, subcategory_id=cart_item.subcategory_id)
-                    price = await ItemRepository.get_price(item_dto, session)
+                    price = prices_dict.get((cart_item.category_id, cart_item.subcategory_id))
                     # Use Decimal for precise currency calculation
                     line_total_decimal = Decimal(str(price)) * Decimal(str(cart_item.quantity))
                     line_total = float(line_total_decimal.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
@@ -743,8 +749,7 @@ class CartService:
                     })
             else:
                 # Flat pricing (no tier breakdown stored)
-                item_dto = ItemDTO(category_id=cart_item.category_id, subcategory_id=cart_item.subcategory_id)
-                price = await ItemRepository.get_price(item_dto, session)
+                price = prices_dict.get((cart_item.category_id, cart_item.subcategory_id))
                 # Use Decimal for precise currency calculation
                 line_total_decimal = Decimal(str(price)) * Decimal(str(cart_item.quantity))
                 line_total = float(line_total_decimal.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
@@ -1044,6 +1049,10 @@ class CartService:
         subcategory_ids = list({cart_item.subcategory_id for cart_item in cart_items})
         subcategories_dict = await SubcategoryRepository.get_by_ids(subcategory_ids, session)
 
+        # Batch load prices for fallback/flat pricing (prevent N+1 queries)
+        item_keys = [(ci.category_id, ci.subcategory_id) for ci in cart_items]
+        prices_dict = await ItemRepository.get_prices_batch(item_keys, session)
+
         # Collect items and categorize
         multi_tier_items = []  # Items with tier breakdown (>1 tier)
         all_items_summary = []  # All items for phase 2 compact list
@@ -1091,8 +1100,7 @@ class CartService:
 
                 except (json.JSONDecodeError, KeyError):
                     # Fallback to flat pricing (no tier breakdown)
-                    item_dto = ItemDTO(category_id=cart_item.category_id, subcategory_id=cart_item.subcategory_id)
-                    price = await ItemRepository.get_price(item_dto, session)
+                    price = prices_dict.get((cart_item.category_id, cart_item.subcategory_id))
                     line_item_total = price * cart_item.quantity
                     items_total += line_item_total
                     all_items_summary.append({
@@ -1104,8 +1112,7 @@ class CartService:
                     })
             else:
                 # Flat pricing (no tier breakdown stored)
-                item_dto = ItemDTO(category_id=cart_item.category_id, subcategory_id=cart_item.subcategory_id)
-                price = await ItemRepository.get_price(item_dto, session)
+                price = prices_dict.get((cart_item.category_id, cart_item.subcategory_id))
                 line_item_total = price * cart_item.quantity
                 items_total += line_item_total
                 all_items_summary.append({
@@ -1260,12 +1267,17 @@ class CartService:
         unpacked_cb = CartCallback.unpack(callback.data)
         user = await UserRepository.get_by_tgid(callback.from_user.id, session)
         cart_items = await CartItemRepository.get_all_by_user_id(user.id, session)
+
+        # Batch load prices (prevent N+1 queries)
+        item_keys = [(ci.category_id, ci.subcategory_id) for ci in cart_items]
+        prices_dict = await ItemRepository.get_prices_batch(item_keys, session)
+
         cart_total = 0.0
         out_of_stock = []
         for cart_item in cart_items:
-            item_dto = ItemDTO(category_id=cart_item.category_id, subcategory_id=cart_item.subcategory_id)
-            price = await ItemRepository.get_price(item_dto, session)
+            price = prices_dict.get((cart_item.category_id, cart_item.subcategory_id))
             cart_total += price * cart_item.quantity
+            item_dto = ItemDTO(category_id=cart_item.category_id, subcategory_id=cart_item.subcategory_id)
             is_in_stock = await ItemRepository.get_available_qty(item_dto, session) >= cart_item.quantity
             if is_in_stock is False:
                 out_of_stock.append(cart_item)
@@ -1276,8 +1288,7 @@ class CartService:
             sold_items = []
             msg = ""
             for cart_item in cart_items:
-                price = await ItemRepository.get_price(ItemDTO(category_id=cart_item.category_id,
-                                                               subcategory_id=cart_item.subcategory_id), session)
+                price = prices_dict.get((cart_item.category_id, cart_item.subcategory_id))
                 purchased_items = await ItemRepository.get_purchased_items(cart_item.category_id,
                                                                            cart_item.subcategory_id, cart_item.quantity, session)
                 buy_dto = BuyDTO(buyer_id=user.id, quantity=cart_item.quantity, total_price=cart_item.quantity * price)
@@ -1402,11 +1413,14 @@ class CartService:
         """
         from services.notification import NotificationService
 
+        # Batch load prices (prevent N+1 queries)
+        item_keys = [(ci.category_id, ci.subcategory_id) for ci in cart_items]
+        prices_dict = await ItemRepository.get_prices_batch(item_keys, session)
+
         # Calculate cart total
         cart_total = 0.0
         for cart_item in cart_items:
-            item_dto = ItemDTO(category_id=cart_item.category_id, subcategory_id=cart_item.subcategory_id)
-            price = await ItemRepository.get_price(item_dto, session)
+            price = prices_dict.get((cart_item.category_id, cart_item.subcategory_id))
             cart_total += price * cart_item.quantity
 
         # Check if wallet balance is sufficient

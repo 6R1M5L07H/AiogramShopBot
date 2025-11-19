@@ -21,6 +21,50 @@ class ItemRepository:
         return price.scalar()
 
     @staticmethod
+    async def get_prices_batch(
+        items: list[tuple[int, int]],
+        session: Session | AsyncSession
+    ) -> dict[tuple[int, int], float]:
+        """
+        Batch load prices for multiple (category_id, subcategory_id) pairs.
+
+        Prevents N+1 queries by loading all prices in a single query.
+
+        Args:
+            items: List of (category_id, subcategory_id) tuples
+            session: Database session
+
+        Returns:
+            Dict mapping (category_id, subcategory_id) -> price
+
+        Example:
+            >>> prices = await get_prices_batch([(1, 2), (1, 3), (2, 1)], session)
+            >>> prices[(1, 2)]  # 9.99
+        """
+        if not items:
+            return {}
+
+        # Build query with OR conditions for each (category_id, subcategory_id) pair
+        from sqlalchemy import or_, and_
+
+        conditions = [
+            and_(Item.category_id == cat_id, Item.subcategory_id == sub_id)
+            for cat_id, sub_id in items
+        ]
+
+        stmt = (
+            select(Item.category_id, Item.subcategory_id, Item.price)
+            .where(or_(*conditions))
+            .distinct()
+        )
+
+        result = await session_execute(stmt, session)
+        rows = result.all()
+
+        # Build dict mapping (category_id, subcategory_id) -> price
+        return {(row[0], row[1]): row[2] for row in rows}
+
+    @staticmethod
     async def get_available_qty(item_dto: ItemDTO, session: Session | AsyncSession) -> int:
         sub_stmt = (select(Item)
                     .where(Item.category_id == item_dto.category_id,
