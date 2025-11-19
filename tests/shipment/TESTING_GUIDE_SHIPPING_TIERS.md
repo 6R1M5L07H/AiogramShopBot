@@ -60,7 +60,7 @@ MIGRATION COMPLETE!
 ### 2. Verify Shipping Types Configuration
 ```bash
 # Check that shipping types are loaded
-cat docs/generate-items/shipping_types/de.json
+cat shipping_types/de.json
 ```
 
 **Expected:** 6 German shipping types (maxibrief, maxibrief_einwurf, paeckchen, paket_2kg, paket_5kg, paket_10kg)
@@ -400,10 +400,10 @@ ORDER BY st.subcategory_id, st.min_quantity;
 **Issues?**
 - Check `migrations/add_shipping_tiers.py` output for errors
 - Verify `SHIPPING_COUNTRY=de` in `.env`
-- Check `docs/generate-items/shipping_types/de.json` exists
+- Check `shipping_types/de.json` exists
 - Review `tests/shipment/unit/` for test failures
 
 **Questions?**
 - See `docs/generate-items/SHIPPING_TIERS.md` for architecture
-- See `docs/generate-items/shipping_types/README.md` for configuration
+- See `shipping_types/README.md` for configuration
 - See `TODO/A_Tiered_Dynamic_Pricing_System.md` for feature context

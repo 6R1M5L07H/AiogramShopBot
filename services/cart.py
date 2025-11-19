@@ -779,7 +779,7 @@ class CartService:
         subtotal_label = Localizator.get_text(BotEntity.USER, 'cart_subtotal_label')
         message_text += f"{subtotal_label} {checkout_data['subtotal']:>8.2f} {currency_sym}\n"
 
-        if checkout_data["has_physical_items"] and checkout_data["max_shipping_cost"] > 0:
+        if checkout_data["has_physical_items"]:
             shipping_label = Localizator.get_text(BotEntity.USER, 'cart_shipping_max_label')
             message_text += f"{shipping_label}  {checkout_data['max_shipping_cost']:>7.2f} {currency_sym}\n"
 

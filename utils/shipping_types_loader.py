@@ -38,12 +38,12 @@ def load_shipping_types(country_code: str = "de") -> dict:
     """
     # Build path relative to project root
     project_root = Path(__file__).parent.parent
-    shipping_types_path = project_root / "docs" / "generate-items" / "shipping_types" / f"{country_code}.json"
+    shipping_types_path = project_root / "shipping_types" / f"{country_code}.json"
 
     if not shipping_types_path.exists():
         raise FileNotFoundError(
             f"Shipping types file not found: {shipping_types_path}\n"
-            f"Please create docs/generate-items/shipping_types/{country_code}.json"
+            f"Please create shipping_types/{country_code}.json"
         )
 
     try:
