@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2025-11-20
+
+### Security Fixes
+
+**HTML Injection Prevention**
+- Fixed HTML injection vulnerability in cancellation reason display
+- Admin-provided cancellation reasons now properly escaped in invoice messages
+- Prevents malicious HTML/script injection through order cancellation workflow
+- Applied escaping to 3 critical display locations in invoice formatter
+
+### Technical Improvements
+
+**Currency Calculation Precision**
+- Replaced float arithmetic with Decimal for all cart currency calculations
+- Eliminates floating-point precision errors in price summations
+- Commercial rounding (ROUND_HALF_UP) ensures consistent 2-decimal cent values
+- Prevents invoice discrepancies from accumulated rounding errors
+
 ## 2025-11-19
 
 ### Performance Optimizations
