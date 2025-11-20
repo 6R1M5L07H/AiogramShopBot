@@ -113,12 +113,33 @@ class CartService:
             subcategory = await SubcategoryRepository.get_by_id(unpacked_cb.subcategory_id, session)
             return False, "add_to_cart_out_of_stock", {"subcategory_name": subcategory.name}
 
-        # Add to cart with actual quantity
+        # Calculate tier pricing and breakdown for cart item
+        from services.pricing import PricingService
+        import json
+
+        pricing_result = await PricingService.calculate_optimal_price(
+            subcategory_id=unpacked_cb.subcategory_id,
+            quantity=actual_quantity,
+            session=session
+        )
+
+        # Serialize breakdown to JSON for storage
+        tier_breakdown_json = json.dumps([
+            {
+                'quantity': item.quantity,
+                'unit_price': item.unit_price,
+                'total': item.total
+            }
+            for item in pricing_result.breakdown
+        ])
+
+        # Add to cart with actual quantity and tier breakdown
         cart_item = CartItemDTO(
             category_id=unpacked_cb.category_id,
             subcategory_id=unpacked_cb.subcategory_id,
             quantity=actual_quantity,
-            cart_id=cart.id
+            cart_id=cart.id,
+            tier_breakdown=tier_breakdown_json
         )
         await CartRepository.add_to_cart(cart_item, cart, session)
         await session_commit(session)
