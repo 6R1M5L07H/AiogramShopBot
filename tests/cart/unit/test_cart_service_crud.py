@@ -104,23 +104,25 @@ class TestAddToCart:
             with patch('repositories.cart.CartRepository.get_or_create', return_value=mock_cart):
                 with patch('repositories.item.ItemRepository.get_available_qty', return_value=10):
                     with patch('repositories.cart.CartRepository.add_to_cart', return_value=None):
-                        with patch('db.session_commit', new_callable=AsyncMock):
-                            # Mock callback data with quantity=10
-                            from callbacks import AllCategoriesCallback
-                            with patch.object(AllCategoriesCallback, 'unpack') as mock_unpack:
-                                mock_unpack.return_value = MagicMock(
-                                    category_id=1,
-                                    subcategory_id=1,
-                                    quantity=10
-                                )
+                        with patch('services.pricing.PricingService.calculate_optimal_price') as mock_pricing:
+                            mock_pricing.return_value = MagicMock(total_price=100.0, breakdown=[])
+                            with patch('db.session_commit', new_callable=AsyncMock):
+                                # Mock callback data with quantity=10
+                                from callbacks import AllCategoriesCallback
+                                with patch.object(AllCategoriesCallback, 'unpack') as mock_unpack:
+                                    mock_unpack.return_value = MagicMock(
+                                        category_id=1,
+                                        subcategory_id=1,
+                                        quantity=10
+                                    )
 
-                                success, message_key, format_args = await CartService.add_to_cart(
-                                    mock_callback, mock_session
-                                )
+                                    success, message_key, format_args = await CartService.add_to_cart(
+                                        mock_callback, mock_session
+                                    )
 
-                                assert success is True
-                                assert message_key == "item_added_to_cart"
-                                assert format_args == {}
+                                    assert success is True
+                                    assert message_key == "item_added_to_cart"
+                                    assert format_args == {}
 
     @pytest.mark.asyncio
     async def test_add_to_cart_stock_reduced(
@@ -131,23 +133,25 @@ class TestAddToCart:
             with patch('repositories.cart.CartRepository.get_or_create', return_value=mock_cart):
                 with patch('repositories.item.ItemRepository.get_available_qty', return_value=5):
                     with patch('repositories.cart.CartRepository.add_to_cart', return_value=None):
-                        with patch('db.session_commit', new_callable=AsyncMock):
-                            from callbacks import AllCategoriesCallback
-                            with patch.object(AllCategoriesCallback, 'unpack') as mock_unpack:
-                                mock_unpack.return_value = MagicMock(
-                                    category_id=1,
-                                    subcategory_id=1,
-                                    quantity=10  # Requested 10, but only 5 available
-                                )
+                        with patch('services.pricing.PricingService.calculate_optimal_price') as mock_pricing:
+                            mock_pricing.return_value = MagicMock(total_price=100.0, breakdown=[])
+                            with patch('db.session_commit', new_callable=AsyncMock):
+                                from callbacks import AllCategoriesCallback
+                                with patch.object(AllCategoriesCallback, 'unpack') as mock_unpack:
+                                    mock_unpack.return_value = MagicMock(
+                                        category_id=1,
+                                        subcategory_id=1,
+                                        quantity=10  # Requested 10, but only 5 available
+                                    )
 
-                                success, message_key, format_args = await CartService.add_to_cart(
-                                    mock_callback, mock_session
-                                )
+                                    success, message_key, format_args = await CartService.add_to_cart(
+                                        mock_callback, mock_session
+                                    )
 
-                                assert success is True
-                                assert message_key == "add_to_cart_stock_reduced"
-                                assert format_args['actual_qty'] == 5
-                                assert format_args['requested_qty'] == 10
+                                    assert success is True
+                                    assert message_key == "add_to_cart_stock_reduced"
+                                    assert format_args['actual_qty'] == 5
+                                    assert format_args['requested_qty'] == 10
 
     @pytest.mark.asyncio
     async def test_add_to_cart_out_of_stock(

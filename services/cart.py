@@ -216,19 +216,42 @@ class CartService:
         item_keys = [(ci.category_id, ci.subcategory_id) for ci in cart_items]
         prices_dict = await ItemRepository.get_prices_batch(item_keys, session)
 
-        # Build items list
+        # Group cart items by subcategory to calculate correct tier pricing
+        # (multiple cart items of same subcategory should use combined quantity)
+        from collections import defaultdict
+        subcategory_totals = defaultdict(int)
+        for ci in cart_items:
+            subcategory_totals[ci.subcategory_id] += ci.quantity
+
+        # Calculate tier pricing for each subcategory (based on total quantity in cart)
+        from services.pricing import PricingService
+        subcategory_pricing = {}
+        for subcategory_id, total_quantity in subcategory_totals.items():
+            pricing_result = await PricingService.calculate_optimal_price(
+                subcategory_id=subcategory_id,
+                quantity=total_quantity,
+                session=session
+            )
+            subcategory_pricing[subcategory_id] = pricing_result
+
+        # Build items list with tier pricing
         items_data = []
         for cart_item in cart_items:
             price = prices_dict.get((cart_item.category_id, cart_item.subcategory_id))
             subcategory = subcategories_dict.get(cart_item.subcategory_id)
+            pricing_result = subcategory_pricing.get(cart_item.subcategory_id)
 
-            if subcategory and price is not None:
+            if subcategory and price is not None and pricing_result:
+                # Calculate this item's share of the tier-priced total
+                # Use average unit price from tier calculation
+                item_total = pricing_result.average_unit_price * cart_item.quantity
+
                 items_data.append({
                     "cart_item_id": cart_item.id,
                     "subcategory_name": subcategory.name,
                     "quantity": cart_item.quantity,
-                    "price": price,
-                    "total": price * cart_item.quantity
+                    "price": price,  # Base price (single unit)
+                    "total": item_total  # Tier-based total for this cart item
                 })
 
         return {

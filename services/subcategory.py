@@ -99,7 +99,7 @@ class SubcategoryService:
 
         # Create dialpad message
         dialpad_message = Localizator.get_text(BotEntity.USER, "quantity_dialpad_prompt").format(
-            item_name=item.description,
+            item_name=subcategory.name,  # Use short subcategory name instead of full description
             available=available_qty,
             current_quantity=""
         )
@@ -209,8 +209,17 @@ class SubcategoryService:
                 f"📦 {Localizator.get_text(BotEntity.USER, 'tier_preview_quantity').format(quantity=total_qty)}\n"
             )
 
-        # Add tier breakdown
-        message_parts.append(PricingService.format_tier_breakdown(pricing_result))
+        # Show either tier table (if tiers exist) or simple price (fallback only)
+        tier_table = await PricingService.format_available_tiers(unpacked_cb.subcategory_id, session)
+        if tier_table:
+            # Item has tiers - show full tier table
+            message_parts.append(tier_table)
+        else:
+            # No tiers (fallback price only) - show simple price
+            unit_price = pricing_result.breakdown[0].unit_price
+            currency_sym = Localizator.get_currency_symbol()
+            price_label = Localizator.get_text(BotEntity.USER, 'item_detail_price_label')
+            message_parts.append(f"{price_label}: {unit_price:.2f} {currency_sym}")
 
         message_text = "\n".join(message_parts)
 

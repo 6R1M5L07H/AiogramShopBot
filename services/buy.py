@@ -136,6 +136,7 @@ class BuyService:
             subtotal=subtotal,
             shipping_cost=order.shipping_cost,
             total_price=order.total_price,
+            use_spacing_alignment=True,  # Enable monospace alignment for totals
             separate_digital_physical=True,  # Always use separated view
             show_private_data=True,  # Show keys/codes in purchase history
             show_retention_notice=any(item.private_data for item in items),
