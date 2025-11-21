@@ -360,6 +360,9 @@ class NotificationService:
                 items_list = OrderService._group_items_for_display(items_raw)
 
                 # Format message with InvoiceFormatter
+                # Calculate subtotal (total - shipping)
+                subtotal = order.total_price - order.shipping_cost
+
                 msg = InvoiceFormatterService.format_complete_order_view(
                     header_type="payment_success",
                     invoice_number=invoice_number,
@@ -367,8 +370,11 @@ class NotificationService:
                     created_at=order.created_at,
                     paid_at=order.paid_at,
                     items=items_list,
+                    subtotal=subtotal,
                     shipping_cost=order.shipping_cost,
                     total_price=order.total_price,
+                    wallet_used=order.wallet_used,  # Pass wallet usage for correct total calculation
+                    use_spacing_alignment=True,  # Enable monospace alignment for totals
                     separate_digital_physical=True,  # Always use separated view
                     show_private_data=True,  # Show keys/codes after payment
                     show_retention_notice=any(item.get('private_data') for item in items_list),
@@ -484,13 +490,15 @@ class NotificationService:
                 header_type="partial_cancellation",
                 invoice_number=invoice_number,
                 items=items_list,
-                total_price=refund_info.get('base_amount', 0),
+                shipping_cost=order.shipping_cost,  # Pass shipping cost for display
+                total_price=order.total_price,  # Original order total (not refund amount)
                 refund_amount=refund_amount,
                 penalty_amount=penalty_amount,
                 penalty_percent=penalty_percent,
                 cancellation_reason=reason,
                 show_strike_warning=(penalty_amount > 0),
                 partial_refund_info=partial_refund_details,
+                use_spacing_alignment=True,  # Enable monospace alignment for totals
                 currency_symbol=currency_sym,
                 entity=BotEntity.USER
             )
@@ -565,17 +573,41 @@ class NotificationService:
             order_items = await ItemRepository.get_by_order_id(order.id, session)
             logging.info(f"notify_order_cancelled_by_admin: Found {len(order_items) if order_items else 0} items for order {order.id}")
 
+            # Parse tier breakdown from order (NO recalculation!)
+            from services.order import OrderService
+            tier_breakdown_list = OrderService._parse_tier_breakdown_from_order(order)
+
+            # Batch-load all subcategories (eliminates N+1 queries)
+            subcategory_ids = list({item.subcategory_id for item in order_items})
+            subcategories_dict = await SubcategoryRepository.get_by_ids(subcategory_ids, session)
+
+            # Fallback: If tier_breakdown_json not available (old orders), recalculate
+            if not tier_breakdown_list:
+                logging.warning(f"Order {order.id} has no tier_breakdown_json, falling back to recalculation")
+                tier_breakdown_list = await OrderService._group_items_with_tier_pricing(
+                    order_items, subcategories_dict, session
+                )
+
             # Build unified items list
             items_raw = []
             for item in order_items:
-                subcategory = await SubcategoryRepository.get_by_id(item.subcategory_id, session)
+                # Find corresponding tier breakdown from tier_breakdown_list
+                tier_breakdown = None
+                for tier_item in tier_breakdown_list:
+                    subcategory = subcategories_dict.get(item.subcategory_id)
+                    if subcategory and tier_item['subcategory_name'] == subcategory.name:
+                        tier_breakdown = tier_item.get('breakdown')
+                        break
+
+                subcategory = subcategories_dict.get(item.subcategory_id)
                 if subcategory:
                     items_raw.append({
                         'name': subcategory.name,
-                        'price': item.price,
+                        'price': item.price,  # Keep for fallback, but tier_breakdown takes precedence
                         'quantity': 1,
                         'is_physical': item.is_physical,
-                        'private_data': None
+                        'private_data': None,
+                        'tier_breakdown': tier_breakdown
                     })
                 else:
                     logging.warning(f"Subcategory {item.subcategory_id} not found for item {item.id}")
@@ -703,6 +735,7 @@ class NotificationService:
             items=items_list,
             shipping_cost=order.shipping_cost,
             total_price=order.total_price,
+            use_spacing_alignment=True,  # Enable monospace alignment for totals
             separate_digital_physical=True,  # Always use separated view
             show_private_data=True,  # Show keys/codes (user already has them)
             currency_symbol=Localizator.get_currency_symbol(),

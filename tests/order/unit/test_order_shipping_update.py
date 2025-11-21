@@ -47,7 +47,7 @@ class TestUpdateShippingSelection:
         # Upgrade shipping type details
         mock_get_shipping_details.return_value = {
             "name": "Paket 2kg Versichert",
-            "base_cost": 1.50,
+            "charged_cost": 1.50,
             "has_tracking": True
         }
 
@@ -94,7 +94,7 @@ class TestUpdateShippingSelection:
         # Downgrade to cheaper shipping
         mock_get_shipping_details.return_value = {
             "name": "Paket 2kg",
-            "base_cost": 1.50
+            "charged_cost": 1.50
         }
 
         # Act
@@ -185,7 +185,7 @@ class TestUpdateShippingSelection:
 
         mock_get_shipping_details.return_value = {
             "name": "Maxibrief",
-            "base_cost": 0.00
+            "charged_cost": 0.00
         }
 
         # Act
@@ -228,7 +228,7 @@ class TestUpdateShippingSelection:
 
         mock_get_shipping_details.return_value = {
             "name": "Paket",
-            "base_cost": 0.20
+            "charged_cost": 0.20
         }
 
         # Act
@@ -271,7 +271,7 @@ class TestUpdateShippingSelection:
 
         mock_get_shipping_details.return_value = {
             "name": "Paket",
-            "base_cost": 1.50
+            "charged_cost": 1.50
         }
 
         # Act
@@ -319,7 +319,7 @@ class TestEdgeCases:
 
         mock_get_shipping_details.return_value = {
             "name": "Paket",
-            "base_cost": 1.50
+            "charged_cost": 1.50
         }
 
         # Act
@@ -361,7 +361,7 @@ class TestEdgeCases:
 
         mock_get_shipping_details.return_value = {
             "name": "Express International",
-            "base_cost": 50.00  # Expensive shipping
+            "charged_cost": 50.00  # Expensive shipping
         }
 
         # Act

@@ -85,14 +85,11 @@ class InvoiceFormatterService:
         for item in items:
             # Check if item has tier breakdown
             if item.get('tier_breakdown'):
-                # Use tier breakdown formatting (function handles escaping internally)
-                tier_text, _ = InvoiceFormatterService.format_items_with_tier_breakdown(
-                    item_name=item['name'],
-                    tier_breakdown=item['tier_breakdown'],
-                    currency_symbol=currency_symbol,
-                    entity=entity
-                )
-                message += tier_text + "\n"
+                # For tiered items, show only "Nx Name = €total" (no unit price, it varies by tier)
+                # Calculate total from tier breakdown
+                line_total = sum(tier['total'] for tier in item['tier_breakdown'])
+                item_name_escaped = safe_html(item['name'])
+                message += f"{item['quantity']} {qty_unit} {item_name_escaped} = {currency_symbol}{line_total:.2f}\n"
             else:
                 # Flat pricing (no tier breakdown) - escape item name to prevent HTML injection
                 item_name_escaped = safe_html(item['name'])
@@ -199,6 +196,57 @@ class InvoiceFormatterService:
         lines.append(f"{'':>17}Σ {total_str} {currency_symbol}")
 
         return "\n".join(lines), total
+
+    @staticmethod
+    def _format_shipping_line_with_free(
+        shipping_cost: float,
+        currency_symbol: str,
+        entity: BotEntity = BotEntity.USER
+    ) -> str:
+        """
+        Format shipping line with proper handling of free shipping.
+
+        Args:
+            shipping_cost: Shipping cost (can be 0)
+            currency_symbol: Currency symbol
+            entity: BotEntity for localization
+
+        Returns:
+            Formatted shipping line with <code> tags
+        """
+        qty_unit = Localizator.get_text(BotEntity.COMMON, "quantity_unit_short")
+        shipping_label = Localizator.get_text(BotEntity.COMMON, "shipping_label")
+
+        if shipping_cost == 0:
+            free_label = Localizator.get_text(BotEntity.USER, "shipping_cost_free")
+            return f"<code>1 {qty_unit} {shipping_label:<20}{free_label:>8}\n</code>"
+        else:
+            return f"<code>1 {qty_unit} {shipping_label:<20}{shipping_cost:>8.2f}{currency_symbol}\n</code>"
+
+    @staticmethod
+    def _format_subtotal_line(
+        label: str,
+        amount: float,
+        currency_symbol: str
+    ) -> str:
+        """
+        Format a subtotal line with separator and monospace alignment.
+
+        Args:
+            label: Label for the subtotal
+            amount: Amount to display
+            currency_symbol: Currency symbol
+
+        Returns:
+            Formatted subtotal section with separators
+        """
+        lines = []
+        lines.append("─" * 30 + "\n")
+        lines.append("<code>")
+        lines.append(f"{label:<27}{amount:>8.2f}{currency_symbol}\n")
+        lines.append("</code>")
+        lines.append("─" * 30 + "\n\n")
+        return "".join(lines)
 
     @staticmethod
     def format_order_invoice(
@@ -588,27 +636,105 @@ class InvoiceFormatterService:
                         subtotal += item['price'] * item['quantity']
 
             if header_type == "partial_cancellation":
-                # Partial cancellation: Show digital (kept) and physical (refunded) separately
+                # Partial cancellation: Invoice-style formatting with clear structure
+                # Structure: Non-Refundable | Refundable | Calculation | Wallet Info
                 digital_items = [item for item in items if not item.get('is_physical', False)]
                 physical_items = [item for item in items if item.get('is_physical', False)]
 
-                if digital_items:
-                    digital_title = Localizator.get_text(BotEntity.COMMON, 'partial_cancel_digital_items_title')
-                    message += f"<b>{digital_title}</b>\n"
-                    for item in digital_items:
-                        line_total = item['price'] * item['quantity']
-                        message += f"{item['quantity']}x {item['name']} {currency_symbol}{line_total:.2f}\n"
-                    digital_status = Localizator.get_text(BotEntity.COMMON, 'partial_cancel_digital_status')
-                    message += f"<i>{digital_status}</i>\n\n"
+                # Calculate subtotals
+                non_refundable_total = sum(
+                    sum(tier['total'] for tier in item['tier_breakdown']) if item.get('tier_breakdown')
+                    else item['price'] * item['quantity']
+                    for item in digital_items
+                )
 
+                refundable_items_total = sum(
+                    sum(tier['total'] for tier in item['tier_breakdown']) if item.get('tier_breakdown')
+                    else item['price'] * item['quantity']
+                    for item in physical_items
+                )
+                refundable_total = refundable_items_total + shipping_cost
+                new_total = total_price - refundable_total
+
+                # === NON-REFUNDABLE SECTION ===
+                message += "═" * 30 + "\n"
+                non_refundable_header = Localizator.get_text(BotEntity.USER, "partial_cancel_header")
+                message += f"<b>{non_refundable_header}</b>\n"
+                message += "─" * 30 + "\n"
+
+                if digital_items:
+                    # Format items using builder helper (without section label)
+                    items_section = InvoiceFormatterService._format_items_section(
+                        items=digital_items,
+                        section_label="",
+                        currency_symbol=currency_symbol,
+                        show_private_data=show_private_data,
+                        entity=entity
+                    ).replace("<b>:</b>\n", "")
+                    message += items_section
+
+                # Subtotal line
+                message += "─" * 30 + "\n"
+                subtotal_label = Localizator.get_text(BotEntity.USER, "partial_cancel_non_refundable_subtotal")
+                message += f"<code>{subtotal_label:<27}{non_refundable_total:>8.2f}{currency_symbol}\n</code>"
+                message += "═" * 30 + "\n\n"
+
+                # === REFUNDABLE SECTION ===
+                refundable_header = Localizator.get_text(BotEntity.USER, "partial_cancel_refundable_header")
+                message += f"<b>{refundable_header}</b>\n"
+                message += "─" * 30 + "\n"
+
+                # Physical items if present
                 if physical_items:
-                    physical_title = Localizator.get_text(BotEntity.COMMON, 'partial_cancel_physical_items_title')
-                    message += f"<b>{physical_title}</b>\n"
-                    for item in physical_items:
-                        line_total = item['price'] * item['quantity']
-                        message += f"{item['quantity']}x {item['name']} {currency_symbol}{line_total:.2f}\n"
-                    physical_status = Localizator.get_text(BotEntity.COMMON, 'partial_cancel_physical_status')
-                    message += f"<i>{physical_status}</i>\n\n"
+                    items_section = InvoiceFormatterService._format_items_section(
+                        items=physical_items,
+                        section_label="",
+                        currency_symbol=currency_symbol,
+                        show_private_data=False,
+                        entity=entity
+                    ).replace("<b>:</b>\n", "")
+                    message += items_section
+
+                # Shipping line (always shown, uses "Free" when 0)
+                message += "─" * 30 + "\n"
+                message += InvoiceFormatterService._format_shipping_line_with_free(
+                    shipping_cost=shipping_cost,
+                    currency_symbol=currency_symbol,
+                    entity=entity
+                )
+
+                # Subtotal line
+                message += "─" * 30 + "\n"
+                subtotal_label = Localizator.get_text(BotEntity.USER, "partial_cancel_refundable_subtotal")
+                message += f"<code>{subtotal_label:<27}{refundable_total:>8.2f}{currency_symbol}\n</code>"
+                message += "═" * 30 + "\n\n"
+
+                # === ORDER TOTAL CALCULATION ===
+                calculation_header = Localizator.get_text(BotEntity.USER, "partial_cancel_calculation_header")
+                message += f"<b>{calculation_header}</b>\n"
+                message += "─" * 30 + "\n"
+                message += "<code>"
+                original_label = Localizator.get_text(BotEntity.USER, "partial_cancel_original_total")
+                message += f"{original_label:<27}{total_price:>8.2f}{currency_symbol}\n"
+                refunded_label = Localizator.get_text(BotEntity.USER, "partial_cancel_refunded_label")
+                message += f"{refunded_label:<27}{-refundable_total:>8.2f}{currency_symbol}\n"
+                message += "</code>"
+                message += "─" * 30 + "\n"
+                message += "<code>"
+                new_total_label = Localizator.get_text(BotEntity.USER, "partial_cancel_new_total")
+                message += f"<b>{new_total_label:<27}{new_total:>8.2f}{currency_symbol}</b>\n"
+                message += "</code>"
+                message += "═" * 30 + "\n\n"
+
+                # === WALLET INFO ===
+                wallet_info = Localizator.get_text(BotEntity.USER, "partial_cancel_wallet_info")
+                wallet_info = wallet_info.replace("{amount}", f"{refundable_total:.2f}{currency_symbol}")
+                message += f"{wallet_info}\n\n"
+
+                # === DIGITAL NOTE ===
+                if digital_items:
+                    digital_note = Localizator.get_text(BotEntity.USER, "partial_cancel_digital_note")
+                    message += f"{digital_note}\n\n"
 
             elif separate_digital_physical:
                 # Separate digital and physical items - used for ALL order confirmations
@@ -637,6 +763,43 @@ class InvoiceFormatterService:
                         entity=entity
                     )
 
+                # If private_data was shown, add grouped line items summary
+                if show_private_data:
+                    positions_header = Localizator.get_text(BotEntity.USER, 'checkout_positions_header')
+                    message += "═" * 30 + "\n"
+                    message += f"<b>{positions_header}</b>\n"
+                    message += "─" * 30 + "\n"
+                    message += "<code>"
+
+                    # Group items by (name, price, is_physical) for line items display
+                    # This aggregates items that have the same description but different private_data
+                    grouped_items = {}
+                    for item in items:
+                        key = (item['name'], item['price'], item.get('is_physical', False))
+                        if key not in grouped_items:
+                            grouped_items[key] = {
+                                'name': item['name'],
+                                'price': item['price'],
+                                'quantity': 0,
+                                'tier_breakdown': item.get('tier_breakdown')
+                            }
+                        grouped_items[key]['quantity'] += item['quantity']
+
+                    # Show grouped line items (digital + physical combined)
+                    for grouped_item in grouped_items.values():
+                        # Calculate line total considering tier_breakdown
+                        if grouped_item.get('tier_breakdown'):
+                            line_total = sum(tier['total'] for tier in grouped_item['tier_breakdown'])
+                        else:
+                            line_total = grouped_item['price'] * grouped_item['quantity']
+
+                        item_name = safe_html(grouped_item['name'])
+                        item_line = f"{item_name} × {grouped_item['quantity']}"
+                        message += f"{item_line:<27}{line_total:>8.2f}{currency_symbol}\n"
+
+                    message += "</code>"
+                    message += "─" * 30 + "\n\n"
+
             else:
                 # Unified items list with optional spacing alignment (payment screens)
                 if header_type in ["admin_cancellation"]:
@@ -644,15 +807,24 @@ class InvoiceFormatterService:
                     message += "─────────────────────────────\n"
 
                 for item in items:
-                    line_total = item['price'] * item['quantity']
-                    if use_spacing_alignment:
-                        # Payment screen format with spacing
-                        spacing = ' ' * (20 - len(item['name']))
-                        message += f"{item['quantity']}x {item['name']}\n"
-                        message += f"  {currency_symbol}{item['price']:.2f} × {item['quantity']}{spacing}{currency_symbol}{line_total:.2f}\n"
+                    # Calculate line total considering tier_breakdown if available
+                    if item.get('tier_breakdown'):
+                        line_total = sum(tier['total'] for tier in item['tier_breakdown'])
+                        # For tiered items, show only "Nx Name €total" (no unit price breakdown)
+                        if use_spacing_alignment:
+                            spacing = ' ' * (20 - len(item['name']))
+                            message += f"{item['quantity']}x {safe_html(item['name'])}{spacing}{currency_symbol}{line_total:.2f}\n"
+                        else:
+                            message += f"{item['quantity']}x {safe_html(item['name'])} {currency_symbol}{line_total:.2f}\n"
                     else:
-                        # Simple format
-                        message += f"{item['quantity']}x {item['name']} {currency_symbol}{item['price']:.2f}\n"
+                        line_total = item['price'] * item['quantity']
+                        # For non-tiered items, show price breakdown
+                        if use_spacing_alignment:
+                            spacing = ' ' * (20 - len(item['name']))
+                            message += f"{item['quantity']}x {safe_html(item['name'])}\n"
+                            message += f"  {currency_symbol}{item['price']:.2f} × {item['quantity']}{spacing}{currency_symbol}{line_total:.2f}\n"
+                        else:
+                            message += f"{item['quantity']}x {safe_html(item['name'])} {currency_symbol}{item['price']:.2f}\n"
 
                 if header_type in ["admin_cancellation"]:
                     message += "─────────────────────────────\n"
@@ -660,80 +832,91 @@ class InvoiceFormatterService:
                     message += "\n"
 
         # === PRICE BREAKDOWN ===
-        if header_type not in ["cancellation_refund"]:
+        # Skip for: cancellation_refund (uses custom format), partial_cancellation (uses structured format)
+        if header_type not in ["cancellation_refund", "partial_cancellation"]:
+            # Wrap totals section in <code> for monospace alignment when use_spacing_alignment is True
+            if use_spacing_alignment:
+                message += "<code>"
+
             # Subtotal line
-            if subtotal is not None and use_spacing_alignment:
-                subtotal_label = Localizator.get_text(entity, "admin_cancel_invoice_subtotal") if header_type == "admin_cancellation" else "Subtotal"
-                subtotal_spacing = " " * (29 - len(subtotal_label)) if header_type == "admin_cancellation" else " " * 18
-                message += f"{subtotal_label}{subtotal_spacing}{currency_symbol}{subtotal:.2f}\n"
+            if subtotal is not None:
+                if use_spacing_alignment:
+                    # Unified format: 27 chars left-aligned label, 8 chars right-aligned price
+                    subtotal_label = Localizator.get_text(entity, "admin_cancel_invoice_subtotal") if header_type == "admin_cancellation" else Localizator.get_text(BotEntity.USER, "cart_subtotal_label")
+                    message += f"{subtotal_label:<27}{subtotal:>8.2f}{currency_symbol}\n"
+                else:
+                    subtotal_label = Localizator.get_text(BotEntity.USER, "cart_subtotal_label")
+                    message += f"{subtotal_label} {currency_symbol}{subtotal:.2f}\n"
 
             # Shipping line (always show for physical items, even if €0.00)
             if shipping_cost >= 0:
                 # Build shipping label with type if available
-                if shipping_type_name:
-                    shipping_display = f"Shipping ({shipping_type_name})" if use_spacing_alignment else f"Versand ({shipping_type_name})"
-                else:
-                    shipping_display = "Shipping" if use_spacing_alignment else "Versand"
-
                 if use_spacing_alignment:
-                    if header_type == "admin_cancellation":
-                        shipping_label = Localizator.get_text(entity, "admin_cancel_invoice_shipping")
-                        if shipping_type_name:
-                            shipping_label += f" ({shipping_type_name})"
-                        shipping_spacing = " " * (29 - len(shipping_label))
-                        message += f"{shipping_label}{shipping_spacing}{currency_symbol}{shipping_cost:.2f}\n"
-                    else:
-                        # Calculate spacing based on shipping_display length
-                        spacing_needed = max(26 - len(shipping_display), 1)
-                        message += f"{shipping_display}{' ' * spacing_needed}{currency_symbol}{shipping_cost:.2f}\n"
+                    shipping_label = Localizator.get_text(entity, "admin_cancel_invoice_shipping") if header_type == "admin_cancellation" else Localizator.get_text(BotEntity.USER, "cart_shipping_max_label")
+                    message += f"{shipping_label:<27}{shipping_cost:>8.2f}{currency_symbol}\n"
+                    # Add shipping type as indented note if available (prevents label overflow)
+                    if shipping_type_name:
+                        message += f"  ({shipping_type_name})\n"
                 else:
-                    message += f"{shipping_display} {currency_symbol}{shipping_cost:.2f}\n"
+                    shipping_label = Localizator.get_text(BotEntity.USER, "cart_shipping_max_label")
+                    if shipping_type_name:
+                        shipping_label += f" ({shipping_type_name})"
+                    message += f"{shipping_label} {currency_symbol}{shipping_cost:.2f}\n"
 
             # Wallet line
             if wallet_used > 0:
                 if use_spacing_alignment:
-                    wallet_spacing = " " * 11 if header_type == "payment_screen" else " " * 20
-                    wallet_line = Localizator.get_text(entity, "payment_wallet_line").format(
-                        wallet_used=wallet_used,
-                        wallet_spacing=wallet_spacing,
-                        currency_sym=currency_symbol
-                    )
-                    message += wallet_line
+                    wallet_label = Localizator.get_text(BotEntity.USER, "wallet_balance_label")
+                    message += f"{wallet_label:<27}{-wallet_used:>8.2f}{currency_symbol}\n"
                 else:
                     wallet_label = Localizator.get_text(BotEntity.USER, "wallet_balance_label")
                     message += f"{wallet_label} -{currency_symbol}{wallet_used:.2f}\n"
 
-            # Separator
-            if use_spacing_alignment and header_type == "admin_cancellation":
-                message += "─────────────────────────────\n"
+            # Close <code> block before separator
+            if use_spacing_alignment:
+                message += "</code>"
+
+            # Separator (30 chars to prevent line wrapping)
+            if use_spacing_alignment:
+                message += "─" * 30 + "\n"
             else:
                 message += "═══════════════════════\n"
 
             # Total line
             if total_price is not None:
-                if use_spacing_alignment:
-                    if header_type == "admin_cancellation":
-                        total_label = Localizator.get_text(entity, "admin_cancel_invoice_total")
-                        total_spacing = " " * (29 - len(total_label))
-                        message += f"<b>{total_label}{total_spacing}{currency_symbol}{total_price:.2f}</b>\n"
-                    else:
-                        # Align with Subtotal/Wallet lines (position at column ~26 for currency symbol)
-                        if crypto_payment_needed > 0:
-                            amount_due_label = Localizator.get_text(BotEntity.USER, "amount_due_label")
-                            # "Zu zahlen:" = 10 chars, need 16 spaces to reach column 26
-                            message += f"<b>{amount_due_label}:{' ' * 16}{currency_symbol}{crypto_payment_needed:.2f}</b>\n"
-                        else:
-                            # "Total:" = 6 chars, need 20 spaces to reach column 26
-                            message += f"<b>Total:{' ' * 20}{currency_symbol}{total_price:.2f}</b>\n"
+                # Calculate final amount due (consider wallet usage)
+                # If crypto_payment_needed is explicitly set, use it; otherwise calculate from total_price - wallet_used
+                if crypto_payment_needed > 0:
+                    final_amount = crypto_payment_needed
+                    show_as_amount_due = True
+                elif wallet_used > 0:
+                    final_amount = total_price - wallet_used
+                    show_as_amount_due = True
                 else:
-                    if crypto_payment_needed > 0:
-                        amount_due_label = Localizator.get_text(BotEntity.USER, "amount_due_label")
-                        message += f"<b>{amount_due_label}: {currency_symbol}{crypto_payment_needed:.2f}</b>\n"
-                    else:
-                        message += f"<b>Total: {currency_symbol}{total_price:.2f}</b>\n"
+                    final_amount = total_price
+                    show_as_amount_due = False
 
-            # Closing separator
-            if not use_spacing_alignment or header_type not in ["admin_cancellation"]:
+                if use_spacing_alignment:
+                    message += "<code>"
+                    if show_as_amount_due:
+                        amount_due_label = Localizator.get_text(BotEntity.USER, "amount_due_label")
+                        message += f"<b>{amount_due_label:<27}{final_amount:>8.2f}{currency_symbol}</b>\n"
+                    else:
+                        total_label = Localizator.get_text(entity, "admin_cancel_invoice_total") if header_type == "admin_cancellation" else Localizator.get_text(BotEntity.USER, "cart_total_label")
+                        message += f"<b>{total_label:<27}{final_amount:>8.2f}{currency_symbol}</b>\n"
+                    message += "</code>"
+                else:
+                    if show_as_amount_due:
+                        amount_due_label = Localizator.get_text(BotEntity.USER, "amount_due_label")
+                        message += f"<b>{amount_due_label}: {currency_symbol}{final_amount:.2f}</b>\n"
+                    else:
+                        total_label = Localizator.get_text(entity, "admin_cancel_invoice_total") if header_type == "admin_cancellation" else Localizator.get_text(BotEntity.USER, "cart_total_label")
+                        message += f"<b>{total_label}: {currency_symbol}{final_amount:.2f}</b>\n"
+
+            # Closing separator (30 chars to prevent line wrapping)
+            if use_spacing_alignment:
+                message += "═" * 30 + "\n"
+            else:
                 message += "═══════════════════════\n"
 
         # === PAYMENT DETAILS (Payment Screen) ===
@@ -753,16 +936,16 @@ class InvoiceFormatterService:
             message += f"({time_remaining_text})\n"
 
         # === PARTIAL CANCELLATION / MIXED ORDER REFUND DETAILS ===
-        # Show refund breakdown for: 1) partial_cancellation header OR 2) cancelled orders with mixed items
+        # Show refund breakdown ONLY for order detail views with mixed items
+        # For partial_cancellation header, the new structured format already includes all info
         should_show_refund = (
-            (header_type == "partial_cancellation" and partial_refund_info) or
-            (header_type in ["order_detail_admin", "order_detail_user"] and
-             partial_refund_info and
-             partial_refund_info.get('is_mixed_order'))
+            header_type in ["order_detail_admin", "order_detail_user"] and
+            partial_refund_info and
+            partial_refund_info.get('is_mixed_order')
         )
 
         if should_show_refund:
-            # Show refund breakdown for mixed orders
+            # Show refund breakdown for mixed orders in order detail views
             refund_summary = Localizator.get_text(BotEntity.COMMON, 'partial_cancel_refund_summary')
             message += f"\n<b>{refund_summary}:</b>\n"
             message += f"{Localizator.get_text(BotEntity.COMMON, 'partial_cancel_physical_amount')}: {partial_refund_info['physical_amount']:.2f} {currency_symbol}\n"
@@ -933,15 +1116,15 @@ class InvoiceFormatterService:
             # Format price
             price_str = f"{tier['unit_price']:.2f}{currency_symbol}"
 
-            # Mark current tier
+            # Mark current tier (fixed width formatting for proper alignment in monospace)
             if idx == current_tier_idx:
                 marker = Localizator.get_text(entity, 'checkout_tier_your_price')
-                tier_lines.append(f"• {range_str:>15}:  {price_str:>8}  {marker}")
+                tier_lines.append(f"• {range_str:>15}: {price_str:>9}  {marker}")
             else:
-                tier_lines.append(f"• {range_str:>15}:  {price_str:>8}")
+                tier_lines.append(f"• {range_str:>15}: {price_str:>9}")
 
         # Wrap tier table in <code> to preserve alignment (Telegram collapses spaces in HTML)
-        lines.append(f"   <code>{chr(10).join(tier_lines)}</code>")
+        lines.append(f"   <code>\n{chr(10).join(tier_lines)}\n   </code>")
 
         lines.append("")
 
@@ -1055,26 +1238,35 @@ class InvoiceFormatterService:
         message += f"<b>{positions_header}</b>\n"
         message += "─" * len(separator) + "\n"
 
+        # Wrap in <code> for monospace alignment
+        message += "<code>"
         for item in items:
             item_name = safe_html(item['name'])
             qty = item['quantity']
             line_total = item['line_total']
-            message += f"{item_name} × {qty:>2}      {line_total:>8.2f}{currency_symbol}\n"
+            # Use fixed width: name+qty left-aligned (27 chars), price right-aligned
+            item_line = f"{item_name} × {qty}"
+            message += f"{item_line:<27}{line_total:>8.2f}{currency_symbol}\n"
+        message += "</code>"
 
         # === SECTION 3: Totals ===
         message += "─" * len(separator) + "\n"
 
+        # Wrap totals in <code> for monospace alignment
+        message += "<code>"
+
         subtotal_label = Localizator.get_text(entity, 'cart_subtotal_label')
-        message += f"{subtotal_label:<25}{subtotal:>8.2f}{currency_symbol}\n"
+        message += f"{subtotal_label:<27}{subtotal:>8.2f}{currency_symbol}\n"
 
         if has_physical_items:
             shipping_label = Localizator.get_text(entity, 'cart_shipping_max_label')
-            message += f"{shipping_label:<25}{shipping_cost:>7.2f}{currency_symbol}\n"
+            message += f"{shipping_label:<27}{shipping_cost:>8.2f}{currency_symbol}\n"
 
+        message += "</code>"
         message += separator + "\n"
 
         total_label = Localizator.get_text(entity, 'cart_total_label')
-        message += f"<b>{total_label:<25}{total:>8.2f}{currency_symbol}</b>\n"
+        message += f"<b><code>{total_label:<27}{total:>8.2f}{currency_symbol}</code></b>\n"
 
         # === SECTION 4: Total Savings ===
         if total_savings > 0:

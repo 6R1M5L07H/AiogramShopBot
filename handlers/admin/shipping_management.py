@@ -421,7 +421,13 @@ async def process_cancellation_reason(message: Message, state: FSMContext, sessi
         await state.clear()
         return
 
-    custom_reason = message.text
+    # Validate that message contains text (reject GIFs, stickers, photos, etc.)
+    if not message.text or not message.text.strip():
+        await message.answer(Localizator.get_text(BotEntity.ADMIN, "error_cancel_reason_must_be_text"))
+        # Keep FSM state so admin can retry with text
+        return
+
+    custom_reason = message.text.strip()
 
     # Store reason in FSM for confirmation step
     await state.update_data(custom_reason=custom_reason)
