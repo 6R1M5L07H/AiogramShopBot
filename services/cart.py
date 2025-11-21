@@ -656,10 +656,10 @@ class CartService:
         prices_dict = await ItemRepository.get_prices_batch(item_keys, session)
 
         items_data = []
-        items_total = 0.0
+        items_total = Decimal('0.00')
         max_shipping_cost = 0.0
         has_physical_items = False
-        total_savings = 0.0
+        total_savings = Decimal('0.00')
 
         for cart_item in cart_items:
             subcategory = subcategories_dict.get(cart_item.subcategory_id)
@@ -684,7 +684,7 @@ class CartService:
                     tier_breakdown = json.loads(cart_item.tier_breakdown)
 
                     # Calculate total for this item
-                    line_total = sum(item['total'] for item in tier_breakdown)
+                    line_total = sum(Decimal(str(item['total'])) for item in tier_breakdown)
                     items_total += line_total
 
                     # Get tier data from pre-loaded dict (no N+1 query)
@@ -737,7 +737,7 @@ class CartService:
                             Decimal(str(single_price)) - Decimal(str(current_unit_price))
                         ) * Decimal(str(cart_item.quantity))
                         savings_vs_single = float(savings_decimal.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
-                        total_savings += savings_vs_single
+                        total_savings += Decimal(str(savings_vs_single))
 
                     # Unified item structure
                     items_data.append({
@@ -757,7 +757,7 @@ class CartService:
                     # Use Decimal for precise currency calculation
                     line_total_decimal = Decimal(str(price)) * Decimal(str(cart_item.quantity))
                     line_total = float(line_total_decimal.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
-                    items_total += line_total
+                    items_total += Decimal(str(line_total))
                     items_data.append({
                         'name': subcategory.name,
                         'quantity': cart_item.quantity,
@@ -774,7 +774,7 @@ class CartService:
                 # Use Decimal for precise currency calculation
                 line_total_decimal = Decimal(str(price)) * Decimal(str(cart_item.quantity))
                 line_total = float(line_total_decimal.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
-                items_total += line_total
+                items_total += Decimal(str(line_total))
                 items_data.append({
                     'name': subcategory.name,
                     'quantity': cart_item.quantity,
@@ -792,11 +792,11 @@ class CartService:
 
         return {
             'items': items_data,
-            'subtotal': items_total,
+            'subtotal': float(items_total.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)),
             'has_physical_items': has_physical_items,
             'max_shipping_cost': max_shipping_cost,
             'grand_total': grand_total,
-            'total_savings': round(total_savings, 2),
+            'total_savings': float(total_savings.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)),
             'message_key': 'cart_confirm_checkout_process'
         }
 
