@@ -831,7 +831,7 @@ class InvoiceFormatterService:
                 # Admin cancellation uses custom reason label
                 logging.info(f"🟢 Adding admin cancellation reason: '{cancellation_reason}'")
                 message += f"\n<b>{Localizator.get_text(BotEntity.COMMON, 'admin_cancel_reason_label')}</b>\n"
-                message += f"{cancellation_reason}\n\n"
+                message += f"{safe_html(cancellation_reason)}\n\n"
             else:
                 # User cancellation shows reason code
                 reason_label = Localizator.get_text(entity, 'cancellation_reason_label')
@@ -845,7 +845,7 @@ class InvoiceFormatterService:
                 elif 'TIMEOUT' in cancellation_reason.upper():
                     reason_text = Localizator.get_text(entity, 'cancellation_reason_timeout')
                 else:
-                    reason_text = cancellation_reason  # Fallback to raw reason
+                    reason_text = safe_html(cancellation_reason)  # Fallback to raw reason (escaped)
 
                 message += f"{reason_text}\n\n"
 
@@ -867,7 +867,7 @@ class InvoiceFormatterService:
         if header_type in ["order_detail_admin", "order_detail_user"] and cancellation_reason:
             if order_status == OrderStatus.CANCELLED_BY_ADMIN:
                 message += f"\n\n<b>{Localizator.get_text(BotEntity.COMMON, 'admin_cancel_reason_label')}</b>\n"
-                message += f"{cancellation_reason}"
+                message += f"{safe_html(cancellation_reason)}"
 
         if show_retention_notice:
             import config
