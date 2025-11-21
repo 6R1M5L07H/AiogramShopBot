@@ -126,8 +126,11 @@ class OrderManagementService:
         else:
             # Add order buttons with CONSISTENT layout (with emojis!)
             for order in orders:
+                # Check if this is a partial cancellation (mixed order with digital items kept)
+                is_partial_cancel = OrderManagementService._is_partial_cancellation(order)
+
                 # Status emoji (BOTH admin and user get emojis now!)
-                emoji = OrderManagementService._get_status_emoji(order.status)
+                emoji = OrderManagementService._get_status_emoji(order.status, is_partial_cancel)
 
                 # Short date: DD.MM (without year)
                 created_time = order.created_at.strftime("%d.%m")
@@ -136,8 +139,11 @@ class OrderManagementService:
                 # Fallback to Order ID if no invoice exists (old orders or data migration issues)
                 invoice_number = order.invoices[0].invoice_number if order.invoices else f"Order-{order.id}"
 
-                # Get status text
-                status_text = Localizator.get_text(BotEntity.COMMON, f"order_status_{order.status.value}")
+                # Get status text (use partial cancel text if applicable)
+                if is_partial_cancel:
+                    status_text = Localizator.get_text(BotEntity.COMMON, "order_status_partial_cancelled")
+                else:
+                    status_text = Localizator.get_text(BotEntity.COMMON, f"order_status_{order.status.value}")
 
                 # Unified button layout: "📦 DD.MM • INV-YYYY-XXXXXX • Status"
                 button_text = f"{emoji} {created_time} • {invoice_number} • {status_text}"
@@ -306,16 +312,26 @@ class OrderManagementService:
                 except json.JSONDecodeError:
                     logging.warning(f"Failed to parse refund_breakdown_json for order {order_id}")
 
+            # Parse tier breakdown from order (for accurate price display)
+            tier_breakdown_list = OrderService._parse_tier_breakdown_from_order(order)
+
             # Build items_raw from snapshot
             items_raw = []
             for snapshot_item in snapshot_items:
+                # Match tier breakdown by subcategory name
+                tier_breakdown = None
+                for tier_item in tier_breakdown_list:
+                    if tier_item['subcategory_name'] == snapshot_item['description']:
+                        tier_breakdown = tier_item.get('breakdown')
+                        break
+
                 items_raw.append({
                     'name': snapshot_item['description'],
                     'price': snapshot_item['price'],
                     'quantity': snapshot_item['quantity'],
                     'is_physical': snapshot_item['is_physical'],
                     'private_data': snapshot_item.get('private_data'),
-                    'tier_breakdown': None  # Tier breakdown not stored in snapshot
+                    'tier_breakdown': tier_breakdown  # Now includes tier breakdown from order
                 })
 
             # Group items for display
@@ -390,6 +406,11 @@ class OrderManagementService:
                 logging.warning(f"Failed to load shipping type for key: {order.shipping_type_key}")
 
         # Format message (unified display)
+        # Show private_data for USER context (formatter will filter items without private_data)
+        # Admin should NEVER see private_data (security)
+        # Note: For partial cancellations, digital items keep their private_data (non-refundable)
+        should_show_private_data = entity == BotEntity.USER
+
         msg = InvoiceFormatterService.format_complete_order_view(
             header_type="order_detail_admin" if entity == BotEntity.ADMIN else "order_detail_user",
             invoice_number=order_data["invoice_number"],
@@ -403,9 +424,10 @@ class OrderManagementService:
             shipping_type_name=shipping_type_name,  # Pass shipping type name
             total_price=order.total_price,
             wallet_used=order.wallet_used,  # Pass wallet usage for display
+            use_spacing_alignment=True,  # Enable monospace alignment for totals
             separate_digital_physical=True,
-            show_private_data=True,  # Show keys/codes for both Admin and User
-            show_retention_notice=has_private_data and (entity == BotEntity.USER),  # Only show retention notice to users
+            show_private_data=should_show_private_data,  # Hide private_data for cancelled orders
+            show_retention_notice=has_private_data and should_show_private_data and (entity == BotEntity.USER),  # Only show retention notice for active orders
             cancellation_reason=order.cancellation_reason,  # Pass stored cancellation reason
             partial_refund_info=refund_breakdown,  # Refund breakdown for mixed order cancellations
             currency_symbol=Localizator.get_currency_symbol(),
@@ -495,9 +517,35 @@ class OrderManagementService:
         return msg, kb_builder
 
     @staticmethod
-    def _get_status_emoji(status: OrderStatus) -> str:
+    def _get_status_emoji(status: OrderStatus, is_partial_cancel: bool = False) -> str:
         """Get emoji for order status (consistent for admin and user)"""
+        if is_partial_cancel:
+            return "🔄"  # Special emoji for partial cancellation
         return OrderManagementService.STATUS_EMOJI_MAP.get(status, "📄")
+
+    @staticmethod
+    def _is_partial_cancellation(order) -> bool:
+        """Check if order is a partial cancellation (mixed order with refund_breakdown_json)."""
+        from enums.order_status import OrderStatus
+        import json
+
+        # Only cancelled orders can be partial cancellations
+        if order.status not in [
+            OrderStatus.CANCELLED_BY_ADMIN,
+            OrderStatus.CANCELLED_BY_USER,
+            OrderStatus.CANCELLED_BY_SYSTEM
+        ]:
+            return False
+
+        # Check for refund breakdown (indicates mixed order handling)
+        if not order.refund_breakdown_json:
+            return False
+
+        try:
+            refund_data = json.loads(order.refund_breakdown_json)
+            return refund_data.get('is_mixed_order', False)
+        except json.JSONDecodeError:
+            return False
 
     @staticmethod
     def _get_filter_display_name(

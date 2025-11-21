@@ -930,12 +930,29 @@ class OrderService:
                 # For now, just log the shortage.
 
         # Clean up the cancelled order items (remove reservation AND restore to stock)
+        # CRITICAL: Do NOT restore digital items if order was PAID (they were already delivered)
+        items_to_restore = []
+        items_kept_sold = []
+
         for item in items:
-            item.order_id = None
-            item.is_sold = False  # CRITICAL: Restore items to available stock
+            item.order_id = None  # Always clear order_id
+
+            # Only restore item to stock if:
+            # 1. Physical item (always restorable) OR
+            # 2. Digital item AND order was NOT yet paid (not delivered)
+            if item.is_physical or order.status not in [OrderStatus.PAID, OrderStatus.PAID_AWAITING_SHIPMENT]:
+                item.is_sold = False  # Restore to stock
+                items_to_restore.append(item)
+            else:
+                # Digital item, order was PAID -> keep as sold (already delivered)
+                items_kept_sold.append(item)
+
         await ItemRepository.update(items, session)
 
-        logging.info(f"✅ Released {len(items)} items back to stock for order {order_id}")
+        logging.info(
+            f"✅ Released {len(items_to_restore)} items back to stock for order {order_id} "
+            f"({len(items_kept_sold)} digital items kept as sold - already delivered)"
+        )
 
         # SEND NOTIFICATIONS (only after successful item release)
         if 'wallet_refund' in notification_messages:

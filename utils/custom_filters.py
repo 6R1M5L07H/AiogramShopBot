@@ -30,6 +30,7 @@ class IsUserExistFilter(BaseFilter):
     Admins with EXEMPT_ADMINS_FROM_BAN=true can bypass ban.
 
     If user is banned, shows informative message with unban instructions.
+    If user doesn't exist, auto-creates profile with welcome message for seamless UX.
     """
     async def __call__(self, message: Message) -> bool:
         import logging
@@ -37,13 +38,33 @@ class IsUserExistFilter(BaseFilter):
             user = await UserService.get(UserDTO(telegram_id=message.from_user.id), session)
 
             if user is None:
-                logging.error(
-                    f"❌ USER NOT FOUND: Telegram ID {message.from_user.id} "
-                    f"(username: @{message.from_user.username}) tried to access protected route but user profile doesn't exist in database. "
-                    f"User needs to send /start command first to create profile. "
-                    f"This may indicate: (1) User was deleted from DB, (2) DB was reset, (3) New user without /start."
+                logging.info(
+                    f"🆕 AUTO-CREATING USER: Telegram ID {message.from_user.id} "
+                    f"(username: @{message.from_user.username}) accessed handler without profile. "
+                    f"Creating profile automatically for seamless UX."
                 )
-                return False
+
+                # Auto-create user profile for seamless UX
+                await UserService.create_if_not_exist(
+                    UserDTO(
+                        telegram_username=message.from_user.username,
+                        telegram_id=message.from_user.id
+                    ),
+                    session
+                )
+
+                # Show friendly welcome message
+                from utils.localizator import Localizator
+                from enums.bot_entity import BotEntity
+                await message.answer(Localizator.get_text(BotEntity.COMMON, "welcome_auto_created"))
+
+                # Re-fetch user to continue processing
+                user = await UserService.get(UserDTO(telegram_id=message.from_user.id), session)
+
+                if user is None:
+                    # Unlikely - but handle gracefully
+                    logging.error(f"❌ Failed to create user profile for {message.from_user.id}")
+                    return False
 
             # Check if user is banned using centralized function
             if await is_banned_user(message.from_user.id, session):
@@ -75,6 +96,8 @@ class IsUserExistFilterIncludingBanned(BaseFilter):
     - My Profile (for wallet top-up)
     - Support
     - FAQ/Terms
+
+    If user doesn't exist, auto-creates profile with welcome message for seamless UX.
     """
     async def __call__(self, message: Message) -> bool:
         import logging
@@ -83,14 +106,37 @@ class IsUserExistFilterIncludingBanned(BaseFilter):
             user = await UserService.get(UserDTO(telegram_id=message.from_user.id), session)
 
             if user is None:
-                logging.error(
-                    f"❌ USER NOT FOUND: Telegram ID {message.from_user.id} "
-                    f"(username: @{message.from_user.username}) tried to access handler but user profile doesn't exist in database. "
-                    f"User needs to send /start command first to create profile. "
-                    f"This may indicate: (1) User was deleted from DB, (2) DB was reset, (3) New user without /start."
+                logging.info(
+                    f"🆕 AUTO-CREATING USER: Telegram ID {message.from_user.id} "
+                    f"(username: @{message.from_user.username}) accessed handler without profile. "
+                    f"Creating profile automatically for seamless UX."
                 )
-                logging.info(f"🔍 IsUserExistFilterIncludingBanned result: False (user=None)")
-                return False
+
+                # Auto-create user profile for seamless UX
+                await UserService.create_if_not_exist(
+                    UserDTO(
+                        telegram_username=message.from_user.username,
+                        telegram_id=message.from_user.id
+                    ),
+                    session
+                )
+
+                # Show friendly welcome message
+                from utils.localizator import Localizator
+                from enums.bot_entity import BotEntity
+                await message.answer(Localizator.get_text(BotEntity.COMMON, "welcome_auto_created"))
+
+                # Re-fetch user to continue processing
+                user = await UserService.get(UserDTO(telegram_id=message.from_user.id), session)
+
+                if user is None:
+                    # Unlikely - but handle gracefully
+                    logging.error(f"❌ Failed to create user profile for {message.from_user.id}")
+                    logging.info(f"🔍 IsUserExistFilterIncludingBanned result: False (user=None after create)")
+                    return False
+
+                logging.info(f"🔍 IsUserExistFilterIncludingBanned result: True (user_id={user.id}, auto-created)")
+                return True
 
             logging.info(f"🔍 IsUserExistFilterIncludingBanned result: True (user_id={user.id})")
             return True

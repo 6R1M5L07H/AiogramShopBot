@@ -20,6 +20,43 @@ All notable changes to this project will be documented in this file.
 - Commercial rounding (ROUND_HALF_UP) ensures consistent 2-decimal cent values
 - Prevents invoice discrepancies from accumulated rounding errors
 
+### Tier Pricing Display Fixes
+
+**Checkout View Alignment**
+- Fixed monospace alignment for tier price tables, line items, and totals
+- All price columns now properly right-aligned using fixed-width formatting
+- Prevented line wrapping by adjusting field widths to fit Telegram's display constraints
+
+**Admin Cancellation Invoices**
+- Corrected price display to show actual tier prices instead of fallback single-item prices
+- Admin cancellation notifications now include tier breakdown with batch-loaded subcategories
+- Eliminated N+1 queries when building cancellation invoices
+
+**Item Detail Display**
+- Conditional price display: shows tier table for tiered items, simple price for non-tiered items
+- Added localization support for simple price label
+
+**Partial Cancellation Invoice Format**
+- Redesigned partial cancellation display to match clean invoice structure
+- Separated non-refundable (digital delivered) and refundable (physical) items
+- Added order total calculation showing original total minus refund
+- Eliminated duplicate information sections using builder pattern
+
+**Cart Tier Pricing**
+- Fixed cart summary to calculate tier pricing based on total quantity per subcategory
+- Cart items now grouped by subcategory before tier pricing calculation
+- Distributes average unit price across individual cart items correctly
+
+**User Experience**
+- Distinguished partial cancellations from full cancellations in order lists
+- Auto-creates user profiles on first interaction for seamless onboarding
+- Fixed duplicate item description display in quantity selection
+- Added validation to prevent non-text cancellation reasons
+
+**Stock Management**
+- Fixed digital goods incorrectly restoring to stock on cancellation
+- Only physical items or undelivered digital items now restore to stock
+
 ## 2025-11-19
 
 ### Performance Optimizations
