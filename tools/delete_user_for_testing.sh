@@ -33,12 +33,14 @@ fi
 TELEGRAM_ID="$1"
 CONTAINER_NAME="${2:-shopbot-prod}"
 
-# Validate telegram_id is a number
-if ! [[ "$TELEGRAM_ID" =~ ^[0-9]+$ ]]; then
-    echo "❌ Error: Telegram ID must be a number"
-    echo "Got: $TELEGRAM_ID"
-    exit 1
-fi
+# Validate telegram_id is a number (POSIX-compatible)
+case "$TELEGRAM_ID" in
+    ''|*[!0-9]*)
+        echo "❌ Error: Telegram ID must be a number"
+        echo "Got: $TELEGRAM_ID"
+        exit 1
+        ;;
+esac
 
 echo "🧪 Test: Delete User for New User Notification Testing"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
