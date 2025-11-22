@@ -232,6 +232,7 @@
   },
   "common": {
     "back_button": "⬅️ Zurück",
+    "welcome_auto_created": "👋 Willkommen! Das Benutzerkonto wurde automatisch erstellt.",
     "clear_button": "🗑 Löschen",
     "quantity_unit_short": "Stk.",
     "tier_breakdown_label": "Staffelpreise",

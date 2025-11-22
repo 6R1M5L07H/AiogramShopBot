@@ -238,6 +238,7 @@
   },
   "common": {
     "back_button": "⬅️ Back",
+    "welcome_auto_created": "👋 Welcome! The user account has been automatically created.",
     "clear_button": "🗑 Clear",
     "quantity_unit_short": "pcs.",
     "tier_breakdown_label": "Tier Pricing",
