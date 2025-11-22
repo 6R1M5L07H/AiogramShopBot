@@ -214,6 +214,9 @@ MAX_STRIKES_BEFORE_BAN = int(os.environ.get("MAX_STRIKES_BEFORE_BAN", "3"))  # D
 EXEMPT_ADMINS_FROM_BAN = os.environ.get("EXEMPT_ADMINS_FROM_BAN", "true") == "true"  # Default: admins exempt from bans
 UNBAN_TOP_UP_AMOUNT = float(os.environ.get("UNBAN_TOP_UP_AMOUNT", "50.0"))  # Minimum top-up amount to unban (EUR)
 
+# Admin Notification Configuration
+NOTIFY_ADMIN_NEW_USER = os.environ.get("NOTIFY_ADMIN_NEW_USER", "false") == "true"  # Default: disabled to avoid spam
+
 # Logging Configuration
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")  # DEBUG, INFO, WARNING, ERROR, CRITICAL
 LOG_MASK_SECRETS = os.environ.get("LOG_MASK_SECRETS", "true") == "true"  # Mask sensitive data in logs

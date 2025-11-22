@@ -179,6 +179,7 @@
     "pgp_encrypted_placeholder": "[PGP-ENCRYPTED - View in admin panel]",
     "decryption_failed_message": "[DECRYPTION FAILED - Encryption key may have changed or data is corrupted]",
     "admin_user_banned_notification": "🚫 <b>User Banned (Automatic)</b>\n\n<b>User:</b> {user_display} (ID: {telegram_id})\n<b>Reason:</b> {strike_count} strikes reached (order timeouts/late cancellations)\n<b>Ban reason:</b> {ban_reason}\n\n⚠️ <b>Note:</b> User can unban themselves by topping up their wallet with at least {unban_amount} EUR. The balance can be used for shopping.\n\nStrikes will remain after unbanning.",
+    "admin_new_user_notification": "👤 <b>New User Registration</b>\n\n<b>User:</b> {user_display}\n<b>Telegram ID:</b> {telegram_id}\n<b>Timestamp:</b> {timestamp}\n\nThe user has interacted with the bot for the first time and has been automatically registered.",
     "order_management_title": "📦 Order Management",
     "order_filter_label": "🔍 Filter: {filter_name}",
     "order_pagination_info": "Page {current}/{total}",
@@ -237,6 +238,7 @@
   },
   "common": {
     "back_button": "⬅️ Back",
+    "welcome_auto_created": "👋 Welcome! The user account has been automatically created.",
     "clear_button": "🗑 Clear",
     "quantity_unit_short": "pcs.",
     "tier_breakdown_label": "Tier Pricing",

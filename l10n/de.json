@@ -173,6 +173,7 @@
     "pgp_encrypted_placeholder": "[PGP-ENCRYPTED - View in admin panel]",
     "decryption_failed_message": "[DECRYPTION FAILED - Encryption key may have changed or data is corrupted]",
     "admin_user_banned_notification": "🚫 <b>Benutzer gesperrt (Automatisch)</b>\n\n<b>Benutzer:</b> {user_display} (ID: {telegram_id})\n<b>Grund:</b> {strike_count} Strikes erreicht (Bestellungs-Timeouts/verspätete Stornierungen)\n<b>Sperrgrund:</b> {ban_reason}\n\n⚠️ <b>Hinweis:</b> Benutzer kann sich durch Guthaben-Aufladung von mindestens {unban_amount} EUR selbst entsperren. Das Guthaben kann zum Einkaufen verwendet werden.\n\nStrikes bleiben nach Entsperrung bestehen.",
+    "admin_new_user_notification": "👤 <b>Neue Benutzerregistrierung</b>\n\n<b>Benutzer:</b> {user_display}\n<b>Telegram-ID:</b> {telegram_id}\n<b>Zeitstempel:</b> {timestamp}\n\nDer Benutzer hat zum ersten Mal mit dem Bot interagiert und wurde automatisch registriert.",
     "order_management_title": "📦 Bestellverwaltung",
     "order_filter_label": "🔍 Filter: {filter_name}",
     "order_pagination_info": "Seite {current}/{total}",
@@ -231,6 +232,7 @@
   },
   "common": {
     "back_button": "⬅️ Zurück",
+    "welcome_auto_created": "👋 Willkommen! Das Benutzerkonto wurde automatisch erstellt.",
     "clear_button": "🗑 Löschen",
     "quantity_unit_short": "Stk.",
     "tier_breakdown_label": "Staffelpreise",

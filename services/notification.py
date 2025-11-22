@@ -826,6 +826,39 @@ class NotificationService:
         await NotificationService.send_to_admins(msg, user_button)
 
     @staticmethod
+    async def notify_admin_new_user(user: UserDTO):
+        """
+        Sends notification to admins when a new user registers.
+
+        Only sends if NOTIFY_ADMIN_NEW_USER config is enabled.
+
+        Args:
+            user: User DTO with telegram_username and telegram_id
+        """
+        if not config.NOTIFY_ADMIN_NEW_USER:
+            return
+
+        from datetime import datetime
+
+        # Format username display
+        if user.telegram_username:
+            user_display = f"@{safe_html(user.telegram_username)}"
+        else:
+            user_display = f"ID: {user.telegram_id}"
+
+        # Format timestamp
+        timestamp = datetime.now().strftime("%d.%m.%Y %H:%M")
+
+        msg = Localizator.get_text(BotEntity.ADMIN, "admin_new_user_notification").format(
+            user_display=user_display,
+            telegram_id=user.telegram_id,
+            timestamp=timestamp
+        )
+
+        user_button = await NotificationService.make_user_button(user.telegram_username)
+        await NotificationService.send_to_admins(msg, user_button)
+
+    @staticmethod
     async def notify_user_unbanned(user, top_up_amount: float, strike_count: int):
         """
         Sends notification to user when they are unbanned via wallet top-up.
