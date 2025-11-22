@@ -154,14 +154,27 @@ async def check_all_tables_exist(session: AsyncSession | Session):
 
 
 async def create_db_and_tables():
+    """
+    Create missing database tables.
+
+    SAFETY: Only creates missing tables. Never drops existing tables to prevent data loss.
+    If schema drift is detected (missing tables), only the missing tables are created.
+
+    For schema migrations, use Alembic instead of this function.
+    """
     async with get_db_session() as session:
         if await check_all_tables_exist(session):
-            pass
+            logging.info("[DB] All tables exist - no action needed")
         else:
+            logging.warning("[DB] Some tables are missing - creating missing tables only")
+            logging.warning("[DB] IMPORTANT: Existing tables will NOT be dropped or modified")
+
             if isinstance(session, AsyncSession):
                 async with engine.begin() as conn:
-                    await conn.run_sync(Base.metadata.drop_all)
+                    # SAFETY: Only creates missing tables, does not drop existing ones
                     await conn.run_sync(Base.metadata.create_all)
             else:
-                Base.metadata.drop_all(bind=engine)
+                # SAFETY: Only creates missing tables, does not drop existing ones
                 Base.metadata.create_all(bind=engine)
+
+            logging.info("[DB] Missing tables created successfully")
