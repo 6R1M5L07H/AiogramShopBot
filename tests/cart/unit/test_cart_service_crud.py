@@ -333,32 +333,46 @@ class TestGetCartSummaryData:
                         2: subcat2
                     }
                     with patch('repositories.item.ItemRepository.get_price', return_value=10.0):
-                        result = await CartService.get_cart_summary_data(
-                            user_id=1,
-                            session=mock_session
-                        )
+                        with patch('repositories.item.ItemRepository.get_prices_batch') as mock_prices_batch:
+                            # Mock batch price loading to avoid session_execute issue
+                            mock_prices_batch.return_value = {
+                                (1, 1): 10.0,
+                                (1, 2): 10.0
+                            }
+                            with patch('services.pricing.PricingService.calculate_optimal_price') as mock_pricing:
+                                # Mock pricing service to avoid PriceTierRepository calls
+                                mock_pricing.return_value = MagicMock(
+                                    total_price=10.0,
+                                    average_unit_price=10.0,
+                                    breakdown=[]
+                                )
 
-                        # Verify structure
-                        assert result["has_pending_order"] is False
-                        assert result["has_items"] is True
-                        assert result["message_key"] == "cart"
+                                result = await CartService.get_cart_summary_data(
+                                    user_id=1,
+                                    session=mock_session
+                                )
 
-                        # Verify items data
-                        assert len(result["items"]) == 2
+                                # Verify structure
+                                assert result["has_pending_order"] is False
+                                assert result["has_items"] is True
+                                assert result["message_key"] == "cart"
 
-                        # First item
-                        assert result["items"][0]["cart_item_id"] == 1
-                        assert result["items"][0]["subcategory_name"] == "USB Sticks"
-                        assert result["items"][0]["quantity"] == 3
-                        assert result["items"][0]["price"] == 10.0
-                        assert result["items"][0]["total"] == 30.0
+                                # Verify items data
+                                assert len(result["items"]) == 2
 
-                        # Second item
-                        assert result["items"][1]["cart_item_id"] == 2
-                        assert result["items"][1]["subcategory_name"] == "Hardware"
-                        assert result["items"][1]["quantity"] == 5
-                        assert result["items"][1]["price"] == 10.0
-                        assert result["items"][1]["total"] == 50.0
+                                # First item
+                                assert result["items"][0]["cart_item_id"] == 1
+                                assert result["items"][0]["subcategory_name"] == "USB Sticks"
+                                assert result["items"][0]["quantity"] == 3
+                                assert result["items"][0]["price"] == 10.0
+                                assert result["items"][0]["total"] == 30.0
+
+                                # Second item
+                                assert result["items"][1]["cart_item_id"] == 2
+                                assert result["items"][1]["subcategory_name"] == "Hardware"
+                                assert result["items"][1]["quantity"] == 5
+                                assert result["items"][1]["price"] == 10.0
+                                assert result["items"][1]["total"] == 50.0
 
     @pytest.mark.asyncio
     async def test_get_cart_summary_empty(self, mock_session):
