@@ -45,13 +45,16 @@ class IsUserExistFilter(BaseFilter):
                 )
 
                 # Auto-create user profile for seamless UX
-                await UserService.create_if_not_exist(
-                    UserDTO(
-                        telegram_username=message.from_user.username,
-                        telegram_id=message.from_user.id
-                    ),
-                    session
+                user_dto = UserDTO(
+                    telegram_username=message.from_user.username,
+                    telegram_id=message.from_user.id
                 )
+                is_new_user = await UserService.create_if_not_exist(user_dto, session)
+
+                # Send admin notification if new user was created
+                if is_new_user:
+                    from services.notification import NotificationService
+                    await NotificationService.notify_admin_new_user(user_dto)
 
                 # Show friendly welcome message
                 from utils.localizator import Localizator
@@ -113,13 +116,16 @@ class IsUserExistFilterIncludingBanned(BaseFilter):
                 )
 
                 # Auto-create user profile for seamless UX
-                await UserService.create_if_not_exist(
-                    UserDTO(
-                        telegram_username=message.from_user.username,
-                        telegram_id=message.from_user.id
-                    ),
-                    session
+                user_dto = UserDTO(
+                    telegram_username=message.from_user.username,
+                    telegram_id=message.from_user.id
                 )
+                is_new_user = await UserService.create_if_not_exist(user_dto, session)
+
+                # Send admin notification if new user was created
+                if is_new_user:
+                    from services.notification import NotificationService
+                    await NotificationService.notify_admin_new_user(user_dto)
 
                 # Show friendly welcome message
                 from utils.localizator import Localizator
