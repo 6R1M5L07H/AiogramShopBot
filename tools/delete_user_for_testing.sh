@@ -124,7 +124,7 @@ orders_count = cursor.fetchone()[0]
 cursor.execute('SELECT COUNT(*) FROM buys WHERE buyer_id = ?', (user_id,))
 buys_count = cursor.fetchone()[0]
 
-cursor.execute('SELECT COUNT(*) FROM deposit_records WHERE user_id = ?', (user_id,))
+cursor.execute('SELECT COUNT(*) FROM deposits WHERE user_id = ?', (user_id,))
 deposits_count = cursor.fetchone()[0]
 
 cursor.execute('SELECT COUNT(*) FROM user_strikes WHERE user_id = ?', (user_id,))
@@ -158,7 +158,7 @@ if buys_count > 0:
 
 # Delete deposits
 if deposits_count > 0:
-    cursor.execute('DELETE FROM deposit_records WHERE user_id = ?', (user_id,))
+    cursor.execute('DELETE FROM deposits WHERE user_id = ?', (user_id,))
     print(f'   ✅ {deposits_count} deposits deleted')
 
 # Delete strikes
