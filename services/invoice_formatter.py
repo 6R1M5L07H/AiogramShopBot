@@ -67,7 +67,7 @@ class InvoiceFormatterService:
         Format a section of items (digital or physical).
 
         Args:
-            items: List of item dicts
+            items: List of item dicts (with optional 'unit' field)
             section_label: Section header (e.g., "Digital Items:")
             currency_symbol: Currency symbol
             show_private_data: Whether to show private_data
@@ -79,25 +79,28 @@ class InvoiceFormatterService:
         if not items:
             return ""
 
-        qty_unit = Localizator.get_text(BotEntity.COMMON, "quantity_unit_short")
         message = f"<b>{section_label}:</b>\n"
 
         for item in items:
+            # Get and localize unit (fallback to "pcs." if not present)
+            unit = item.get('unit', 'pcs.')
+            localized_unit = Localizator.localize_unit(unit)
+
             # Check if item has tier breakdown
             if item.get('tier_breakdown'):
                 # For tiered items, show only "Nx Name = €total" (no unit price, it varies by tier)
                 # Calculate total from tier breakdown
                 line_total = sum(tier['total'] for tier in item['tier_breakdown'])
                 item_name_escaped = safe_html(item['name'])
-                message += f"{item['quantity']} {qty_unit} {item_name_escaped} = {currency_symbol}{line_total:.2f}\n"
+                message += f"{item['quantity']} {localized_unit} {item_name_escaped} = {currency_symbol}{line_total:.2f}\n"
             else:
                 # Flat pricing (no tier breakdown) - escape item name to prevent HTML injection
                 item_name_escaped = safe_html(item['name'])
                 line_total = item['price'] * item['quantity']
                 if item['quantity'] == 1:
-                    message += f"{item['quantity']} {qty_unit} {item_name_escaped} {currency_symbol}{item['price']:.2f}\n"
+                    message += f"{item['quantity']} {localized_unit} {item_name_escaped} {currency_symbol}{item['price']:.2f}\n"
                 else:
-                    message += f"{item['quantity']} {qty_unit} {item_name_escaped} {currency_symbol}{item['price']:.2f} = {currency_symbol}{line_total:.2f}\n"
+                    message += f"{item['quantity']} {localized_unit} {item_name_escaped} {currency_symbol}{item['price']:.2f} = {currency_symbol}{line_total:.2f}\n"
 
             # Show private data if applicable
             if show_private_data and item.get('private_data'):

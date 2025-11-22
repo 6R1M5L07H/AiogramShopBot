@@ -4,6 +4,7 @@
     "subcategory": "Steam Game Keys",
     "private_data": "Game Key: STEAM-ABCD-EFGH-1234",
     "description": "Popular AAA Game - Steam Key",
+    "unit": "pcs.",
     "is_physical": false,
     "shipping_cost": 0.0,
     "allows_packstation": false,
@@ -18,6 +19,7 @@
     "subcategory": "Software Licenses",
     "private_data": "License: LICENSE-2025-XYZ789",
     "description": "Premium Software License - 1 Year",
+    "unit": "pcs.",
     "is_physical": false,
     "shipping_cost": 0.0,
     "allows_packstation": false,
@@ -28,6 +30,7 @@
     "subcategory": "Smartphones",
     "private_data": "IMEI: 123456789012345",
     "description": "Premium Smartphone - 128GB",
+    "unit": "pcs.",
     "is_physical": true,
     "shipping_cost": 15.00,
     "allows_packstation": true,
@@ -39,12 +42,65 @@
   },
   {
     "category": "Clothing",
-    "subcategory": "T-Shirts",
-    "private_data": "SKU: TSHIRT-M-001",
-    "description": "Cotton T-Shirt - Size M",
+    "subcategory": "Sneakers",
+    "private_data": "SKU: SNEAKER-42-001",
+    "description": "Running Shoes - Size 42",
+    "unit": "pairs",
     "is_physical": true,
     "shipping_cost": 5.00,
     "allows_packstation": true,
-    "price": 29.99
+    "price": 89.99
+  },
+  {
+    "category": "Food",
+    "subcategory": "Organic Coffee",
+    "private_data": "LOT: COFFEE-2025-001",
+    "description": "Arabica Coffee Beans - Fair Trade",
+    "unit": "kg",
+    "is_physical": true,
+    "shipping_cost": 3.50,
+    "allows_packstation": true,
+    "price_tiers": [
+      {"min_quantity": 1, "unit_price": 24.99},
+      {"min_quantity": 5, "unit_price": 22.99},
+      {"min_quantity": 10, "unit_price": 19.99}
+    ]
+  },
+  {
+    "category": "Beverages",
+    "subcategory": "Craft Beer",
+    "private_data": "BATCH: BEER-IPA-2025-003",
+    "description": "IPA Craft Beer - 5.2% ABV",
+    "unit": "l",
+    "is_physical": true,
+    "shipping_cost": 4.00,
+    "allows_packstation": false,
+    "price": 3.99
+  },
+  {
+    "category": "Home & Garden",
+    "subcategory": "Wallpaper",
+    "private_data": "SKU: WALL-FLORAL-001",
+    "description": "Modern Floral Wallpaper",
+    "unit": "m2",
+    "is_physical": true,
+    "shipping_cost": 8.00,
+    "allows_packstation": true,
+    "price_tiers": [
+      {"min_quantity": 1, "unit_price": 15.99},
+      {"min_quantity": 10, "unit_price": 14.49},
+      {"min_quantity": 50, "unit_price": 12.99}
+    ]
+  },
+  {
+    "category": "Hardware",
+    "subcategory": "Network Cable",
+    "private_data": "SKU: CAT6-BLUE-001",
+    "description": "Cat6 Ethernet Cable - Blue",
+    "unit": "m",
+    "is_physical": true,
+    "shipping_cost": 2.50,
+    "allows_packstation": true,
+    "price": 1.99
   }
 ]

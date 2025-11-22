@@ -1,10 +1,11 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, model_validator, field_validator
 from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, ForeignKey, CheckConstraint
 from sqlalchemy.orm import relationship, backref
 
 from models.base import Base
+from enums.item_unit import ItemUnit
 
 
 # Item is a unique good which can only be sold once
@@ -33,6 +34,9 @@ class Item(Base):
     order_id = Column(Integer, ForeignKey('orders.id'), nullable=True)
     reserved_at = Column(DateTime, nullable=True)
 
+    # Measurement unit (EN-based enum stored as string)
+    unit = Column(String(10), nullable=False, default=ItemUnit.PIECES.value)
+
     # Tiered Pricing
     price_tiers = relationship("PriceTier", back_populates="item", cascade="all, delete-orphan")
 
@@ -56,7 +60,33 @@ class ItemDTO(BaseModel):
     allows_packstation: bool | None = None
     order_id: int | None = None
     reserved_at: datetime | None = None
+    unit: str = ItemUnit.PIECES.value  # Measurement unit (EN-based enum, default: pieces)
     price_tiers: list[dict] | None = None
+
+    @field_validator('unit', mode='before')
+    @classmethod
+    def validate_unit(cls, v):
+        """
+        Validate and normalize unit field.
+
+        Accepts:
+        - ItemUnit enum directly
+        - String value that maps to valid ItemUnit
+
+        Returns normalized enum value string.
+        """
+        if isinstance(v, ItemUnit):
+            return v.value
+
+        if isinstance(v, str):
+            try:
+                # Validate via enum conversion
+                unit_enum = ItemUnit.from_string(v)
+                return unit_enum.value
+            except ValueError as e:
+                raise ValueError(f"Invalid unit: {e}")
+
+        raise ValueError(f"Unit must be string or ItemUnit enum, got {type(v)}")
 
     @model_validator(mode='before')
     @classmethod

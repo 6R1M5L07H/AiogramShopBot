@@ -1730,7 +1730,8 @@ class OrderService:
                 'quantity': 1,  # Each item is already individual
                 'is_physical': item.is_physical,
                 'private_data': None,  # Don't include private_data in payment screen (not paid yet)
-                'tier_breakdown': tier_breakdown
+                'tier_breakdown': tier_breakdown,
+                'unit': item.unit
             })
 
         # Group items by (name, price, is_physical) - private_data excluded for aggregation
@@ -2009,7 +2010,8 @@ class OrderService:
                 'quantity': 1,
                 'is_physical': item.is_physical,
                 'private_data': item.private_data,
-                'tier_breakdown': tier_breakdown if not item.private_data else None  # Don't show tier breakdown for individual items with codes
+                'tier_breakdown': tier_breakdown if not item.private_data else None,  # Don't show tier breakdown for individual items with codes
+                'unit': item.unit
             })
 
         # Group items by (name, price, is_physical, private_data) while preserving tier_breakdown
