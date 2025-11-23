@@ -18,7 +18,7 @@ import logging
 from datetime import datetime, timedelta
 
 import config
-from db import get_db_session, session_commit
+from db import get_db_session, session_commit, session_execute
 from models.order import Order
 from models.invoice import Invoice
 from models.payment_transaction import PaymentTransaction
@@ -37,7 +37,7 @@ async def cleanup_old_orders():
 
         # Get count for logging
         count_stmt = select(Order).where(Order.created_at < cutoff_date)
-        result = await session.execute(count_stmt)
+        result = await session_execute(count_stmt, session)
         orders_to_delete = result.scalars().all()
         count = len(orders_to_delete)
 
@@ -47,7 +47,7 @@ async def cleanup_old_orders():
 
         # Delete orders (cascade will handle invoices and payment_transactions)
         delete_stmt = delete(Order).where(Order.created_at < cutoff_date)
-        await session.execute(delete_stmt)
+        await session_execute(delete_stmt, session)
         await session_commit(session)
 
         logging.info(f"[Data Retention] ✅ Deleted {count} orders older than {config.DATA_RETENTION_DAYS} days")
@@ -66,13 +66,13 @@ async def cleanup_old_invoices_orphaned():
             Invoice.id.notin_(select(Order.id))
         ).where(Invoice.id < cutoff_date)  # Assuming id correlates with creation time
 
-        result = await session.execute(stmt)
+        result = await session_execute(stmt, session)
         orphaned = result.scalars().all()
 
         if len(orphaned) > 0:
             logging.warning(f"[Data Retention] Found {len(orphaned)} orphaned invoices - cleaning up")
             delete_stmt = delete(Invoice).where(Invoice.id.in_([i.id for i in orphaned]))
-            await session.execute(delete_stmt)
+            await session_execute(delete_stmt, session)
             await session_commit(session)
 
 
@@ -85,7 +85,7 @@ async def cleanup_old_payment_transactions():
         cutoff_date = datetime.now() - timedelta(days=config.DATA_RETENTION_DAYS)
 
         count_stmt = select(PaymentTransaction).where(PaymentTransaction.received_at < cutoff_date)
-        result = await session.execute(count_stmt)
+        result = await session_execute(count_stmt, session)
         count = len(result.scalars().all())
 
         if count == 0:
@@ -93,7 +93,7 @@ async def cleanup_old_payment_transactions():
             return
 
         delete_stmt = delete(PaymentTransaction).where(PaymentTransaction.received_at < cutoff_date)
-        await session.execute(delete_stmt)
+        await session_execute(delete_stmt, session)
         await session_commit(session)
 
         logging.info(f"[Data Retention] ✅ Deleted {count} payment transactions older than {config.DATA_RETENTION_DAYS} days")
@@ -108,7 +108,7 @@ async def cleanup_old_referral_usages():
         cutoff_date = datetime.now() - timedelta(days=config.REFERRAL_DATA_RETENTION_DAYS)
 
         count_stmt = select(ReferralUsage).where(ReferralUsage.created_at < cutoff_date)
-        result = await session.execute(count_stmt)
+        result = await session_execute(count_stmt, session)
         count = len(result.scalars().all())
 
         if count == 0:
@@ -116,7 +116,7 @@ async def cleanup_old_referral_usages():
             return
 
         delete_stmt = delete(ReferralUsage).where(ReferralUsage.created_at < cutoff_date)
-        await session.execute(delete_stmt)
+        await session_execute(delete_stmt, session)
         await session_commit(session)
 
         logging.info(f"[Data Retention] ✅ Deleted {count} referral usages older than {config.REFERRAL_DATA_RETENTION_DAYS} days")
@@ -132,7 +132,7 @@ async def cleanup_expired_referral_discounts():
 
         # Delete expired discounts
         count_stmt = select(ReferralDiscount).where(ReferralDiscount.expires_at < now)
-        result = await session.execute(count_stmt)
+        result = await session_execute(count_stmt, session)
         count = len(result.scalars().all())
 
         if count == 0:
@@ -140,7 +140,7 @@ async def cleanup_expired_referral_discounts():
             return
 
         delete_stmt = delete(ReferralDiscount).where(ReferralDiscount.expires_at < now)
-        await session.execute(delete_stmt)
+        await session_execute(delete_stmt, session)
         await session_commit(session)
 
         logging.info(f"[Data Retention] ✅ Deleted {count} expired referral discounts")
