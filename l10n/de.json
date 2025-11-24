@@ -43,7 +43,7 @@
     "refund_breakdown_mixed_after_delivery": "📦 Stornierung nach Auslieferung: Nur physische Artikel werden erstattet.",
     "back_to_menu": "⤵️ Zurück zum Admin-Menü",
     "buys_statistics": "📊 Kaufstatistiken",
-    "choose_crypto_to_withdraw": "🚫 Kryptowährungs-Auszahlungen sind nur in der kostenpflichtigen Version verfügbar!\nKontaktieren Sie @ilyarolf_dev zum Kauf.",
+    "choose_crypto_to_withdraw": "🚫 Kryptowährungs-Auszahlungen sind nur in der kostenpflichtigen Version verfügbar!\nKontaktieren Sie den Repository-Maintainer für kommerzielle Lizenzen.",
     "credit_management": "💳 Guthabenverwaltung",
     "credit_management_add_balance": "➕ Guthaben hinzufügen",
     "credit_management_added_success": "✅ <b>Erfolgreich {amount} {currency_text} zum Benutzer mit Telegramm-ID: <code>{telegram_id}</code> hinzugefügt.</b>",
