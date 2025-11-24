@@ -1004,8 +1004,17 @@ class OrderService:
             # Set FSM state to waiting for address
             await state.set_state(ShippingAddressStates.waiting_for_address)
 
-        # Build keyboard with cancel button
+        # Build keyboard with PGP button (if configured) + cancel button
         kb_builder = InlineKeyboardBuilder()
+
+        # Try to add PGP-encrypted input button (if configured)
+        if order_id:
+            from handlers.user.shipping_handlers import get_pgp_input_button
+            pgp_button = get_pgp_input_button(order_id=order_id, lang=config.BOT_LANGUAGE)
+            if pgp_button:
+                # Merge PGP button into keyboard
+                kb_builder.attach(pgp_button)
+
         if order_id:
             kb_builder.button(
                 text=Localizator.get_text(BotEntity.USER, "cancel_order"),
