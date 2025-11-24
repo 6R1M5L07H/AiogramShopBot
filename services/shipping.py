@@ -177,18 +177,28 @@ class ShippingService:
                 required_state=OrderStatus.PENDING_PAYMENT_AND_ADDRESS.value
             )
 
-        # Save encrypted address to database
-        # NOTE: We store the entire PGP message including headers
-        # Format: "-----BEGIN PGP MESSAGE-----\n...\n-----END PGP MESSAGE-----"
-        shipping_address = ShippingAddress(
-            order_id=order_id,
-            encrypted_address=encrypted_address.encode('utf-8'),
-            nonce=b'',  # Not used for PGP mode
-            tag=b'',    # Not used for PGP mode
-            encryption_mode=encryption_mode
-        )
-        session.add(shipping_address)
-        await session_commit(session)
+        # Check if address already exists (idempotency - handle duplicate submissions)
+        from repositories.shipping_address import ShippingAddressRepository
+        existing_address = await ShippingAddressRepository.get_by_order_id(order_id, session)
+
+        if existing_address:
+            # Address already exists - update instead of insert (idempotent operation)
+            existing_address.encrypted_address = encrypted_address.encode('utf-8')
+            existing_address.encryption_mode = encryption_mode
+            await session_commit(session)
+        else:
+            # Save encrypted address to database
+            # NOTE: We store the entire PGP message including headers
+            # Format: "-----BEGIN PGP MESSAGE-----\n...\n-----END PGP MESSAGE-----"
+            shipping_address = ShippingAddress(
+                order_id=order_id,
+                encrypted_address=encrypted_address.encode('utf-8'),
+                nonce=b'',  # Not used for PGP mode
+                tag=b'',    # Not used for PGP mode
+                encryption_mode=encryption_mode
+            )
+            session.add(shipping_address)
+            await session_commit(session)
 
         # Update order status: address requirement fulfilled
         await OrderRepository.update_status(
