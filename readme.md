@@ -1,17 +1,8 @@
 <h1 align="center">AiogramShopBot</h1>
 
-<p align="center">
-  <a href="https://t.me/demo_aiogramshopbot">
-    <img src="https://img.shields.io/badge/Live_Demo_Bot-blue?logo=probot&logoColor=white" alt="Live bot"/>
-  </a>
-  <a href="https://t.me/ilyarolf_dev">
-    <img src="https://img.shields.io/badge/Contact_me-blue?logo=telegram&logoColor=white" alt="Business_offer"/>
-  </a>
-</p>
-
+> **Note**: This is an enhanced fork of [ilyarolf/AiogramShopBot](https://github.com/ilyarolf/AiogramShopBot) with significant improvements including PGP encryption, tiered pricing, GDPR-compliant analytics, strike system, and advanced shipping management.
 
 [![Python](https://img.shields.io/badge/Python_3.12-3776AB?logo=python&logoColor=%23fff)](https://www.python.org/downloads/release/python-3127/)
-[![Dockerhub](https://img.shields.io/badge/Docker_Hub-2496ED?logo=docker&logoColor=fff)](https://hub.docker.com/r/ilyarolf/aiogram-shop-bot)
 [![SQLite](https://img.shields.io/badge/SQLite-%2307405e.svg?logo=sqlite&logoColor=white)](https://www.sqlite.org/)
 [![Bitcoin](https://img.shields.io/badge/Bitcoin-FF9900?logo=bitcoin&logoColor=white)](https://github.com/bitcoin/bitcoin)
 [![Litecoin](https://img.shields.io/badge/Litecoin-A6A9AA?logo=litecoin&logoColor=white)](https://github.com/litecoin-project/litecoin)
@@ -24,9 +15,8 @@ goods in Telegram. One of the bot's advantages is that AiogramShopBot implements
 Litecoin, Solana, Ethereum and Binance-Coin, which allows you to sell digital goods worldwide.**
 
 * [🤝 Commercial offers](#commercial-offers)
-    + [➤ Telegram. ](#-for-commercial-offers-contact-me-on-telegram)
-    + [🤖 AiogramShopBotDemo](#-you-can-test-the-functionality-in-aiogramshopbotdemo).
-* [  Donate](#donate-)
+    + [➤ Contact](#-for-commercial-offers-contact)
+    + [🤖 Demo Bot](#-demo-bot-coming-soon)
 * [1.Launch the bot](#1starting-the-bot)
     + [1.0 Description of required environment variables. ](#10-description-of-required-environment-variables)
     + [1.1 Launch AiogramShopBot with Docker-compose.](#11-starting-aiogramshopbot-with-docker-compose)
@@ -67,21 +57,9 @@ Litecoin, Solana, Ethereum and Binance-Coin, which allows you to sell digital go
 
 ## 📌Commercial offers
 
-### ➤ For commercial offers contact me on [Telegram](https://t.me/ilyarolf_dev).
+### ➤ For commercial offers contact: [YOUR_CONTACT]
 
-### 🤖 You can test the functionality in [AiogramShopBotDemo](https://t.me/demo_aiogramshopbot).
-
-## Donate  
-
-* BTC - bc1q2kv89q8yvf068xxw3x65gzfag98l9wnrda3x56
-* LTC - ltc1q0tuvm5vqn9le5zmhvhtp7z9p2eu6yvv24ey686
-* TRX - THzRw8UpTsEYBEG5CCbsCVnJzopSHFHJm6
-* SOL - Avm7VAqPrwpHteXKfDTRFjpj6swEzjmj3a2KQvVDvugK
-* ETH - 0xB49D720DE2630fA4C813d5B4c025706E25cF74fe
-* TON - UQD0QetwXoYTsmbZWVbE_z_JUFh54RVVRUxCbCHQkLsl3Hfn
-* USDT ERC20 - 0xB49D720DE2630fA4C813d5B4c025706E25cF74fe
-* USDT BEP20 - 0xB49D720DE2630fA4C813d5B4c025706E25cF74fe
-* USDT TRC20 - THzRw8UpTsEYBEG5CCbsCVnJzopSHFHJm6
+### 🤖 Demo Bot: Coming soon
 
 ## 1.Starting the bot
 
@@ -180,8 +158,8 @@ Docker Compose files are stored as templates to prevent local customizations fro
 
 ```bash
 # Clone the project
-git clone https://github.com/ilyarolf/AiogramShopBot.git
-cd AiogramShopBot
+git clone https://github.com/6R1M5L07H/AiogramShopBot-physical.git
+cd AiogramShopBot-physical
 
 # Copy the appropriate template for your environment:
 # For production:
@@ -270,7 +248,7 @@ this case you have to remove the caddy service from the docker-compose file and 
 
 ### 1.2 Starting AiogramShopBot without database encryption.
 
-* Clone the project from the master branch. <br>``git clone https://github.com/ilyarolf/AiogramShopBot.git``
+* Clone the project from the master branch. <br>``git clone https://github.com/6R1M5L07H/AiogramShopBot-physical.git``
 * Install all necessary packages <br>``pip install -r requirements.txt``
 * Set the environment variables to run in the .env file.<br>Example:
 
@@ -306,7 +284,7 @@ REDIS_HOST = "localhost"
 > **<br>To run AiogramShopBot with database encryption via SQLCipher, you need to use Linux kernel operating systems.**
 
 * Clone the project.
-  branch.<br>``git clone https://github.com/ilyarolf/AiogramShopBot.git``
+  branch.<br>``git clone https://github.com/6R1M5L07H/AiogramShopBot-physical.git``
 * Install the SQLCipher package, for example in Ubuntu this can be done with the
   command <br>``sudo apt install sqlcipher``.
 * Install all necessary packages <br>``pip install -r requirements.txt``
