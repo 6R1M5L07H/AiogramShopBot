@@ -82,14 +82,10 @@ class TestAdminCancellationReason:
             "Reason label should not appear when no reason provided"
 
     def test_admin_cancellation_html_escaping(self):
-        """Test that custom reason is properly HTML-escaped"""
+        """Test that custom reason is properly HTML-escaped by the formatter"""
         malicious_reason = "<script>alert('xss')</script>"
 
-        # Note: Escaping happens in NotificationService before passing to formatter
-        # But we test that formatter doesn't break escaped HTML
-        from utils.html_escape import safe_html
-        escaped_reason = safe_html(malicious_reason)
-
+        # Pass raw string - formatter should escape it
         result = InvoiceFormatterService.format_complete_order_view(
             header_type="admin_cancellation",
             invoice_number="INV-2025-000125",
@@ -103,12 +99,14 @@ class TestAdminCancellationReason:
                 }
             ],
             total_price=10.0,
-            cancellation_reason=escaped_reason,
+            cancellation_reason=malicious_reason,
             entity=BotEntity.USER
         )
 
         # Verify escaped version appears (not raw script tag)
-        assert escaped_reason in result
+        from utils.html_escape import safe_html
+        escaped_reason = safe_html(malicious_reason)
+        assert escaped_reason in result, f"Expected escaped HTML not found. Expected: {escaped_reason}"
         assert "<script>" not in result, "Raw HTML script tag found - XSS vulnerability!"
 
     def test_admin_cancellation_multiline_reason(self):

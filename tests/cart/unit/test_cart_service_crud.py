@@ -182,52 +182,6 @@ class TestAddToCart:
 class TestCartDisplay:
     """Test create_buttons() / get_cart_summary_message() method."""
 
-    @pytest.mark.skip(reason="Requires refactoring: create_buttons() creates InlineKeyboardBuilder (UI logic in service)")
-    @pytest.mark.asyncio
-    async def test_create_buttons_with_items(
-        self, mock_callback, mock_session, mock_user, mock_cart_items
-    ):
-        """Display cart with multiple items."""
-        with patch('repositories.user.UserRepository.get_by_tgid', return_value=mock_user):
-            with patch('repositories.order.OrderRepository.get_pending_order_by_user', return_value=None):
-                with patch('repositories.cartItem.CartItemRepository.get_by_user_id', return_value=mock_cart_items):
-                    with patch('repositories.subcategory.SubcategoryRepository.get_by_ids') as mock_get_subcats:
-                        mock_subcategories = {
-                            1: MagicMock(id=1, name="USB Sticks"),
-                            2: MagicMock(id=2, name="Hardware")
-                        }
-                        mock_get_subcats.return_value = mock_subcategories
-
-                        with patch('repositories.item.ItemRepository.get_price', return_value=10.0):
-                            with patch('repositories.cart.CartRepository.get_or_create', return_value=MagicMock(id=1)):
-                                with patch('repositories.cartItem.CartItemRepository.get_maximum_page', return_value=0):
-                                    message, kb_builder = await CartService.create_buttons(
-                                        mock_callback, mock_session
-                                    )
-
-                                    # Verify message contains cart text
-                                    assert message is not None
-                                    assert isinstance(message, str)
-                                    # Note: Actual localization would require proper setup
-                                    # For now, just verify it returns something
-
-    @pytest.mark.skip(reason="Requires refactoring: create_buttons() creates InlineKeyboardBuilder (UI logic in service)")
-    @pytest.mark.asyncio
-    async def test_create_buttons_empty_cart(
-        self, mock_callback, mock_session, mock_user
-    ):
-        """Display empty cart message."""
-        with patch('repositories.user.UserRepository.get_by_tgid', return_value=mock_user):
-            with patch('repositories.order.OrderRepository.get_pending_order_by_user', return_value=None):
-                with patch('repositories.cartItem.CartItemRepository.get_by_user_id', return_value=[]):
-                    message, kb_builder = await CartService.create_buttons(
-                        mock_callback, mock_session
-                    )
-
-                    # Should show "no cart items" message
-                    assert message is not None
-                    assert isinstance(message, str)
-
     @pytest.mark.asyncio
     async def test_create_buttons_with_pending_order_redirect(
         self, mock_callback, mock_session, mock_user
@@ -333,32 +287,46 @@ class TestGetCartSummaryData:
                         2: subcat2
                     }
                     with patch('repositories.item.ItemRepository.get_price', return_value=10.0):
-                        result = await CartService.get_cart_summary_data(
-                            user_id=1,
-                            session=mock_session
-                        )
+                        with patch('repositories.item.ItemRepository.get_prices_batch') as mock_prices_batch:
+                            # Mock batch price loading to avoid session_execute issue
+                            mock_prices_batch.return_value = {
+                                (1, 1): 10.0,
+                                (1, 2): 10.0
+                            }
+                            with patch('services.pricing.PricingService.calculate_optimal_price') as mock_pricing:
+                                # Mock pricing service to avoid PriceTierRepository calls
+                                mock_pricing.return_value = MagicMock(
+                                    total_price=10.0,
+                                    average_unit_price=10.0,
+                                    breakdown=[]
+                                )
 
-                        # Verify structure
-                        assert result["has_pending_order"] is False
-                        assert result["has_items"] is True
-                        assert result["message_key"] == "cart"
+                                result = await CartService.get_cart_summary_data(
+                                    user_id=1,
+                                    session=mock_session
+                                )
 
-                        # Verify items data
-                        assert len(result["items"]) == 2
+                                # Verify structure
+                                assert result["has_pending_order"] is False
+                                assert result["has_items"] is True
+                                assert result["message_key"] == "cart"
 
-                        # First item
-                        assert result["items"][0]["cart_item_id"] == 1
-                        assert result["items"][0]["subcategory_name"] == "USB Sticks"
-                        assert result["items"][0]["quantity"] == 3
-                        assert result["items"][0]["price"] == 10.0
-                        assert result["items"][0]["total"] == 30.0
+                                # Verify items data
+                                assert len(result["items"]) == 2
 
-                        # Second item
-                        assert result["items"][1]["cart_item_id"] == 2
-                        assert result["items"][1]["subcategory_name"] == "Hardware"
-                        assert result["items"][1]["quantity"] == 5
-                        assert result["items"][1]["price"] == 10.0
-                        assert result["items"][1]["total"] == 50.0
+                                # First item
+                                assert result["items"][0]["cart_item_id"] == 1
+                                assert result["items"][0]["subcategory_name"] == "USB Sticks"
+                                assert result["items"][0]["quantity"] == 3
+                                assert result["items"][0]["price"] == 10.0
+                                assert result["items"][0]["total"] == 30.0
+
+                                # Second item
+                                assert result["items"][1]["cart_item_id"] == 2
+                                assert result["items"][1]["subcategory_name"] == "Hardware"
+                                assert result["items"][1]["quantity"] == 5
+                                assert result["items"][1]["price"] == 10.0
+                                assert result["items"][1]["total"] == 50.0
 
     @pytest.mark.asyncio
     async def test_get_cart_summary_empty(self, mock_session):
@@ -473,17 +441,6 @@ class TestGetPendingOrderData:
                             assert result["total_price"] == 100.0
                             assert result["shipping_cost"] == 5.0
 
-    @pytest.mark.skip(reason="Complex datetime mocking required - datetime.utcnow() used inside method. Covered by integration tests.")
-    @pytest.mark.asyncio
-    async def test_get_pending_order_data_expired(
-        self, mock_session
-    ):
-        """Get pending order data when order is expired."""
-        # NOTE: This test is skipped because it requires complex datetime mocking
-        # datetime.utcnow() is called inside the method (line 263) and is difficult to mock
-        # The expired order logic is covered by integration tests
-        pass
-
     @pytest.mark.asyncio
     async def test_get_pending_order_data_with_invoice(
         self, mock_session
@@ -532,17 +489,6 @@ class TestGetPendingOrderData:
 
                             # Verify wallet usage
                             assert result["wallet_used"] == 20.0
-
-    @pytest.mark.skip(reason="Complex datetime mocking required - datetime.utcnow() used inside method. Covered by integration tests.")
-    @pytest.mark.asyncio
-    async def test_get_pending_order_data_grace_period_expired(
-        self, mock_session
-    ):
-        """Get pending order data when grace period expired but order still valid."""
-        # NOTE: This test is skipped because it requires complex datetime mocking
-        # datetime.utcnow() is called inside the method and timing calculations depend on it
-        # The grace period logic is covered by integration tests
-        pass
 
 
 class TestGetDeleteConfirmationData:

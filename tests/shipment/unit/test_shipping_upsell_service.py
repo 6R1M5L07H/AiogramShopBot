@@ -21,13 +21,16 @@ class TestGetUpgradeForShippingType:
         mock_get_shipping_types.return_value = {
             "paeckchen": {
                 "name": "Päckchen",
-                "base_cost": 0.00,
+                "charged_cost": 0.00,
                 "upgrade": {
-                    "type": "paket_2kg",
-                    "delta_cost": 1.50,
-                    "name": "Versichert versenden",
-                    "description": "Versichertes Paket bis 500€"
+                    "target": "paket_2kg",
+                    "upsell_button_text": "Versichert versenden"
                 }
+            },
+            "paket_2kg": {
+                "name": "Paket 2kg",
+                "charged_cost": 1.50,
+                "description": "Versichertes Paket bis 500€"
             }
         }
 
@@ -36,7 +39,7 @@ class TestGetUpgradeForShippingType:
 
         # Assert
         assert result is not None
-        assert result["type"] == "paket_2kg"
+        assert result["target"] == "paket_2kg"
         assert result["delta_cost"] == 1.50
         assert result["name"] == "Versichert versenden"
         assert result["description"] == "Versichertes Paket bis 500€"
@@ -266,13 +269,16 @@ class TestEdgeCases:
         mock_get_shipping_types.return_value = {
             "paeckchen": {
                 "name": "Päckchen mit Ümläüten",
-                "base_cost": 0.00,
+                "charged_cost": 0.00,
                 "upgrade": {
-                    "type": "paket",
-                    "name": "Versichért",
-                    "delta_cost": 1.50,
-                    "description": "Beschreibüng"
+                    "target": "paket",
+                    "upsell_button_text": "Versichért"
                 }
+            },
+            "paket": {
+                "name": "Paket",
+                "charged_cost": 1.50,
+                "description": "Beschreibüng"
             }
         }
 
