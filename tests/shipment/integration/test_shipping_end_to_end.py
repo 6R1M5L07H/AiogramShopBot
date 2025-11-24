@@ -211,7 +211,8 @@ class TestShippingEndToEnd:
             )
         ]
 
-        with patch('services.cart_shipping.get_shipping_types', return_value=mock_shipping_types):
+        with patch('services.cart_shipping.get_shipping_types', return_value=mock_shipping_types), \
+             patch('services.shipping_upsell.get_shipping_types', return_value=mock_shipping_types):
             result = await CartShippingService.calculate_shipping_for_cart(cart_items, session)
 
         assert result[green_tea_subcat.id].shipping_type_key == "paeckchen"

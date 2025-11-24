@@ -161,3 +161,6 @@ class ViolationStatisticsRepository:
         violations = result.scalars().all()
 
         return sum(v.penalty_applied for v in violations)
+
+    # Alias for backwards compatibility with tests
+    get_total_penalties = get_total_penalty_amount

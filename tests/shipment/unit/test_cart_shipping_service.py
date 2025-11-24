@@ -253,7 +253,8 @@ class TestUpgradeOptionLoading:
         ]
 
         with patch('services.cart_shipping.ItemRepository.get_item_metadata',
-                  return_value=MagicMock(is_physical=True)):
+                  return_value=MagicMock(is_physical=True)), \
+             patch('services.shipping_upsell.get_shipping_types', return_value=mock_shipping_types):
 
             mock_session = AsyncMock()
             result = await CartShippingService._calculate_shipping_for_subcategory(
@@ -300,7 +301,8 @@ class TestUpgradeOptionLoading:
         ]
 
         with patch('services.cart_shipping.ItemRepository.get_item_metadata',
-                  return_value=MagicMock(is_physical=True)):
+                  return_value=MagicMock(is_physical=True)), \
+             patch('services.shipping_upsell.get_shipping_types', return_value=mock_shipping_types):
 
             mock_session = AsyncMock()
             result = await CartShippingService._calculate_shipping_for_subcategory(
@@ -329,7 +331,8 @@ class TestUpgradeOptionLoading:
         ]
 
         with patch('services.cart_shipping.ItemRepository.get_item_metadata',
-                  return_value=MagicMock(is_physical=True)):
+                  return_value=MagicMock(is_physical=True)), \
+             patch('services.shipping_upsell.get_shipping_types', return_value=mock_shipping_types):
 
             mock_session = AsyncMock()
             result = await CartShippingService._calculate_shipping_for_subcategory(
@@ -413,7 +416,7 @@ class TestShippingSummaryText:
 
     @pytest.mark.asyncio
     async def test_summary_text_format(self, mock_shipping_types, mock_shipping_tiers):
-        """Summary text should contain subcategory names, quantities, and costs."""
+        """Summary text should contain shipping cost and method name in aligned format."""
         cart_items = [
             CartItemDTO(category_id=1, id=1, subcategory_id=3, quantity=7, price=10.0, user_id=1, item_id=1)
         ]
@@ -422,7 +425,8 @@ class TestShippingSummaryText:
             3: MagicMock(id=3, name="USB Sticks")
         }
 
-        with patch('services.cart_shipping.get_shipping_types', return_value=mock_shipping_types):
+        with patch('services.cart_shipping.get_shipping_types', return_value=mock_shipping_types), \
+             patch('services.shipping_upsell.get_shipping_types', return_value=mock_shipping_types):
             with patch('services.cart_shipping.ShippingTierRepository.get_by_subcategory_ids',
                       return_value=mock_shipping_tiers):
                 with patch('services.cart_shipping.ItemRepository.get_item_metadata',
@@ -433,8 +437,9 @@ class TestShippingSummaryText:
                         mock_session = AsyncMock()
                         summary = await CartShippingService.get_shipping_summary_text(cart_items, mock_session)
 
-                        assert "USB Sticks" in summary
-                        assert "(7x)" in summary
+                        # Verify simplified format: "Versand:             0.00 € (Päckchen)"
+                        assert "Versand:" in summary
+                        assert "0.00" in summary
                         assert "Päckchen" in summary
 
     @pytest.mark.asyncio

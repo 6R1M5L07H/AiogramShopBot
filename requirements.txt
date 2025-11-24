@@ -56,3 +56,9 @@ zope.event==5.0
 zope.interface==7.1.1
 Jinja2==3.1.6
 pgpy>=0.6.0
+
+# Testing dependencies
+pytest==8.4.1
+pytest-asyncio==0.24.0
+fakeredis==2.26.2
+httpx==0.28.1  # Required by Starlette TestClient for Mini-App endpoint tests

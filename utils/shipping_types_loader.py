@@ -37,8 +37,9 @@ def load_shipping_types(country_code: str = "de") -> dict:
         0.0
     """
     # Build path relative to project root
+    # Force lowercase to match l10n convention (de.json, en.json)
     project_root = Path(__file__).parent.parent
-    shipping_types_path = project_root / "shipping_types" / f"{country_code}.json"
+    shipping_types_path = project_root / "shipping_types" / f"{country_code.lower()}.json"
 
     if not shipping_types_path.exists():
         raise FileNotFoundError(
