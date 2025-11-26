@@ -2277,7 +2277,7 @@ class OrderService:
                 'is_physical': is_physical,
                 'private_data': private_data,
                 'tier_breakdown': tier_breakdown_map.get((name, price, is_physical, private_data, unit)),
-                'unit': unit  # Include unit in result
+                'unit': unit if unit is not None else 'pcs.'  # Default to pcs. if unit is None
             }
             for (name, price, is_physical, private_data, unit), quantity in grouped.items()
         ]
