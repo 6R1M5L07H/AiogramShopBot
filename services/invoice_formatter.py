@@ -67,7 +67,7 @@ class InvoiceFormatterService:
         Format a section of items (digital or physical).
 
         Args:
-            items: List of item dicts
+            items: List of item dicts (with optional 'unit' field)
             section_label: Section header (e.g., "Digital Items:")
             currency_symbol: Currency symbol
             show_private_data: Whether to show private_data
@@ -79,25 +79,46 @@ class InvoiceFormatterService:
         if not items:
             return ""
 
-        qty_unit = Localizator.get_text(BotEntity.COMMON, "quantity_unit_short")
         message = f"<b>{section_label}:</b>\n"
 
         for item in items:
+            # Get and localize unit (fallback to "pcs." if not present)
+            unit = item.get('unit', 'pcs.')
+            localized_unit = Localizator.localize_unit(unit)
+
+            # For admin view: Extract only first line (product name) from item description
+            # For user view: Show full description (with HTML formatting)
+            item_name = item['name']
+            if entity == BotEntity.ADMIN:
+                # Admin needs compact view - only first line (usually product name)
+                item_name = item_name.split('\n')[0].strip()
+
             # Check if item has tier breakdown
             if item.get('tier_breakdown'):
-                # For tiered items, show only "Nx Name = €total" (no unit price, it varies by tier)
+                # For tiered items, show tier breakdown with proper formatting
                 # Calculate total from tier breakdown
                 line_total = sum(tier['total'] for tier in item['tier_breakdown'])
-                item_name_escaped = safe_html(item['name'])
-                message += f"{item['quantity']} {qty_unit} {item_name_escaped} = {currency_symbol}{line_total:.2f}\n"
+
+                # Build tier breakdown display
+                tier_parts = []
+                for tier in item['tier_breakdown']:
+                    tier_unit_price = tier['unit_price']
+                    tier_quantity = tier['quantity']
+                    tier_total = tier['total']
+                    tier_parts.append(f"{currency_symbol}{tier_unit_price:.2f} × {tier_quantity}")
+
+                tier_display = " + ".join(tier_parts)
+
+                # NOTE: Item names are admin-controlled (from database), so HTML rendering is allowed
+                message += f"{item['quantity']} {localized_unit} {item_name}\n"
+                message += f"  ({tier_display} = {currency_symbol}{line_total:.2f})\n"
             else:
-                # Flat pricing (no tier breakdown) - escape item name to prevent HTML injection
-                item_name_escaped = safe_html(item['name'])
+                # Flat pricing (no tier breakdown) - item name is admin-controlled, allow HTML
                 line_total = item['price'] * item['quantity']
                 if item['quantity'] == 1:
-                    message += f"{item['quantity']} {qty_unit} {item_name_escaped} {currency_symbol}{item['price']:.2f}\n"
+                    message += f"{item['quantity']} {localized_unit} {item_name} {currency_symbol}{item['price']:.2f}\n"
                 else:
-                    message += f"{item['quantity']} {qty_unit} {item_name_escaped} {currency_symbol}{item['price']:.2f} = {currency_symbol}{line_total:.2f}\n"
+                    message += f"{item['quantity']} {localized_unit} {item_name} {currency_symbol}{item['price']:.2f} = {currency_symbol}{line_total:.2f}\n"
 
             # Show private data if applicable
             if show_private_data and item.get('private_data'):
@@ -793,7 +814,10 @@ class InvoiceFormatterService:
                         else:
                             line_total = grouped_item['price'] * grouped_item['quantity']
 
-                        item_name = safe_html(grouped_item['name'])
+                        # NOTE: Item names are admin-controlled, allow HTML rendering
+                        item_name = grouped_item['name']
+                        # Extract only first line for compact summary
+                        item_name = item_name.split('\n')[0].strip()
                         item_line = f"{item_name} × {grouped_item['quantity']}"
                         message += f"{item_line:<27}{line_total:>8.2f}{currency_symbol}\n"
 

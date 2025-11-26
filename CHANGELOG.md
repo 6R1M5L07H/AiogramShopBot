@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2025-11-25
+
+### Hotfixes
+
+- Fixed unit field missing in order items snapshot causing all invoices to display "pcs."
+- Corrected tier pricing queries to use item_id foreign key
+- Fixed localization parameter mismatches between German and English files
+
 ## 2025-11-23
 
 ### CI/CD Test Automation
@@ -64,6 +72,22 @@ All notable changes to this project will be documented in this file.
 **Stock Management**
 - Fixed digital goods incorrectly restoring to stock on cancellation
 - Only physical items or undelivered digital items now restore to stock
+
+### Item Unit Field Support
+
+**User Experience**
+- Items can now specify custom measurement units (weight, volume, length, area, count)
+- Supported units: pcs. (pieces), pairs, pkg. (packages), g (grams), kg (kilograms), ml (milliliters), l (liters), m (meters), m2 (square meters)
+- Text-based units automatically localized for display (e.g., "pcs." → "Stk." in German)
+- International metric units displayed unchanged across all languages
+- Unit display integrated in cart, checkout, invoices, and order confirmations
+
+**Technical Implementation**
+- New ItemUnit enum with strict validation and case-insensitive from_string() conversion
+- Database migration adds optional unit column to items table with default "pcs."
+- EN-based unit storage with display-time localization via Localizator.localize_unit()
+- Item generation script supports unit field in templates with validation (max 10 chars, alphanumeric + period)
+- Comprehensive test coverage: 18 ItemUnit enum tests, 45 Localizator unit tests
 
 ## 2025-11-19
 

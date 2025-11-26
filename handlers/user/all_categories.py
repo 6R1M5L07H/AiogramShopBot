@@ -66,7 +66,8 @@ async def select_quantity(**kwargs):
         available_qty=available_qty,
         category_id=unpacked_cb.category_id,
         subcategory_id=unpacked_cb.subcategory_id,
-        current_quantity=""
+        current_quantity="",
+        unit=item.unit if item else "pcs."
     )
 
 
@@ -284,10 +285,16 @@ async def handle_dialpad_action(
     # Update dialpad display using cached data from FSM state
     item_name = data.get("item_name", "")
     available_qty = data.get("available_qty", 0)
+    unit = data.get("unit", "pcs.")
+
+    # Localize unit
+    from utils.localizator import Localizator as LocUtil
+    localized_unit = LocUtil.localize_unit(unit)
 
     dialpad_message = Localizator.get_text(BotEntity.USER, "quantity_dialpad_prompt").format(
         item_name=item_name,
         available=available_qty,
+        unit=localized_unit,
         current_quantity=current_quantity if current_quantity else "0"
     )
 

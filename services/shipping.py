@@ -178,8 +178,9 @@ class ShippingService:
             )
 
         # Check if address already exists (idempotency - handle duplicate submissions)
-        from repositories.shipping_address import ShippingAddressRepository
-        existing_address = await ShippingAddressRepository.get_by_order_id(order_id, session)
+        stmt = select(ShippingAddress).where(ShippingAddress.order_id == order_id)
+        result = await session_execute(stmt, session)
+        existing_address = result.scalar_one_or_none()
 
         if existing_address:
             # Address already exists - update instead of insert (idempotent operation)

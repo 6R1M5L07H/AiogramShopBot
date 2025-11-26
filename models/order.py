@@ -52,7 +52,7 @@ class Order(Base):
     # Items Snapshot (JSON)
     # Stores complete item details at order creation time for historical record
     # Format: [{"description": "Item Name", "price": 10.0, "quantity": 2, "is_physical": true,
-    #           "private_data": "KEY-123", "tier_breakdown": {...}}]
+    #           "private_data": "KEY-123", "tier_breakdown": {...}, "unit": "pcs."}]
     # Allows viewing order details after items are released back to stock (cancelled orders)
     items_snapshot = Column(Text, nullable=True)
 

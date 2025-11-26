@@ -1739,7 +1739,8 @@ class OrderService:
                 'quantity': 1,  # Each item is already individual
                 'is_physical': item.is_physical,
                 'private_data': None,  # Don't include private_data in payment screen (not paid yet)
-                'tier_breakdown': tier_breakdown
+                'tier_breakdown': tier_breakdown,
+                'unit': item.unit
             })
 
         # Group items by (name, price, is_physical) - private_data excluded for aggregation
@@ -2018,7 +2019,8 @@ class OrderService:
                 'quantity': 1,
                 'is_physical': item.is_physical,
                 'private_data': item.private_data,
-                'tier_breakdown': tier_breakdown if not item.private_data else None  # Don't show tier breakdown for individual items with codes
+                'tier_breakdown': tier_breakdown if not item.private_data else None,  # Don't show tier breakdown for individual items with codes
+                'unit': item.unit
             })
 
         # Group items by (name, price, is_physical, private_data) while preserving tier_breakdown
@@ -2122,7 +2124,8 @@ class OrderService:
                     "price": 10.0,
                     "quantity": 1,
                     "is_physical": true,
-                    "private_data": "KEY-12345-ABCDE"
+                    "private_data": "KEY-12345-ABCDE",
+                    "unit": "pcs."
                 },
                 ...
             ]
@@ -2142,7 +2145,8 @@ class OrderService:
                 'quantity': 1,  # Each item is individual
                 'is_physical': item.is_physical,
                 'private_data': item.private_data,
-                'subcategory_id': item.subcategory_id
+                'subcategory_id': item.subcategory_id,
+                'unit': item.unit  # Include unit for proper invoice display
             })
 
         return json.dumps(snapshot)

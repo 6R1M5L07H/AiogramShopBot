@@ -331,7 +331,8 @@ class OrderManagementService:
                     'quantity': snapshot_item['quantity'],
                     'is_physical': snapshot_item['is_physical'],
                     'private_data': snapshot_item.get('private_data'),
-                    'tier_breakdown': tier_breakdown  # Now includes tier breakdown from order
+                    'tier_breakdown': tier_breakdown,  # Now includes tier breakdown from order
+                    'unit': snapshot_item.get('unit', 'pcs.')  # Add unit from snapshot
                 })
 
             # Group items for display
@@ -378,7 +379,8 @@ class OrderManagementService:
                     'quantity': 1,  # Each item is already individual
                     'is_physical': item.is_physical,
                     'private_data': item.private_data,
-                    'tier_breakdown': tier_breakdown if not item.private_data else None  # Don't show tier breakdown for individual items with codes
+                    'tier_breakdown': tier_breakdown if not item.private_data else None,  # Don't show tier breakdown for individual items with codes
+                    'unit': item.unit  # Add unit from item
                 })
 
             # Group items by (name, price, is_physical, private_data) while preserving tier_breakdown

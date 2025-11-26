@@ -5,11 +5,15 @@
   },
   "categories": [
     {"name": "Digital Products"},
-    {"name": "Hardware Products"}
+    {"name": "Hardware Products"},
+    {"name": "Beverages"},
+    {"name": "Footwear"}
   ],
   "subcategories": [
     {"name": "Software Licenses", "category": "Digital Products"},
-    {"name": "USB Storage Devices", "category": "Hardware Products"}
+    {"name": "USB Storage Devices", "category": "Hardware Products"},
+    {"name": "Craft Beer", "category": "Beverages"},
+    {"name": "Running Shoes", "category": "Footwear"}
   ],
   "items": [
     {
@@ -19,6 +23,7 @@
       "private_data": "✅ <b>License activated!</b>\n\n<b>Your License Key:</b>\n<code>{{LICENSE_KEY}}</code>\n\n📋 <b>Activation Instructions:</b>\n\n1️⃣ Download software from official website\n2️⃣ Enter license key during installation\n3️⃣ Activate within 30 days\n\n💬 <b>Support:</b>\n\nhttps://t.me/{{ADMIN_USERNAME}}\n\n<i>Valid for 1 year from activation</i>",
       "price": 49.99,
       "description": "Premium Software License - 1 Year",
+      "unit": "pcs.",
       "is_physical": false,
       "shipping_cost": 0.0,
       "allows_packstation": false
@@ -30,6 +35,7 @@
       "private_data": "",
       "price": 29.99,
       "description": "USB 3.0 Flash Drive - 64GB",
+      "unit": "pcs.",
       "is_physical": true,
       "allows_packstation": true,
       "shipping_tiers": [
@@ -45,12 +51,59 @@
       "private_data": "",
       "price": 49.99,
       "description": "USB 3.0 Flash Drive - 128GB",
+      "unit": "pcs.",
       "is_physical": true,
       "allows_packstation": true,
       "shipping_tiers": [
         {"min_quantity": 1, "max_quantity": 5, "shipping_type": "maxibrief"},
         {"min_quantity": 6, "max_quantity": 10, "shipping_type": "paeckchen"},
         {"min_quantity": 11, "max_quantity": null, "shipping_type": "paket_2kg"}
+      ]
+    },
+    {
+      "quantity": 200,
+      "category": "Beverages",
+      "subcategory": "Craft Beer",
+      "private_data": "",
+      "price": 2.99,
+      "description": "Pale Ale Craft Beer - 5.0% ABV",
+      "unit": "l",
+      "is_physical": true,
+      "allows_packstation": false,
+      "shipping_tiers": [
+        {"min_quantity": 1, "max_quantity": 12, "shipping_type": "paeckchen"},
+        {"min_quantity": 13, "max_quantity": null, "shipping_type": "paket_2kg"}
+      ]
+    },
+    {
+      "quantity": 30,
+      "category": "Footwear",
+      "subcategory": "Running Shoes",
+      "private_data": "SKU: RUN-{{INDEX:04d}}",
+      "price": 119.99,
+      "description": "Professional Running Shoes - Size 42",
+      "unit": "pairs",
+      "is_physical": true,
+      "allows_packstation": true,
+      "shipping_tiers": [
+        {"min_quantity": 1, "max_quantity": 2, "shipping_type": "paeckchen"},
+        {"min_quantity": 3, "max_quantity": null, "shipping_type": "paket_2kg"}
+      ]
+    },
+    {
+      "quantity": 500,
+      "category": "Hardware Products",
+      "subcategory": "USB Storage Devices",
+      "private_data": "",
+      "price": 1.49,
+      "description": "USB-C Cable - Premium Quality",
+      "unit": "m",
+      "is_physical": true,
+      "allows_packstation": true,
+      "shipping_tiers": [
+        {"min_quantity": 1, "max_quantity": 20, "shipping_type": "maxibrief"},
+        {"min_quantity": 21, "max_quantity": 50, "shipping_type": "paeckchen"},
+        {"min_quantity": 51, "max_quantity": null, "shipping_type": "paket_2kg"}
       ]
     }
   ]
