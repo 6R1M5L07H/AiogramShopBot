@@ -46,9 +46,7 @@ url = ""
 engine = None
 session_maker = None
 if config.DB_ENCRYPTION:
-    # DEBUG: Check if password is loaded
     db_pass = config.DB_PASS
-    logging.critical(f"🔐 DB_ENCRYPTION=True, DB_PASS={'<empty>' if not db_pass else f'<{len(db_pass)} chars>'}")
 
     if not db_pass:
         raise ValueError("DB_ENCRYPTION=true but DB_PASS is empty! Check .env configuration.")
