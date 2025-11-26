@@ -91,6 +91,8 @@
     "notification_new_deposit": "Guthaben wurde erfolgreich um {fiat_amount:.2f} {currency_text} aufgeladen.\nReferenz: {payment_id}",
     "notification_new_deposit_id": "💰 Neue Einzahlung von Benutzer mit ID {telegram_id} in Höhe von {currency_sym}{deposit_amount_usd} mit ",
     "notification_new_deposit_username": "💰 Neue Einzahlung von Benutzer mit Benutzername @{username} in Höhe von {currency_sym}{deposit_amount_usd} mit ",
+    "notification_new_user_registration_username": "👤 Neue Benutzerregistrierung: @{username} (ID: {telegram_id})",
+    "notification_new_user_registration_id": "👤 Neue Benutzerregistrierung: ID {telegram_id}",
     "notification_purchase_with_tgid": "🛒 Ein neuer Kauf von Benutzer @{username} in Höhe von {currency_sym}{total_price} für den Kauf von {quantity} Stk. {category_name} {subcategory_name}.",
     "notification_purchase_with_username": "🛒 Ein neuer Kauf von Benutzer mit ID:{telegram_id} in Höhe von {currency_sym}{total_price} für den Kauf von {quantity} Stk. {category_name} {subcategory_name}.",
     "notification_seed": "🔑 Seed: <code>{seed}</code>",

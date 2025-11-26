@@ -121,6 +121,9 @@ ADMIN_ID_HASHES = [generate_admin_id_hash(admin_id) for admin_id in ADMIN_ID_LIS
 # - Never commit .env to version control
 # - Rotate admin IDs if env file is compromised
 
+# Admin Notifications
+NOTIFY_ADMINS_NEW_USER = os.environ.get("NOTIFY_ADMINS_NEW_USER", "true") == "true"  # Default: enabled
+
 SUPPORT_LINK = os.environ.get("SUPPORT_LINK")
 DB_ENCRYPTION = os.environ.get("DB_ENCRYPTION", False) == 'true'
 DB_NAME = os.environ.get("DB_NAME")

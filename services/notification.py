@@ -126,6 +126,28 @@ class NotificationService:
         await NotificationService.send_to_admins(message, user_button)
 
     @staticmethod
+    async def notify_new_user_registration(user_dto: UserDTO):
+        """
+        Notifies admins when a new user registers.
+
+        Handles both users with and without username.
+        Configurable via NOTIFY_ADMINS_NEW_USER env var.
+        """
+        user_button = await NotificationService.make_user_button(user_dto.telegram_username)
+
+        if user_dto.telegram_username:
+            message = Localizator.get_text(BotEntity.ADMIN, "notification_new_user_registration_username").format(
+                username=safe_html(user_dto.telegram_username),
+                telegram_id=user_dto.telegram_id
+            )
+        else:
+            message = Localizator.get_text(BotEntity.ADMIN, "notification_new_user_registration_id").format(
+                telegram_id=user_dto.telegram_id
+            )
+
+        await NotificationService.send_to_admins(message, user_button)
+
+    @staticmethod
     async def new_buy(sold_items: list[CartItemDTO], user: UserDTO, session: AsyncSession | Session):
         user_button = await NotificationService.make_user_button(user.telegram_username)
         cart_grand_total = 0.0
