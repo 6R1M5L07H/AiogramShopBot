@@ -2234,35 +2234,38 @@ class OrderService:
     @staticmethod
     def _group_items_for_display(items: list[dict]) -> list[dict]:
         """
-        Group items for display based on (name, price, is_physical, private_data).
+        Group items for display based on (name, price, is_physical, private_data, unit).
 
         Items with identical attributes (including private_data) are grouped together.
         Items with unique private_data remain separate.
 
         Args:
-            items: List of item dicts with keys: name, price, quantity, is_physical, private_data, tier_breakdown (optional)
+            items: List of item dicts with keys: name, price, quantity, is_physical, private_data, tier_breakdown (optional), unit (optional)
 
         Returns:
             List of grouped items with updated quantities
         """
         grouped = {}
         tier_breakdown_map = {}  # Store tier_breakdown for each group
+        unit_map = {}  # Store unit for each group
 
         for item in items:
-            # Group by all attributes including private_data
+            # Group by all attributes including private_data and unit
             # This ensures items with identical private_data get grouped,
             # but items with unique private_data (keys, codes) stay separate
             key = (
                 item['name'],
                 item['price'],
                 item['is_physical'],
-                item.get('private_data')  # None or actual value
+                item.get('private_data'),  # None or actual value
+                item.get('unit')  # Include unit in grouping key
             )
 
             if key not in grouped:
                 grouped[key] = 0
-                # Store tier_breakdown for first item in group
+                # Store tier_breakdown and unit for first item in group
                 tier_breakdown_map[key] = item.get('tier_breakdown')
+                unit_map[key] = item.get('unit')
             grouped[key] += item.get('quantity', 1)
 
         # Build result list
@@ -2273,9 +2276,10 @@ class OrderService:
                 'quantity': quantity,
                 'is_physical': is_physical,
                 'private_data': private_data,
-                'tier_breakdown': tier_breakdown_map.get((name, price, is_physical, private_data))
+                'tier_breakdown': tier_breakdown_map.get((name, price, is_physical, private_data, unit)),
+                'unit': unit  # Include unit in result
             }
-            for (name, price, is_physical, private_data), quantity in grouped.items()
+            for (name, price, is_physical, private_data, unit), quantity in grouped.items()
         ]
 
     @staticmethod
