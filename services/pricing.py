@@ -141,7 +141,8 @@ class PricingService:
     @staticmethod
     async def format_available_tiers(
         subcategory_id: int,
-        session: Session | AsyncSession
+        session: Session | AsyncSession,
+        unit: str = "pcs."
     ) -> str | None:
         """
         Format available tiers as a price list for display.
@@ -149,15 +150,16 @@ class PricingService:
         Example output:
             ```
             📊 Staffelpreise:
-               1-4 Stk.:   11,00 €
-              5-24 Stk.:   10,00 €
-             25-49 Stk.:    9,00 €
-                50+ Stk.:    7,50 €
+               1-4 l:   11,00 €
+              5-24 l:   10,00 €
+             25-49 l:    9,00 €
+                50+ l:    7,50 €
             ```
 
         Args:
             subcategory_id: Subcategory ID
             session: Database session
+            unit: Item unit (e.g., "pcs.", "kg", "l")
 
         Returns:
             Formatted string with available tiers, or None if no tiers exist
@@ -191,10 +193,10 @@ class PricingService:
             if i < len(sorted_tiers) - 1:
                 # Has next tier - show range
                 next_qty = sorted_tiers[i + 1].min_quantity
-                range_str = f"{tier.min_quantity}-{next_qty - 1} Stk."
+                range_str = f"{tier.min_quantity}-{next_qty - 1} {unit}"
             else:
                 # Last tier - show "X+"
-                range_str = f"{tier.min_quantity}+ Stk."
+                range_str = f"{tier.min_quantity}+ {unit}"
 
             price_str = f"{tier.unit_price:>6.2f}"
             lines.append(f"  {range_str:>12}: {price_str} €")

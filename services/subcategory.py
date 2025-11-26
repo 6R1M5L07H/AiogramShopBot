@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from callbacks import AllCategoriesCallback
 from enums.bot_entity import BotEntity
+from enums.item_unit import ItemUnit
 from handlers.common.common import add_pagination_buttons
 from models.item import ItemDTO
 from repositories.category import CategoryRepository
@@ -67,26 +68,59 @@ class SubcategoryService:
 
         # Check for tiered pricing
         from services.pricing import PricingService
-        tier_display = await PricingService.format_available_tiers(unpacked_cb.subcategory_id, session)
+        tier_display = await PricingService.format_available_tiers(unpacked_cb.subcategory_id, session, getattr(item, 'unit', ItemUnit.PIECES.value))
+
+        # Get localized unit
+        from utils.localizator import Localizator as LocUtil
+        item_unit = getattr(item, 'unit', ItemUnit.PIECES.value)
+        localized_unit = LocUtil.localize_unit(item_unit)
+
+        # Determine price display (with "ab" prefix if tiers exist)
+        if tier_display:
+            # Get lowest tier price from database by joining with items
+            from models.price_tier import PriceTier
+            from models.item import Item
+            from sqlalchemy import select
+            from db import session_execute
+
+            stmt = (
+                select(PriceTier)
+                .join(Item, PriceTier.item_id == Item.id)
+                .where(Item.subcategory_id == unpacked_cb.subcategory_id)
+                .order_by(PriceTier.unit_price)
+            )
+            result = await session_execute(stmt, session)
+            tier_prices = result.scalars().all()
+
+            if tier_prices:
+                lowest_price = min(tier.unit_price for tier in tier_prices)
+                price_display = f"ab {Localizator.get_currency_symbol()}{lowest_price:.2f}"
+            else:
+                # Fallback if no tiers found (shouldn't happen if tier_display exists)
+                price_display = f"{Localizator.get_currency_symbol()}{item.price:.2f}"
+        else:
+            price_display = f"{Localizator.get_currency_symbol()}{item.price:.2f}"
 
         # Build message with shipping info for physical items
         if item.is_physical:
             message_text = Localizator.get_text(BotEntity.USER, "select_quantity_with_shipping").format(
                 category_name=category.name,
                 subcategory_name=subcategory.name,
-                price=item.price,
+                price_display=price_display,
                 shipping_cost=item.shipping_cost,
                 description=item.description,
                 quantity=available_qty,
+                unit=localized_unit,
                 currency_sym=Localizator.get_currency_symbol()
             )
         else:
             message_text = Localizator.get_text(BotEntity.USER, "select_quantity").format(
                 category_name=category.name,
                 subcategory_name=subcategory.name,
-                price=item.price,
+                price_display=price_display,
                 description=item.description,
                 quantity=available_qty,
+                unit=localized_unit,
                 currency_sym=Localizator.get_currency_symbol()
             )
 
@@ -101,6 +135,7 @@ class SubcategoryService:
         dialpad_message = Localizator.get_text(BotEntity.USER, "quantity_dialpad_prompt").format(
             item_name=subcategory.name,  # Use short subcategory name instead of full description
             available=available_qty,
+            unit=localized_unit,
             current_quantity=""
         )
 
@@ -210,7 +245,7 @@ class SubcategoryService:
             )
 
         # Show either tier table (if tiers exist) or simple price (fallback only)
-        tier_table = await PricingService.format_available_tiers(unpacked_cb.subcategory_id, session)
+        tier_table = await PricingService.format_available_tiers(unpacked_cb.subcategory_id, session, getattr(item, 'unit', ItemUnit.PIECES.value))
         if tier_table:
             # Item has tiers - show full tier table
             message_parts.append(tier_table)

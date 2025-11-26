@@ -153,10 +153,18 @@ class NotificationService:
         cart_grand_total = 0.0
         message = ""
         for item in sold_items:
+            # Get item metadata to retrieve unit
+            item_metadata = await ItemRepository.get_item_metadata(item.category_id, item.subcategory_id, session)
             price = await ItemRepository.get_price(ItemDTO(subcategory_id=item.subcategory_id,
                                                            category_id=item.category_id), session)
             category = await CategoryRepository.get_by_id(item.category_id, session)
             subcategory = await SubcategoryRepository.get_by_id(item.subcategory_id, session)
+
+            # Get unit with defensive fallback
+            from enums.item_unit import ItemUnit
+            item_unit = getattr(item_metadata, 'unit', ItemUnit.PIECES.value) if item_metadata else ItemUnit.PIECES.value
+            localized_unit = Localizator.localize_unit(item_unit)
+
             cart_item_total = price * item.quantity
             cart_grand_total += cart_item_total
             if user.telegram_username:
@@ -164,6 +172,7 @@ class NotificationService:
                     username=safe_html(user.telegram_username),
                     total_price=cart_item_total,
                     quantity=item.quantity,
+                    unit=localized_unit,
                     category_name=category.name,
                     subcategory_name=subcategory.name,
                     currency_sym=Localizator.get_currency_symbol()) + "\n"
@@ -172,6 +181,7 @@ class NotificationService:
                     telegram_id=user.telegram_id,
                     total_price=cart_item_total,
                     quantity=item.quantity,
+                    unit=localized_unit,
                     category_name=category.name,
                     subcategory_name=subcategory.name,
                     currency_sym=Localizator.get_currency_symbol()) + "\n"
