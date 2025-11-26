@@ -29,6 +29,11 @@ class UserService:
                 user_id = await UserRepository.create(user_dto, session)
                 await CartRepository.get_or_create(user_id, session)
                 await session_commit(session)
+
+                # Notify admins about new user registration (if enabled)
+                if config.NOTIFY_ADMINS_NEW_USER:
+                    from services.notification import NotificationService
+                    await NotificationService.notify_new_user_registration(user_dto)
             case _:
                 update_user_dto = UserDTO(**user.model_dump())
                 update_user_dto.can_receive_messages = True
