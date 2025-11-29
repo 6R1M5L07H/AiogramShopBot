@@ -3,8 +3,10 @@
 This module provides utilities for backing up and managing SQLite database backups.
 """
 
+import base64
 import gzip
 import hashlib
+import io
 import logging
 import os
 import shutil
@@ -20,6 +22,13 @@ if config.DB_ENCRYPTION:
     from sqlcipher3 import dbapi2 as sqlcipher
 else:
     sqlcipher = None
+
+# GPG encryption support (optional)
+try:
+    import gnupg
+    GPG_AVAILABLE = True
+except ImportError:
+    GPG_AVAILABLE = False
 
 
 logger = logging.getLogger(__name__)
@@ -39,69 +48,179 @@ class DatabaseBackup:
         self.backup_dir = Path(backup_dir)
         self.backup_dir.mkdir(parents=True, exist_ok=True)
 
-    def create_backup(self, compress: bool = True) -> Optional[Path]:
+        # Initialize GPG if encryption is enabled
+        self.gpg = None
+        self.gpg_key_id = None
+        if config.PGP_PUBLIC_KEY_BASE64:
+            self._initialize_gpg()
+
+    def _initialize_gpg(self) -> None:
+        """Initialize GPG and import public key from base64-encoded config.
+
+        Uses the PGP_PUBLIC_KEY_BASE64 from .env for encryption.
+        """
+        if not GPG_AVAILABLE:
+            logger.warning("GPG encryption requested but python-gnupg not installed")
+            return
+
+        try:
+            # Decode base64 public key
+            public_key_ascii = base64.b64decode(config.PGP_PUBLIC_KEY_BASE64).decode('utf-8')
+
+            # Initialize GPG
+            self.gpg = gnupg.GPG()
+
+            # Import public key
+            import_result = self.gpg.import_keys(public_key_ascii)
+
+            if not import_result.fingerprints:
+                logger.error("Failed to import GPG public key from PGP_PUBLIC_KEY_BASE64")
+                self.gpg = None
+                return
+
+            self.gpg_key_id = import_result.fingerprints[0]
+            logger.info(f"GPG public key imported successfully: {self.gpg_key_id[:16]}...")
+
+        except Exception as e:
+            logger.error(f"Failed to initialize GPG encryption: {e}", exc_info=True)
+            self.gpg = None
+
+    def create_backup(self, compress: bool = True, encrypt: bool = True) -> Optional[Path]:
         """Create a backup of the database.
 
         Supports both standard SQLite and SQLCipher encrypted databases.
         Automatically detects encryption mode from config.DB_ENCRYPTION.
 
+        If PGP_PUBLIC_KEY_BASE64 is configured and encrypt=True, the backup
+        is encrypted with GPG directly in memory without writing unencrypted
+        data to disk.
+
         Args:
             compress: Whether to compress the backup with gzip
+            encrypt: Whether to encrypt with GPG (requires PGP_PUBLIC_KEY_BASE64)
 
         Returns:
             Path to the backup file, or None if backup failed
         """
         try:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            backup_filename = f"db_backup_{timestamp}.db"
-            backup_path = self.backup_dir / backup_filename
 
-            # Use SQLite's backup API for safe online backup
-            logger.info(f"Creating database backup: {backup_path}")
+            # Determine if we can do direct GPG encryption (stream mode)
+            use_gpg_stream = encrypt and self.gpg is not None
 
-            # Dual-Mode: Use sqlcipher if DB_ENCRYPTION=true
-            if config.DB_ENCRYPTION:
-                if sqlcipher is None:
-                    raise RuntimeError("DB_ENCRYPTION=true but sqlcipher3 module not available")
+            if use_gpg_stream:
+                # Stream mode: DB → Memory → Compress → GPG → Disk (never writes unencrypted)
+                logger.info("Creating encrypted database backup (stream mode)")
+                backup_filename = f"db_backup_{timestamp}.db.gz.gpg"
+                backup_path = self.backup_dir / backup_filename
 
-                logger.debug("Using SQLCipher for encrypted database backup")
+                # Create backup in memory
+                backup_buffer = io.BytesIO()
 
-                # Connect to encrypted source database
-                source_conn = sqlcipher.connect(self.db_path)
-                # SECURITY: Use parameter binding to prevent password exposure in logs
-                source_conn.execute("PRAGMA key = ?", (config.DB_PASS,))
+                # Dual-Mode: Use sqlcipher if DB_ENCRYPTION=true
+                if config.DB_ENCRYPTION:
+                    if sqlcipher is None:
+                        raise RuntimeError("DB_ENCRYPTION=true but sqlcipher3 module not available")
 
-                # Connect to unencrypted backup file (backups are NOT encrypted)
-                backup_conn = sqlite3.connect(str(backup_path))
+                    logger.debug("Using SQLCipher for encrypted database backup")
+                    source_conn = sqlcipher.connect(self.db_path)
+                    source_conn.execute("PRAGMA key = ?", (config.DB_PASS,))
+                else:
+                    logger.debug("Using standard SQLite for database backup")
+                    source_conn = sqlite3.connect(self.db_path)
 
+                # Create in-memory backup
+                backup_conn = sqlite3.connect(":memory:")
                 try:
-                    # Perform the backup (encrypted → unencrypted)
                     source_conn.backup(backup_conn)
-                    logger.info(f"Database backup created successfully (decrypted): {backup_path}")
+
+                    # Write in-memory DB to buffer
+                    temp_backup_conn = sqlite3.connect(":memory:")
+                    backup_conn.backup(temp_backup_conn)
+
+                    # Serialize to bytes
+                    for line in temp_backup_conn.iterdump():
+                        backup_buffer.write(f"{line}\n".encode('utf-8'))
+
+                    temp_backup_conn.close()
+                    logger.debug("Database backed up to memory")
                 finally:
                     source_conn.close()
                     backup_conn.close()
+
+                # Compress in memory
+                backup_buffer.seek(0)
+                compressed_buffer = io.BytesIO()
+                with gzip.GzipFile(fileobj=compressed_buffer, mode='wb') as gz:
+                    shutil.copyfileobj(backup_buffer, gz)
+
+                original_size = backup_buffer.tell()
+                compressed_size = compressed_buffer.tell()
+                logger.debug(f"Backup compressed in memory: {original_size:,} → {compressed_size:,} bytes")
+
+                # Encrypt with GPG (stream mode)
+                compressed_buffer.seek(0)
+                encrypted_data = self.gpg.encrypt_file(
+                    compressed_buffer,
+                    recipients=[self.gpg_key_id],
+                    armor=False,  # Binary output for smaller size
+                    always_trust=True  # Trust the imported key
+                )
+
+                if not encrypted_data.ok:
+                    raise RuntimeError(f"GPG encryption failed: {encrypted_data.status}")
+
+                # Write encrypted data to disk
+                with open(backup_path, 'wb') as f:
+                    f.write(encrypted_data.data)
+
+                encrypted_size = backup_path.stat().st_size
+                logger.info(
+                    f"Encrypted backup created: {original_size:,} → {compressed_size:,} → {encrypted_size:,} bytes "
+                    f"(compression: {(1 - compressed_size/original_size)*100:.1f}%, "
+                    f"total: {(1 - encrypted_size/original_size)*100:.1f}%)"
+                )
+
             else:
-                logger.debug("Using standard SQLite for database backup")
+                # Legacy mode: DB → Disk → Compress → Disk (writes unencrypted temporarily)
+                logger.info("Creating database backup (legacy mode)")
+                backup_filename = f"db_backup_{timestamp}.db"
+                backup_path = self.backup_dir / backup_filename
 
-                # Standard SQLite backup (unencrypted → unencrypted)
-                source_conn = sqlite3.connect(self.db_path)
-                backup_conn = sqlite3.connect(str(backup_path))
+                # Dual-Mode: Use sqlcipher if DB_ENCRYPTION=true
+                if config.DB_ENCRYPTION:
+                    if sqlcipher is None:
+                        raise RuntimeError("DB_ENCRYPTION=true but sqlcipher3 module not available")
 
-                try:
-                    # Perform the backup
-                    source_conn.backup(backup_conn)
-                    logger.info(f"Database backup created successfully: {backup_path}")
-                finally:
-                    source_conn.close()
-                    backup_conn.close()
+                    logger.debug("Using SQLCipher for encrypted database backup")
+                    source_conn = sqlcipher.connect(self.db_path)
+                    source_conn.execute("PRAGMA key = ?", (config.DB_PASS,))
+                    backup_conn = sqlite3.connect(str(backup_path))
 
-            # Compress backup if requested
-            if compress:
-                compressed_path = self._compress_backup(backup_path)
-                if compressed_path:
-                    backup_path.unlink()  # Remove uncompressed file
-                    backup_path = compressed_path
+                    try:
+                        source_conn.backup(backup_conn)
+                        logger.info(f"Database backup created successfully (decrypted): {backup_path}")
+                    finally:
+                        source_conn.close()
+                        backup_conn.close()
+                else:
+                    logger.debug("Using standard SQLite for database backup")
+                    source_conn = sqlite3.connect(self.db_path)
+                    backup_conn = sqlite3.connect(str(backup_path))
+
+                    try:
+                        source_conn.backup(backup_conn)
+                        logger.info(f"Database backup created successfully: {backup_path}")
+                    finally:
+                        source_conn.close()
+                        backup_conn.close()
+
+                # Compress backup if requested
+                if compress:
+                    compressed_path = self._compress_backup(backup_path)
+                    if compressed_path:
+                        backup_path.unlink()  # Remove uncompressed file
+                        backup_path = compressed_path
 
             # Create checksum file
             self._create_checksum(backup_path)
