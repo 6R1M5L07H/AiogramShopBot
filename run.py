@@ -61,6 +61,7 @@ async def start(message: types.Message, session: AsyncSession | Session):
     my_profile_button = types.KeyboardButton(text=Localizator.get_text(BotEntity.USER, "my_profile"))
     faq_button = types.KeyboardButton(text=Localizator.get_text(BotEntity.USER, "faq"))
     help_button = types.KeyboardButton(text=Localizator.get_text(BotEntity.USER, "help"))
+    gpg_button = types.KeyboardButton(text=Localizator.get_text(BotEntity.USER, "gpg_menu"))
     admin_menu_button = types.KeyboardButton(text=Localizator.get_text(BotEntity.ADMIN, "menu"))
     cart_button = types.KeyboardButton(text=Localizator.get_text(BotEntity.USER, "cart"))
     telegram_id = message.from_user.id
@@ -69,7 +70,7 @@ async def start(message: types.Message, session: AsyncSession | Session):
         telegram_id=telegram_id
     ), session)
     keyboard = [[all_categories_button, my_profile_button], [faq_button, help_button],
-                [cart_button]]
+                [cart_button, gpg_button]]
     # Check admin status using centralized permission utils
     from utils.permission_utils import is_admin_user
     if is_admin_user(telegram_id):
@@ -96,6 +97,24 @@ async def support(message: types.Message):
         await message.answer(help_text, reply_markup=admin_keyboard_builder.as_markup())
     else:
         await message.answer(help_text)
+
+
+@main_router.message(F.text == Localizator.get_text(BotEntity.USER, "gpg_menu"), IsUserExistFilterIncludingBanned())
+async def show_gpg_info(message: types.Message):
+    """
+    Display GPG public key information from main menu.
+
+    Shows end-to-end encryption explanation, dual-layer security,
+    shop's public PGP key, fingerprint, and expiration date.
+    """
+    logging.info("🔐 GPG MENU BUTTON HANDLER TRIGGERED")
+
+    # Get GPG info view from CartService (reuses existing logic)
+    from services.cart import CartService
+    msg, kb_builder = await CartService.get_gpg_info_view()
+
+    # Send response with inline keyboard
+    await message.answer(msg, reply_markup=kb_builder.as_markup())
 
 
 @main_router.error(F.update.message.as_("message"))

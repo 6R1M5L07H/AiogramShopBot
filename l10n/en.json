@@ -367,6 +367,7 @@
     "help": "🆘 Help",
     "help_button": "✉️ Contact Support",
     "help_string": "🤝 Support",
+    "gpg_menu": "🔐 Encryption",
     "insufficient_funds": "⚠️ Insufficient funds!",
     "my_profile": "👤 My profile",
     "my_profile_msg": "👤 <b>Your profile\nID:</b> <code>{telegram_id}</code>\n\n<b>Your balance in {currency_text}:</b>\n{fiat_balance}{currency_sym}",
