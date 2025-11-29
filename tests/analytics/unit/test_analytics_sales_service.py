@@ -8,7 +8,7 @@ Tests:
 
 import pytest
 import pytest_asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from services.analytics import AnalyticsService
 from repositories.sales_record import SalesRecordRepository
 from models.sales_record import SalesRecordDTO
@@ -131,7 +131,7 @@ async def setup_sales_data(test_session):
     """Create test sales data with multiple subcategories."""
     from models.sales_record import SalesRecordDTO
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     sales = [
         SalesRecordDTO(
@@ -186,7 +186,7 @@ async def setup_sales_data(test_session):
 @pytest_asyncio.fixture
 async def setup_mixed_revenue(test_session):
     """Create sales with varying revenues for sorting test."""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     sales = [
         # Low revenue

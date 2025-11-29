@@ -78,6 +78,7 @@ class BuyService:
             raise OrderNotFoundException(items[0].order_id if items and items[0].order_id else unpacked_cb.args_for_action)
 
         from services.invoice_formatter import InvoiceFormatterService
+        from enums.invoice_header_type import InvoiceHeaderType
         from services.order import OrderService
         from repositories.subcategory import SubcategoryRepository
 
@@ -126,7 +127,7 @@ class BuyService:
 
         # Use InvoiceFormatter for consistent formatting
         msg = InvoiceFormatterService.format_complete_order_view(
-            header_type="purchase_history",
+            header_type=InvoiceHeaderType.PURCHASE_HISTORY,
             invoice_number=invoice_numbers_formatted,
             order_status=order.status,
             created_at=order.created_at,

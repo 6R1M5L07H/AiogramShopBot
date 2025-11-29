@@ -339,6 +339,7 @@ class NotificationService:
             from repositories.order import OrderRepository
             from repositories.invoice import InvoiceRepository
             from services.invoice_formatter import InvoiceFormatterService
+            from enums.invoice_header_type import InvoiceHeaderType
             from enums.order_status import OrderStatus
 
             # Get order and items
@@ -396,7 +397,7 @@ class NotificationService:
                 subtotal = order.total_price - order.shipping_cost
 
                 msg = InvoiceFormatterService.format_complete_order_view(
-                    header_type="payment_success",
+                    header_type=InvoiceHeaderType.PAYMENT_SUCCESS,
                     invoice_number=invoice_number,
                     order_status=order.status,
                     created_at=order.created_at,
@@ -462,6 +463,7 @@ class NotificationService:
             Formatted message string (does NOT send)
         """
         from services.invoice_formatter import InvoiceFormatterService
+        from enums.invoice_header_type import InvoiceHeaderType
 
         original_amount = refund_info['original_amount']
         penalty_amount = refund_info['penalty_amount']
@@ -519,7 +521,7 @@ class NotificationService:
         if is_mixed_order and partial_refund_details:
             # Mixed order cancellation - show digital items kept, physical items refunded
             return InvoiceFormatterService.format_complete_order_view(
-                header_type="partial_cancellation",
+                header_type=InvoiceHeaderType.PARTIAL_CANCELLATION,
                 invoice_number=invoice_number,
                 items=items_list,
                 shipping_cost=order.shipping_cost,  # Pass shipping cost for display
@@ -537,7 +539,7 @@ class NotificationService:
         elif penalty_amount > 0:
             # Regular cancellation with processing fee and strike - use InvoiceFormatter
             return InvoiceFormatterService.format_complete_order_view(
-                header_type="cancellation_refund",
+                header_type=InvoiceHeaderType.CANCELLATION_REFUND,
                 invoice_number=invoice_number,
                 items=None,  # No items shown for penalty cancellations
                 total_price=refund_info.get('base_amount', 0),
@@ -587,6 +589,7 @@ class NotificationService:
             Formatted message string (does NOT send)
         """
         from services.invoice_formatter import InvoiceFormatterService
+        from enums.invoice_header_type import InvoiceHeaderType
         from utils.localizator import Localizator
         from enums.bot_entity import BotEntity
         import logging
@@ -654,7 +657,7 @@ class NotificationService:
             logging.info(f"🔵 Passing to formatter: cancellation_reason='{escaped_reason}' (from custom_reason='{custom_reason}')")
 
             return InvoiceFormatterService.format_complete_order_view(
-                header_type="admin_cancellation",
+                header_type=InvoiceHeaderType.ADMIN_CANCELLATION,
                 invoice_number=invoice_number,
                 items=items_list,
                 shipping_cost=order.shipping_cost,
@@ -712,6 +715,7 @@ class NotificationService:
         from repositories.item import ItemRepository
         from repositories.subcategory import SubcategoryRepository
         from services.invoice_formatter import InvoiceFormatterService
+        from enums.invoice_header_type import InvoiceHeaderType
 
         user = await UserRepository.get_by_id(user_id, session)
         order = await OrderRepository.get_by_id(order_id, session)
@@ -759,7 +763,7 @@ class NotificationService:
 
         # Format with InvoiceFormatter
         msg = InvoiceFormatterService.format_complete_order_view(
-            header_type="order_shipped",
+            header_type=InvoiceHeaderType.ORDER_SHIPPED,
             invoice_number=invoice_number,
             order_status=order.status,
             created_at=order.created_at,

@@ -20,6 +20,7 @@ import config
 config.DB_ENCRYPTION = False
 
 from services.invoice_formatter import InvoiceFormatterService
+from enums.invoice_header_type import InvoiceHeaderType
 from enums.bot_entity import BotEntity
 
 
@@ -31,7 +32,7 @@ class TestAdminCancellationReason:
         custom_reason = "Artikel nicht mehr auf Lager"
 
         result = InvoiceFormatterService.format_complete_order_view(
-            header_type="admin_cancellation",
+            header_type=InvoiceHeaderType.ADMIN_CANCELLATION,
             invoice_number="INV-2025-000123",
             items=[
                 {
@@ -57,7 +58,7 @@ class TestAdminCancellationReason:
     def test_admin_cancellation_without_custom_reason(self):
         """Test that message works without custom reason (None)"""
         result = InvoiceFormatterService.format_complete_order_view(
-            header_type="admin_cancellation",
+            header_type=InvoiceHeaderType.ADMIN_CANCELLATION,
             invoice_number="INV-2025-000124",
             items=[
                 {
@@ -87,7 +88,7 @@ class TestAdminCancellationReason:
 
         # Pass raw string - formatter should escape it
         result = InvoiceFormatterService.format_complete_order_view(
-            header_type="admin_cancellation",
+            header_type=InvoiceHeaderType.ADMIN_CANCELLATION,
             invoice_number="INV-2025-000125",
             items=[
                 {
@@ -114,7 +115,7 @@ class TestAdminCancellationReason:
         multiline_reason = "Artikel nicht verfügbar\nLieferant hat storniert\nKunde wird kontaktiert"
 
         result = InvoiceFormatterService.format_complete_order_view(
-            header_type="admin_cancellation",
+            header_type=InvoiceHeaderType.ADMIN_CANCELLATION,
             invoice_number="INV-2025-000126",
             items=[
                 {

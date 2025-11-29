@@ -12,6 +12,7 @@ Used across:
 from typing import Optional
 from datetime import datetime
 from enums.bot_entity import BotEntity
+from enums.invoice_header_type import InvoiceHeaderType
 from enums.order_status import OrderStatus
 from utils.localizator import Localizator
 from utils.html_escape import safe_html, safe_url
@@ -425,7 +426,7 @@ class InvoiceFormatterService:
     @staticmethod
     def format_complete_order_view(
         # === HEADER SECTION ===
-        header_type: str,
+        header_type: InvoiceHeaderType | str,  # str for backward compatibility during migration
         invoice_number: str,
         date: Optional[str] = None,
 
@@ -530,7 +531,7 @@ class InvoiceFormatterService:
             date = datetime.now().strftime("%Y-%m-%d %H:%M")
 
         # === HEADER SECTION ===
-        if header_type == "admin_order":
+        if header_type == InvoiceHeaderType.ADMIN_ORDER or header_type == "admin_order":
             # Admin order view header
             header = Localizator.get_text(BotEntity.ADMIN, "order_details_header").format(
                 invoice_number=invoice_number,
@@ -540,41 +541,41 @@ class InvoiceFormatterService:
             message += f"{header}\n\n"
             message += f"<b>Invoice #{invoice_number}</b>\n\n"
 
-        elif header_type == "payment_screen":
+        elif header_type == InvoiceHeaderType.PAYMENT_SCREEN or header_type == "payment_screen":
             # Payment screen header with timer
             time_remaining = (expires_at - datetime.now()).total_seconds() / 60 if expires_at else 0
             expires_time = expires_at.strftime("%H:%M") if expires_at else "N/A"
             message += f"<b>Invoice #{invoice_number}</b>\n"
             message += f"{date}\n\n"
 
-        elif header_type == "wallet_payment":
+        elif header_type == InvoiceHeaderType.WALLET_PAYMENT or header_type == "wallet_payment":
             # Wallet payment completion header
             message += f"<b>Invoice #{invoice_number}</b>\n"
             message += f"{date}\n\n"
 
-        elif header_type == "cancellation_refund":
+        elif header_type == InvoiceHeaderType.CANCELLATION_REFUND or header_type == "cancellation_refund":
             # Cancellation with refund header
             message += f"❌ <b>{Localizator.get_text(entity, 'order_cancelled_title')}</b>\n\n"
             message += f"📋 {Localizator.get_text(entity, 'order_number_label')}: {invoice_number}\n\n"
 
-        elif header_type == "partial_cancellation":
+        elif header_type == InvoiceHeaderType.PARTIAL_CANCELLATION or header_type == "partial_cancellation":
             # Partial cancellation header (mixed order: digital kept, physical refunded)
             message += f"🔄 <b>{Localizator.get_text(entity, 'order_partially_cancelled_title')}</b>\n\n"
             message += f"📋 {Localizator.get_text(entity, 'order_number_label')}: {invoice_number}\n\n"
 
-        elif header_type == "admin_cancellation":
+        elif header_type == InvoiceHeaderType.ADMIN_CANCELLATION or header_type == "admin_cancellation":
             # Admin cancellation header
             message += f"<b>{Localizator.get_text(BotEntity.COMMON, 'admin_cancel_invoice_header')}{invoice_number}</b>\n"
             message += f"{Localizator.get_text(BotEntity.COMMON, 'admin_cancel_invoice_date')} {date}\n"
             message += f"{Localizator.get_text(BotEntity.COMMON, 'admin_cancel_invoice_status')}\n\n"
 
-        elif header_type == "payment_success":
+        elif header_type == InvoiceHeaderType.PAYMENT_SUCCESS or header_type == "payment_success":
             # Payment success notification header
             success_header = Localizator.get_text(BotEntity.COMMON, "payment_success").format(invoice_number=invoice_number)
             message += f"✅ <b>{success_header}</b>\n\n"
             message += f"📋 <b>{Localizator.get_text(entity, 'invoice_number_label')}: {invoice_number}</b>\n\n"
 
-        elif header_type == "order_shipped":
+        elif header_type == InvoiceHeaderType.ORDER_SHIPPED or header_type == "order_shipped":
             # Order shipped notification header
             shipped_header = Localizator.get_text(entity, "order_shipped_header")
             message += f"📦 <b>{shipped_header}</b>\n\n"
@@ -586,7 +587,7 @@ class InvoiceFormatterService:
                 shipped_label = Localizator.get_text(BotEntity.COMMON, "shipped_on_label")
                 message += f"<b>{shipped_label}:</b> {shipped_str}\n\n"
 
-        elif header_type == "order_detail_admin":
+        elif header_type == InvoiceHeaderType.ORDER_DETAIL_ADMIN or header_type == "order_detail_admin":
             # Admin order detail header with status (no duplicate emoji)
             if order_status:
                 # Get status using enum value directly (UPPERCASE)
@@ -614,7 +615,7 @@ class InvoiceFormatterService:
 
                 message += "\n"
 
-        elif header_type == "order_detail_user" or header_type == "purchase_history":
+        elif header_type == InvoiceHeaderType.ORDER_DETAIL_USER or header_type == "order_detail_user" or header_type == InvoiceHeaderType.PURCHASE_HISTORY or header_type == InvoiceHeaderType.PURCHASE_HISTORY or header_type == "purchase_history":
             # User order detail / purchase history header with status
             if order_status:
                 # Get status using enum value directly (UPPERCASE)
@@ -656,7 +657,7 @@ class InvoiceFormatterService:
                         # Use simple price * quantity
                         subtotal += item['price'] * item['quantity']
 
-            if header_type == "partial_cancellation":
+            if header_type == InvoiceHeaderType.PARTIAL_CANCELLATION or header_type == "partial_cancellation":
                 # Partial cancellation: Invoice-style formatting with clear structure
                 # Structure: Non-Refundable | Refundable | Calculation | Wallet Info
                 digital_items = [item for item in items if not item.get('is_physical', False)]
@@ -866,7 +867,7 @@ class InvoiceFormatterService:
             if subtotal is not None:
                 if use_spacing_alignment:
                     # Unified format: 27 chars left-aligned label, 8 chars right-aligned price
-                    subtotal_label = Localizator.get_text(entity, "admin_cancel_invoice_subtotal") if header_type == "admin_cancellation" else Localizator.get_text(BotEntity.USER, "cart_subtotal_label")
+                    subtotal_label = Localizator.get_text(entity, "admin_cancel_invoice_subtotal") if header_type == InvoiceHeaderType.ADMIN_CANCELLATION or header_type == "admin_cancellation" else Localizator.get_text(BotEntity.USER, "cart_subtotal_label")
                     message += f"{subtotal_label:<27}{subtotal:>8.2f}{currency_symbol}\n"
                 else:
                     subtotal_label = Localizator.get_text(BotEntity.USER, "cart_subtotal_label")
@@ -876,7 +877,7 @@ class InvoiceFormatterService:
             if shipping_cost >= 0:
                 # Build shipping label with type if available
                 if use_spacing_alignment:
-                    shipping_label = Localizator.get_text(entity, "admin_cancel_invoice_shipping") if header_type == "admin_cancellation" else Localizator.get_text(BotEntity.USER, "cart_shipping_max_label")
+                    shipping_label = Localizator.get_text(entity, "admin_cancel_invoice_shipping") if header_type == InvoiceHeaderType.ADMIN_CANCELLATION or header_type == "admin_cancellation" else Localizator.get_text(BotEntity.USER, "cart_shipping_max_label")
                     message += f"{shipping_label:<27}{shipping_cost:>8.2f}{currency_symbol}\n"
                     # Add shipping type as indented note if available (prevents label overflow)
                     if shipping_type_name:
@@ -926,7 +927,7 @@ class InvoiceFormatterService:
                         amount_due_label = Localizator.get_text(BotEntity.USER, "amount_due_label")
                         message += f"<b>{amount_due_label:<27}{final_amount:>8.2f}{currency_symbol}</b>\n"
                     else:
-                        total_label = Localizator.get_text(entity, "admin_cancel_invoice_total") if header_type == "admin_cancellation" else Localizator.get_text(BotEntity.USER, "cart_total_label")
+                        total_label = Localizator.get_text(entity, "admin_cancel_invoice_total") if header_type == InvoiceHeaderType.ADMIN_CANCELLATION or header_type == "admin_cancellation" else Localizator.get_text(BotEntity.USER, "cart_total_label")
                         message += f"<b>{total_label:<27}{final_amount:>8.2f}{currency_symbol}</b>\n"
                     message += "</code>"
                 else:
@@ -934,7 +935,7 @@ class InvoiceFormatterService:
                         amount_due_label = Localizator.get_text(BotEntity.USER, "amount_due_label")
                         message += f"<b>{amount_due_label}: {currency_symbol}{final_amount:.2f}</b>\n"
                     else:
-                        total_label = Localizator.get_text(entity, "admin_cancel_invoice_total") if header_type == "admin_cancellation" else Localizator.get_text(BotEntity.USER, "cart_total_label")
+                        total_label = Localizator.get_text(entity, "admin_cancel_invoice_total") if header_type == InvoiceHeaderType.ADMIN_CANCELLATION or header_type == "admin_cancellation" else Localizator.get_text(BotEntity.USER, "cart_total_label")
                         message += f"<b>{total_label}: {currency_symbol}{final_amount:.2f}</b>\n"
 
             # Closing separator (30 chars to prevent line wrapping)
@@ -944,7 +945,7 @@ class InvoiceFormatterService:
                 message += "═══════════════════════\n"
 
         # === PAYMENT DETAILS (Payment Screen) ===
-        if header_type == "payment_screen" and payment_address:
+        if header_type == InvoiceHeaderType.PAYMENT_SCREEN or header_type == "payment_screen" and payment_address:
             expires_time = expires_at.strftime("%H:%M") if expires_at else "N/A"
             time_remaining = (expires_at - datetime.now()).total_seconds() / 60 if expires_at else 0
 
@@ -990,7 +991,7 @@ class InvoiceFormatterService:
                 message += f"⚠️ <b>{strike_warning}</b>\n\n"
 
         # === CANCELLATION DETAILS ===
-        elif header_type == "cancellation_refund":
+        elif header_type == InvoiceHeaderType.CANCELLATION_REFUND or header_type == "cancellation_refund":
             # Build reason-specific explanation
             if penalty_amount and penalty_amount > 0:
                 if cancellation_reason and 'TIMEOUT' in cancellation_reason.upper():
@@ -1030,11 +1031,18 @@ class InvoiceFormatterService:
         # === CANCELLATION REASON ===
         import logging
         logging.info(f"🟢 Cancellation reason check: cancellation_reason='{cancellation_reason}', header_type='{header_type}'")
-        logging.info(f"🟢 Condition evaluates to: {bool(cancellation_reason and header_type in ['admin_cancellation', 'cancellation_refund', 'partial_cancellation'])}")
 
-        if cancellation_reason and header_type in ["admin_cancellation", "cancellation_refund", "partial_cancellation"]:
+        # Check if header_type is one of the cancellation types (support both enum and string)
+        is_cancellation_type = (
+            header_type == InvoiceHeaderType.ADMIN_CANCELLATION or header_type == "admin_cancellation" or
+            header_type == InvoiceHeaderType.CANCELLATION_REFUND or header_type == "cancellation_refund" or
+            header_type == InvoiceHeaderType.PARTIAL_CANCELLATION or header_type == "partial_cancellation"
+        )
+        logging.info(f"🟢 Condition evaluates to: {bool(cancellation_reason and is_cancellation_type)}")
+
+        if cancellation_reason and is_cancellation_type:
             logging.info(f"🟢 ENTERING cancellation reason block for header_type='{header_type}'")
-            if header_type == "admin_cancellation":
+            if header_type == InvoiceHeaderType.ADMIN_CANCELLATION or header_type == "admin_cancellation":
                 # Admin cancellation uses custom reason label
                 logging.info(f"🟢 Adding admin cancellation reason: '{cancellation_reason}'")
                 message += f"\n<b>{Localizator.get_text(BotEntity.COMMON, 'admin_cancel_reason_label')}</b>\n"
@@ -1066,7 +1074,7 @@ class InvoiceFormatterService:
         if footer_text:
             message += f"\n{footer_text}\n"
 
-        if header_type == "admin_cancellation":
+        if header_type == InvoiceHeaderType.ADMIN_CANCELLATION or header_type == "admin_cancellation":
             message += f"{Localizator.get_text(entity, 'admin_cancel_notice')}\n\n"
             message += f"{Localizator.get_text(entity, 'admin_cancel_contact_support')}"
 

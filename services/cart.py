@@ -300,7 +300,7 @@ class CartService:
         from repositories.invoice import InvoiceRepository
         from repositories.item import ItemRepository
         from repositories.subcategory import SubcategoryRepository
-        from datetime import datetime
+        from datetime import datetime, timezone
         from collections import Counter
         import config
 
@@ -308,7 +308,7 @@ class CartService:
         invoice = await InvoiceRepository.get_by_order_id(order.id, session)
 
         # Calculate timing
-        time_elapsed = (datetime.utcnow() - order.created_at).total_seconds() / 60  # Minutes
+        time_elapsed = (datetime.now(timezone.utc).replace(tzinfo=None) - order.created_at).total_seconds() / 60  # Minutes
         time_remaining = config.ORDER_TIMEOUT_MINUTES - time_elapsed
         can_cancel_free = time_elapsed <= config.ORDER_CANCEL_GRACE_PERIOD_MINUTES
         grace_remaining = config.ORDER_CANCEL_GRACE_PERIOD_MINUTES - time_elapsed
@@ -443,13 +443,13 @@ class CartService:
         Shows "expired" message if order has expired.
         """
         from repositories.invoice import InvoiceRepository
-        from datetime import datetime, timedelta
+        from datetime import datetime, timezone, timedelta
 
         # Get invoice details
         invoice = await InvoiceRepository.get_by_order_id(order.id, session)
 
         # Calculate remaining time
-        time_elapsed = (datetime.utcnow() - order.created_at).total_seconds() / 60  # Minutes
+        time_elapsed = (datetime.now(timezone.utc).replace(tzinfo=None) - order.created_at).total_seconds() / 60  # Minutes
         time_remaining = config.ORDER_TIMEOUT_MINUTES - time_elapsed
         can_cancel_free = time_elapsed <= config.ORDER_CANCEL_GRACE_PERIOD_MINUTES
         is_expired = time_remaining <= 0
@@ -1839,7 +1839,7 @@ class CartService:
 
             # 8. Get invoice and show payment screen
             from repositories.invoice import InvoiceRepository
-            from datetime import datetime
+            from datetime import datetime, timezone
 
             invoice = await InvoiceRepository.get_by_order_id(order.id, session)
 
@@ -1849,7 +1849,7 @@ class CartService:
                 raise ValueError(f"No invoice found for order {order.id}")
 
             # Calculate remaining time for cancel button logic
-            time_elapsed = (datetime.utcnow() - order.created_at).total_seconds() / 60  # Minutes
+            time_elapsed = (datetime.now(timezone.utc).replace(tzinfo=None) - order.created_at).total_seconds() / 60  # Minutes
             can_cancel_free = time_elapsed <= config.ORDER_CANCEL_GRACE_PERIOD_MINUTES
 
             # Format expiry time (HH:MM format)

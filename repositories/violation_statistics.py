@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,7 +23,7 @@ class ViolationStatisticsRepository:
             ID of created violation record
         """
         violation = ViolationStatistics(
-            violation_date=violation_dto.violation_date.date() if violation_dto.violation_date else datetime.utcnow().date(),
+            violation_date=violation_dto.violation_date.date() if violation_dto.violation_date else datetime.now(timezone.utc).date(),
             violation_type=violation_dto.violation_type,
             order_value=violation_dto.order_value,
             penalty_applied=violation_dto.penalty_applied if violation_dto.penalty_applied is not None else 0.0,
@@ -75,7 +75,7 @@ class ViolationStatisticsRepository:
         Returns:
             List of ViolationStatistics objects
         """
-        cutoff_date = datetime.utcnow().date() - timedelta(days=days)
+        cutoff_date = datetime.now(timezone.utc).date() - timedelta(days=days)
 
         stmt = select(ViolationStatistics).where(
             ViolationStatistics.violation_type == violation_type,
@@ -120,7 +120,7 @@ class ViolationStatisticsRepository:
         Returns:
             Dictionary mapping violation_type to count
         """
-        cutoff_date = datetime.utcnow().date() - timedelta(days=days)
+        cutoff_date = datetime.now(timezone.utc).date() - timedelta(days=days)
 
         stmt = select(ViolationStatistics).where(
             ViolationStatistics.violation_date >= cutoff_date
@@ -151,7 +151,7 @@ class ViolationStatisticsRepository:
         Returns:
             Total penalty amount
         """
-        cutoff_date = datetime.utcnow().date() - timedelta(days=days)
+        cutoff_date = datetime.now(timezone.utc).date() - timedelta(days=days)
 
         stmt = select(ViolationStatistics).where(
             ViolationStatistics.violation_date >= cutoff_date

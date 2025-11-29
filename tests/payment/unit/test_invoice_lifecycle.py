@@ -13,7 +13,7 @@ Run with:
 import pytest
 import sys
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from unittest.mock import AsyncMock, patch, MagicMock
 
@@ -161,8 +161,8 @@ class TestInvoiceLifecycle:
             total_price=30.0,
             wallet_used=0.0,
             status=OrderStatus.PENDING_PAYMENT,
-            created_at=datetime.utcnow(),
-            expires_at=datetime.utcnow() + timedelta(minutes=30)
+            created_at=datetime.now(timezone.utc),
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=30)
         )
         session.add(order)
         session.commit()
@@ -191,8 +191,8 @@ class TestInvoiceLifecycle:
         assert invoice.payment_crypto_currency == Cryptocurrency.BTC
 
         # Verify order
-        assert order.expires_at > datetime.utcnow()
-        assert (order.expires_at - datetime.utcnow()).total_seconds() <= 1800  # 30 minutes
+        assert order.expires_at > datetime.now(timezone.utc).replace(tzinfo=None)
+        assert (order.expires_at - datetime.now(timezone.utc).replace(tzinfo=None)).total_seconds() <= 1800  # 30 minutes
 
     # ==================== Scenario 2: Wallet-Only Payment ====================
 
@@ -218,8 +218,8 @@ class TestInvoiceLifecycle:
             total_price=30.0,
             wallet_used=0.0,
             status=OrderStatus.PENDING_PAYMENT,
-            created_at=datetime.utcnow(),
-            expires_at=datetime.utcnow() + timedelta(minutes=30)
+            created_at=datetime.now(timezone.utc),
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=30)
         )
         session.add(order)
         session.commit()
@@ -279,8 +279,8 @@ class TestInvoiceLifecycle:
             total_price=30.0,
             wallet_used=0.0,
             status=OrderStatus.PENDING_PAYMENT,
-            created_at=datetime.utcnow(),
-            expires_at=datetime.utcnow() + timedelta(minutes=30)
+            created_at=datetime.now(timezone.utc),
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=30)
         )
         session.add(order)
         session.commit()
@@ -336,8 +336,8 @@ class TestInvoiceLifecycle:
             total_price=30.0,
             wallet_used=0.0,
             status=OrderStatus.PENDING_PAYMENT,
-            created_at=datetime.utcnow(),
-            expires_at=datetime.utcnow() + timedelta(minutes=30)
+            created_at=datetime.now(timezone.utc),
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=30)
         )
         session.add(order)
         session.commit()
@@ -359,7 +359,7 @@ class TestInvoiceLifecycle:
         # Simulate payment webhook (would be called by webhook handler)
         # For this test, we manually update order status and mark items sold
         order.status = OrderStatus.PAID
-        order.paid_at = datetime.utcnow()
+        order.paid_at = datetime.now(timezone.utc)
         for item in test_items:
             item.is_sold = True
         session.commit()
@@ -375,7 +375,7 @@ class TestInvoiceLifecycle:
             fiat_currency=Currency.EUR,
             payment_address="bc1qmock123test456",
             transaction_hash="mock_tx_hash",
-            received_at=datetime.utcnow(),
+            received_at=datetime.now(timezone.utc),
             is_underpayment=False,
             is_overpayment=False,
             is_late_payment=False,
@@ -424,8 +424,8 @@ class TestInvoiceLifecycle:
             total_price=30.0,
             wallet_used=0.0,
             status=OrderStatus.PENDING_PAYMENT,
-            created_at=datetime.utcnow() - timedelta(minutes=45),
-            expires_at=datetime.utcnow() - timedelta(minutes=15)  # Expired 15 min ago
+            created_at=datetime.now(timezone.utc) - timedelta(minutes=45),
+            expires_at=datetime.now(timezone.utc) - timedelta(minutes=15)  # Expired 15 min ago
         )
         session.add(order)
         session.commit()
@@ -497,8 +497,8 @@ class TestInvoiceLifecycle:
             total_price=30.0,
             wallet_used=10.0,
             status=OrderStatus.PENDING_PAYMENT,
-            created_at=datetime.utcnow(),  # Just created
-            expires_at=datetime.utcnow() + timedelta(minutes=30)
+            created_at=datetime.now(timezone.utc),  # Just created
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=30)
         )
         session.add(order)
         # Deduct wallet (as would happen in real order creation)
@@ -562,8 +562,8 @@ class TestInvoiceLifecycle:
             total_price=30.0,
             wallet_used=10.0,
             status=OrderStatus.PENDING_PAYMENT,
-            created_at=datetime.utcnow() - timedelta(minutes=10),  # Outside grace period
-            expires_at=datetime.utcnow() + timedelta(minutes=20)
+            created_at=datetime.now(timezone.utc) - timedelta(minutes=10),  # Outside grace period
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=20)
         )
         session.add(order)
         # Deduct wallet (as would happen in real order creation)
@@ -633,8 +633,8 @@ class TestInvoiceLifecycle:
             total_price=30.0,
             wallet_used=10.0,
             status=OrderStatus.PENDING_PAYMENT,
-            created_at=datetime.utcnow() - timedelta(minutes=10),
-            expires_at=datetime.utcnow() + timedelta(minutes=20)
+            created_at=datetime.now(timezone.utc) - timedelta(minutes=10),
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=20)
         )
         session.add(order)
         # Deduct wallet (as would happen in real order creation)
@@ -707,8 +707,8 @@ class TestInvoiceLifecycle:
             total_price=30.0,
             wallet_used=0.0,
             status=OrderStatus.PENDING_PAYMENT,
-            created_at=datetime.utcnow(),
-            expires_at=datetime.utcnow() + timedelta(minutes=30)
+            created_at=datetime.now(timezone.utc),
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=30)
         )
         session.add(order)
         session.commit()
@@ -750,7 +750,7 @@ class TestInvoiceLifecycle:
             fiat_currency=Currency.EUR,
             payment_address="bc1qmock123test456",
             transaction_hash="mock_tx_hash",
-            received_at=datetime.utcnow(),
+            received_at=datetime.now(timezone.utc),
             is_underpayment=True,
             is_overpayment=False,
             is_late_payment=False,
@@ -804,8 +804,8 @@ class TestInvoiceLifecycle:
             total_price=30.0,
             wallet_used=0.0,
             status=OrderStatus.PENDING_PAYMENT,
-            created_at=datetime.utcnow() - timedelta(minutes=45),
-            expires_at=datetime.utcnow() - timedelta(minutes=5)  # Expired 5 min ago
+            created_at=datetime.now(timezone.utc) - timedelta(minutes=45),
+            expires_at=datetime.now(timezone.utc) - timedelta(minutes=5)  # Expired 5 min ago
         )
         session.add(order)
         session.commit()
@@ -826,7 +826,7 @@ class TestInvoiceLifecycle:
 
         # Simulate late payment (payment arrives before timeout job runs)
         order.status = OrderStatus.PAID
-        order.paid_at = datetime.utcnow()
+        order.paid_at = datetime.now(timezone.utc)
         for item in test_items:
             item.is_sold = True
         session.commit()
@@ -842,7 +842,7 @@ class TestInvoiceLifecycle:
             fiat_currency=Currency.EUR,
             payment_address="bc1qmock123test456",
             transaction_hash="mock_tx_hash",
-            received_at=datetime.utcnow(),
+            received_at=datetime.now(timezone.utc),
             is_underpayment=False,
             is_overpayment=False,
             is_late_payment=True,  # Payment was late
@@ -893,8 +893,8 @@ class TestInvoiceLifecycle:
                 total_price=30.0,
                 wallet_used=0.0,
                 status=status,
-                created_at=datetime.utcnow() - timedelta(hours=1),
-                expires_at=datetime.utcnow() - timedelta(minutes=30)
+                created_at=datetime.now(timezone.utc) - timedelta(hours=1),
+                expires_at=datetime.now(timezone.utc) - timedelta(minutes=30)
             )
             session.add(order)
         session.commit()
@@ -936,8 +936,8 @@ class TestInvoiceLifecycle:
             total_price=30.0,
             wallet_used=0.0,
             status=OrderStatus.PENDING_PAYMENT,
-            created_at=datetime.utcnow(),
-            expires_at=datetime.utcnow() + timedelta(minutes=30)
+            created_at=datetime.now(timezone.utc),
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=30)
         )
         session.add(order)
         session.commit()
@@ -978,8 +978,8 @@ class TestInvoiceLifecycle:
             total_price=30.0,
             wallet_used=0.0,
             status=OrderStatus.PENDING_PAYMENT,
-            created_at=datetime.utcnow(),
-            expires_at=datetime.utcnow() + timedelta(minutes=30)
+            created_at=datetime.now(timezone.utc),
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=30)
         )
         session.add(order)
         session.commit()

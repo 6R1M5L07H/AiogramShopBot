@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 
 from aiogram.types import CallbackQuery
@@ -535,7 +535,7 @@ class OrderService:
             )
 
         # Check grace period (only relevant for USER cancellation)
-        time_elapsed = (datetime.utcnow() - order.created_at).total_seconds() / 60  # Minutes
+        time_elapsed = (datetime.now(timezone.utc).replace(tzinfo=None) - order.created_at).total_seconds() / 60  # Minutes
         within_grace_period = time_elapsed <= config.ORDER_CANCEL_GRACE_PERIOD_MINUTES
 
         # Get ALL invoices for notification (handles partial payments with multiple invoices)
@@ -1524,14 +1524,14 @@ class OrderService:
                 return Localizator.get_text(BotEntity.USER, "order_not_found_error"), kb_builder
 
             # Check grace period
-            time_elapsed = (datetime.utcnow() - order.created_at).total_seconds() / 60
+            time_elapsed = (datetime.now(timezone.utc).replace(tzinfo=None) - order.created_at).total_seconds() / 60
             within_grace_period = time_elapsed <= config.ORDER_CANCEL_GRACE_PERIOD_MINUTES
 
             # Store grace period status and timestamp in FSM (valid for 10 seconds)
             if state:
                 await state.update_data(
                     cancel_grace_status=within_grace_period,
-                    cancel_grace_timestamp=datetime.utcnow().timestamp()
+                    cancel_grace_timestamp=datetime.now(timezone.utc).timestamp()
                 )
 
             # Build confirmation message based on grace period and wallet usage
@@ -1629,7 +1629,7 @@ class OrderService:
 
                 # If stored timestamp exists and is < 10 seconds old, use stored status
                 if stored_timestamp:
-                    time_since_stored = datetime.utcnow().timestamp() - stored_timestamp
+                    time_since_stored = datetime.now(timezone.utc).timestamp() - stored_timestamp
                     if time_since_stored < 10:  # 10 seconds grace period for confirmation
                         use_stored_status = True
 
@@ -1704,6 +1704,7 @@ class OrderService:
         from repositories.item import ItemRepository
         from repositories.subcategory import SubcategoryRepository
         from services.invoice_formatter import InvoiceFormatterService
+        from enums.invoice_header_type import InvoiceHeaderType
 
         # Get order items
         order_items = await ItemRepository.get_by_order_id(order.id, session)
@@ -1750,7 +1751,7 @@ class OrderService:
         crypto_amount_display = f"{invoice.payment_amount_crypto} {invoice.payment_crypto_currency.value}"
 
         return InvoiceFormatterService.format_complete_order_view(
-            header_type="payment_screen",
+            header_type=InvoiceHeaderType.PAYMENT_SCREEN,
             invoice_number=invoice.invoice_number,
             expires_at=order.expires_at,
             items=items_list,
@@ -1979,6 +1980,7 @@ class OrderService:
         from repositories.item import ItemRepository
         from repositories.subcategory import SubcategoryRepository
         from services.invoice_formatter import InvoiceFormatterService
+        from enums.invoice_header_type import InvoiceHeaderType
 
         # Get order items
         order_items = await ItemRepository.get_by_order_id(order.id, session)
@@ -2045,7 +2047,7 @@ class OrderService:
                 logging.warning(f"Failed to load shipping type for key: {order.shipping_type_key}")
 
         return InvoiceFormatterService.format_complete_order_view(
-            header_type="wallet_payment",
+            header_type=InvoiceHeaderType.WALLET_PAYMENT,
             invoice_number=invoice.invoice_number,
             items=items_list,
             shipping_cost=order.shipping_cost,
@@ -2277,7 +2279,7 @@ class OrderService:
                 'is_physical': is_physical,
                 'private_data': private_data,
                 'tier_breakdown': tier_breakdown_map.get((name, price, is_physical, private_data, unit)),
-                'unit': unit  # Include unit in result
+                'unit': unit if unit is not None else 'pcs.'  # Default to pcs. if unit is None
             }
             for (name, price, is_physical, private_data, unit), quantity in grouped.items()
         ]
@@ -2336,7 +2338,7 @@ class OrderService:
         if actual_strike_count >= config.MAX_STRIKES_BEFORE_BAN and not admin_exempt and not user.is_blocked:
             # User just crossed ban threshold - ban and notify
             user.is_blocked = True
-            user.blocked_at = datetime.utcnow()
+            user.blocked_at = datetime.now(timezone.utc)
             user.blocked_reason = f"Automatic ban: {actual_strike_count} strikes (threshold: {config.MAX_STRIKES_BEFORE_BAN})"
             logging.warning(f"🚫 User {user_id} BANNED: {actual_strike_count} strikes reached")
 

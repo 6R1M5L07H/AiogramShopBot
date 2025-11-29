@@ -7,7 +7,7 @@ Tests CRUD operations for anonymized violation statistics using in-memory SQLite
 import pytest
 import sys
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # Add project root to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
@@ -46,7 +46,7 @@ class TestViolationStatisticsRepository:
     async def test_create_success(self, session):
         """Test successful creation of ViolationStatistics."""
         # Arrange
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         dto = ViolationStatisticsDTO(
             violation_date=now,
@@ -74,7 +74,7 @@ class TestViolationStatisticsRepository:
     async def test_get_by_type(self, session):
         """Test retrieval of violations by type."""
         # Arrange
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         # Create late payment violations
         dto1 = ViolationStatisticsDTO(
@@ -131,7 +131,7 @@ class TestViolationStatisticsRepository:
     async def test_get_total_penalties(self, session):
         """Test retrieval of total penalty amount."""
         # Arrange
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         dto1 = ViolationStatisticsDTO(
             violation_date=now - timedelta(days=5),
