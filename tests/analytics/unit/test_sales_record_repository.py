@@ -7,7 +7,7 @@ Tests CRUD operations for anonymized sales records using in-memory SQLite databa
 import pytest
 import sys
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # Add project root to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
@@ -49,7 +49,7 @@ class TestSalesRecordRepository:
     async def test_create_many_success(self, session):
         """Test successful creation of multiple SalesRecords."""
         # Arrange
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         dto1 = SalesRecordDTO(
             sale_date=now,
@@ -111,7 +111,7 @@ class TestSalesRecordRepository:
     async def test_get_total_revenue_last_30_days(self, session):
         """Test retrieval of total revenue for last 30 days."""
         # Arrange
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         # Create records within 30 days
         dto1 = SalesRecordDTO(
@@ -200,7 +200,7 @@ class TestSalesRecordRepository:
     async def test_get_total_items_sold_last_7_days(self, session):
         """Test retrieval of total items sold for last 7 days."""
         # Arrange
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         # Record within 7 days
         dto1 = SalesRecordDTO(
@@ -268,7 +268,7 @@ class TestSalesRecordRepository:
     async def test_get_subcategory_sales_grouped_basic(self, session):
         """Test get_subcategory_sales_grouped with basic data."""
         # Arrange
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         dto1 = SalesRecordDTO(
             sale_date=now,
@@ -333,7 +333,7 @@ class TestSalesRecordRepository:
     async def test_get_subcategory_count(self, session):
         """Test get_subcategory_count."""
         # Arrange
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         dto1 = SalesRecordDTO(
             sale_date=now,
@@ -412,7 +412,7 @@ class TestSalesRecordRepository:
     async def test_get_all_sales_for_csv(self, session):
         """Test get_all_sales_for_csv returns all records."""
         # Arrange
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         dtos = []
         for i in range(10):

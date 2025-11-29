@@ -264,6 +264,7 @@ class OrderManagementService:
         """
         from services.shipping import ShippingService
         from services.invoice_formatter import InvoiceFormatterService
+        from enums.invoice_header_type import InvoiceHeaderType
         from exceptions.order import OrderNotFoundException
         from repositories.user import UserRepository
 
@@ -414,7 +415,7 @@ class OrderManagementService:
         should_show_private_data = entity == BotEntity.USER
 
         msg = InvoiceFormatterService.format_complete_order_view(
-            header_type="order_detail_admin" if entity == BotEntity.ADMIN else "order_detail_user",
+            header_type=InvoiceHeaderType.ORDER_DETAIL_ADMIN if entity == BotEntity.ADMIN else "order_detail_user",
             invoice_number=order_data["invoice_number"],
             order_status=order.status,
             created_at=order.created_at,

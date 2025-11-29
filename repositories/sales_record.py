@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,7 +23,7 @@ class SalesRecordRepository:
             ID of created sales record
         """
         sales_record = SalesRecord(
-            sale_date=sales_record_dto.sale_date.date() if sales_record_dto.sale_date else datetime.utcnow().date(),
+            sale_date=sales_record_dto.sale_date.date() if sales_record_dto.sale_date else datetime.now(timezone.utc).date(),
             sale_hour=sales_record_dto.sale_hour,
             sale_weekday=sales_record_dto.sale_weekday,
             category_name=sales_record_dto.category_name,
@@ -63,7 +63,7 @@ class SalesRecordRepository:
         records = []
         for dto in sales_record_dtos:
             record = SalesRecord(
-                sale_date=dto.sale_date.date() if dto.sale_date else datetime.utcnow().date(),
+                sale_date=dto.sale_date.date() if dto.sale_date else datetime.now(timezone.utc).date(),
                 sale_hour=dto.sale_hour,
                 sale_weekday=dto.sale_weekday,
                 category_name=dto.category_name,
@@ -132,7 +132,7 @@ class SalesRecordRepository:
         Returns:
             List of SalesRecord objects
         """
-        cutoff_date = datetime.utcnow().date() - timedelta(days=days)
+        cutoff_date = datetime.now(timezone.utc).date() - timedelta(days=days)
 
         stmt = select(SalesRecord).where(
             SalesRecord.category_name == category_name,
@@ -157,7 +157,7 @@ class SalesRecordRepository:
         Returns:
             Total revenue (sum of item_total_price)
         """
-        cutoff_date = datetime.utcnow().date() - timedelta(days=days)
+        cutoff_date = datetime.now(timezone.utc).date() - timedelta(days=days)
 
         stmt = select(SalesRecord).where(
             SalesRecord.sale_date >= cutoff_date,
@@ -184,7 +184,7 @@ class SalesRecordRepository:
         Returns:
             Total quantity sold
         """
-        cutoff_date = datetime.utcnow().date() - timedelta(days=days)
+        cutoff_date = datetime.now(timezone.utc).date() - timedelta(days=days)
 
         stmt = select(SalesRecord).where(
             SalesRecord.sale_date >= cutoff_date,

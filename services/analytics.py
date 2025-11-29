@@ -7,7 +7,7 @@ for long-term analytics while removing user identification (data minimization).
 
 import logging
 import hashlib
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -79,7 +79,7 @@ class AnalyticsService:
         shipping_type = None
 
         # Current time for temporal data
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         # Generate pseudonymized order hash for refund tracking
         # Uses SHA256(order_id + created_at) to enable refund matching without storing actual order_id
@@ -166,7 +166,7 @@ class AnalyticsService:
 
         # Create violation record
         violation_dto = ViolationStatisticsDTO(
-            violation_date=datetime.utcnow(),
+            violation_date=datetime.now(timezone.utc),
             violation_type=violation_type,
             order_value=order.total_price,
             penalty_applied=penalty_applied,
@@ -221,7 +221,7 @@ class AnalyticsService:
         import config
 
         # Calculate date range
-        end_date = datetime.utcnow()
+        end_date = datetime.now(timezone.utc)
         start_date = end_date - timedelta(days=days)
 
         # Get grouped data from repository
