@@ -129,20 +129,16 @@ class DatabaseBackup:
                     logger.debug("Using standard SQLite for database backup")
                     source_conn = sqlite3.connect(self.db_path)
 
-                # Create in-memory backup
+                # Create in-memory backup using tempfile connection
                 backup_conn = sqlite3.connect(":memory:")
                 try:
                     source_conn.backup(backup_conn)
 
-                    # Write in-memory DB to buffer
-                    temp_backup_conn = sqlite3.connect(":memory:")
-                    backup_conn.backup(temp_backup_conn)
-
-                    # Serialize to bytes
-                    for line in temp_backup_conn.iterdump():
+                    # Serialize in-memory DB to buffer using iterdump()
+                    # Note: This creates SQL dump, not binary DB file
+                    for line in backup_conn.iterdump():
                         backup_buffer.write(f"{line}\n".encode('utf-8'))
 
-                    temp_backup_conn.close()
                     logger.debug("Database backed up to memory")
                 finally:
                     source_conn.close()
