@@ -124,7 +124,7 @@ class DatabaseBackup:
 
                     logger.debug("Using SQLCipher for encrypted database backup")
                     source_conn = sqlcipher.connect(self.db_path)
-                    source_conn.execute("PRAGMA key = ?", (config.DB_PASS,))
+                    source_conn.execute(f"PRAGMA key = '{config.DB_PASS}'")
                 else:
                     logger.debug("Using standard SQLite for database backup")
                     source_conn = sqlite3.connect(self.db_path)
@@ -190,7 +190,7 @@ class DatabaseBackup:
 
                     logger.debug("Using SQLCipher for encrypted database backup")
                     source_conn = sqlcipher.connect(self.db_path)
-                    source_conn.execute("PRAGMA key = ?", (config.DB_PASS,))
+                    source_conn.execute(f"PRAGMA key = '{config.DB_PASS}'")
                     backup_conn = sqlite3.connect(str(backup_path))
 
                     try:
