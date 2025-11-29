@@ -125,24 +125,37 @@ class DatabaseBackup:
                     logger.debug("Using SQLCipher for encrypted database backup")
                     source_conn = sqlcipher.connect(self.db_path)
                     source_conn.execute(f"PRAGMA key = '{config.DB_PASS}'")
+
+                    # SQLCipher → SQLite export via SQL dump (no binary backup possible)
+                    backup_buffer_lines = []
+                    for line in source_conn.iterdump():
+                        backup_buffer_lines.append(f"{line}\n")
+
+                    # Write SQL dump to buffer
+                    for line in backup_buffer_lines:
+                        backup_buffer.write(line.encode('utf-8'))
+
+                    logger.debug("Database backed up to memory (SQL dump from SQLCipher)")
+                    source_conn.close()
+
                 else:
                     logger.debug("Using standard SQLite for database backup")
                     source_conn = sqlite3.connect(self.db_path)
 
-                # Create in-memory backup using tempfile connection
-                backup_conn = sqlite3.connect(":memory:")
-                try:
-                    source_conn.backup(backup_conn)
+                    # Create in-memory backup using tempfile connection
+                    backup_conn = sqlite3.connect(":memory:")
+                    try:
+                        source_conn.backup(backup_conn)
 
-                    # Serialize in-memory DB to buffer using iterdump()
-                    # Note: This creates SQL dump, not binary DB file
-                    for line in backup_conn.iterdump():
-                        backup_buffer.write(f"{line}\n".encode('utf-8'))
+                        # Serialize in-memory DB to buffer using iterdump()
+                        # Note: This creates SQL dump, not binary DB file
+                        for line in backup_conn.iterdump():
+                            backup_buffer.write(f"{line}\n".encode('utf-8'))
 
-                    logger.debug("Database backed up to memory")
-                finally:
-                    source_conn.close()
-                    backup_conn.close()
+                        logger.debug("Database backed up to memory")
+                    finally:
+                        source_conn.close()
+                        backup_conn.close()
 
                 # Compress in memory
                 backup_buffer.seek(0)
@@ -188,17 +201,18 @@ class DatabaseBackup:
                     if sqlcipher is None:
                         raise RuntimeError("DB_ENCRYPTION=true but sqlcipher3 module not available")
 
-                    logger.debug("Using SQLCipher for encrypted database backup")
+                    logger.debug("Using SQLCipher for encrypted database backup (SQL dump mode)")
                     source_conn = sqlcipher.connect(self.db_path)
                     source_conn.execute(f"PRAGMA key = '{config.DB_PASS}'")
-                    backup_conn = sqlite3.connect(str(backup_path))
 
                     try:
-                        source_conn.backup(backup_conn)
-                        logger.info(f"Database backup created successfully (decrypted): {backup_path}")
+                        # Export as SQL dump (SQLCipher → Standard SQLite not possible via backup())
+                        with open(backup_path, 'w', encoding='utf-8') as f:
+                            for line in source_conn.iterdump():
+                                f.write(f"{line}\n")
+                        logger.info(f"Database backup created successfully (SQL dump from SQLCipher): {backup_path}")
                     finally:
                         source_conn.close()
-                        backup_conn.close()
                 else:
                     logger.debug("Using standard SQLite for database backup")
                     source_conn = sqlite3.connect(self.db_path)
