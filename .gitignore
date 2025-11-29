@@ -189,6 +189,7 @@ logs/
 # Backups
 backups/*.db
 backups/*.db.gz
+backups/*.gpg
 backups/*.sha256
 !backups/.gitkeep
 
