@@ -360,6 +360,7 @@
     "help": "🆘 Hilfe",
     "help_button": "✉️ Support kontaktieren",
     "help_string": "🤝 Support",
+    "gpg_menu": "🔐 Verschlüsselung",
     "insufficient_funds": "<b>Guthaben reicht nicht aus!</b>",
     "my_profile": "👤 Mein Profil",
     "my_profile_msg": "👤 <b>Profil\nID:</b> <code>{telegram_id}</code>\n\n<b>BTC-Guthaben:</b>\n<code>{btc_balance}</code>\n<b>LTC-Guthaben:</b>\n<code>{ltc_balance}</code>\n<b>SOL-Guthaben:</b>\n<code>{sol_balance}</code>\n<b>USDT TRC-20 Guthaben:</b>\n<code>{usdt_trc20_balance}</code>\n<b>USDT ERC-20 Guthaben:</b>\n<code>{usdt_erc20_balance}</code>\n<b>USDC ERC-20 Guthaben:</b>\n<code>{usdc_erc20_balance}</code>\n<b>Guthaben in {currency_text}:</b>\n{fiat_balance}{currency_sym}",
