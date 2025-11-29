@@ -104,6 +104,27 @@ class ItemRepository:
         return ItemDTO.model_validate(item.scalar(), from_attributes=True)
 
     @staticmethod
+    async def get_by_ids(item_ids: list[int], session: Session | AsyncSession) -> dict[int, ItemDTO]:
+        """
+        Batch load Items for multiple item_ids (eliminates N+1 queries).
+
+        Args:
+            item_ids: List of item IDs
+            session: Database session
+
+        Returns:
+            Dict mapping item_id -> ItemDTO
+        """
+        if not item_ids:
+            return {}
+
+        stmt = select(Item).where(Item.id.in_(item_ids))
+        result = await session_execute(stmt, session)
+        items = result.scalars().all()
+
+        return {item.id: ItemDTO.model_validate(item, from_attributes=True) for item in items}
+
+    @staticmethod
     async def get_purchased_items(category_id: int, subcategory_id: int, quantity: int, session: Session | AsyncSession) -> list[ItemDTO]:
         stmt = (select(Item)
                 .where(Item.category_id == category_id, Item.subcategory_id == subcategory_id,

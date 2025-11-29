@@ -196,7 +196,7 @@ async def webhook(request: Request):
 
     try:
         update_data = await request.json()
-        logging.debug(f"📥 Webhook received update: {update_data}")
+        # Security: Do not log update_data - contains PII (messages, addresses, etc.)
         await dp.feed_webhook_update(bot, update_data)
         logging.info(f"✅ Webhook processed successfully")
         return {"status": "ok"}

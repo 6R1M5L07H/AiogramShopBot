@@ -30,20 +30,10 @@ class InvoiceFormatterService:
             private_data: Raw private data string
 
         Returns:
-            Formatted HTML string
+            Formatted HTML string (always escaped to prevent XSS)
         """
-        # Check if private_data contains HTML tags (already formatted)
-        if any(tag in private_data for tag in ['<b>', '<i>', '<a>', '<code>', '<pre>', '<u>', '<s>']):
-            # SECURITY NOTE: Pre-formatted HTML is rendered directly without escaping.
-            # This assumes private_data is admin-controlled (from Item table).
-            # DO NOT use user-provided input here without sanitization.
-            lines = private_data.split('\n')
-            result = f"   {lines[0]}\n"
-            if len(lines) > 1:
-                result += '\n'.join(lines[1:]) + '\n'
-            return result
         # Check if private_data is a URL (for Telegram deep links)
-        elif private_data.startswith(('http://', 'https://', 't.me/')):
+        if private_data.startswith(('http://', 'https://', 't.me/')):
             # Render as clickable link with URL sanitization
             if private_data.startswith('t.me/'):
                 private_data = f"https://{private_data}"
@@ -54,6 +44,7 @@ class InvoiceFormatterService:
             return f"   <a href=\"{sanitized_url}\">📱 Beratung starten</a>\n"
         else:
             # Render as code (for vouchers, keys, etc.) with HTML escaping
+            # Always escape to prevent XSS, even for admin-controlled data
             return f"   <code>{safe_html(private_data)}</code>\n"
 
     @staticmethod

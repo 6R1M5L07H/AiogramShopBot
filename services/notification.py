@@ -41,15 +41,21 @@ class NotificationService:
 
     @staticmethod
     async def send_to_admins(message: str | BufferedInputFile, reply_markup: types.InlineKeyboardMarkup | None):
+        import asyncio
         bot = get_bot()
-        for admin_id in ADMIN_ID_LIST:
+
+        async def send_to_admin(admin_id: int):
+            """Send message to a single admin (helper for parallel sends)"""
             try:
                 if isinstance(message, str):
                     await bot.send_message(admin_id, f"<b>{message}</b>", reply_markup=reply_markup)
                 else:
                     await bot.send_document(admin_id, message, reply_markup=reply_markup)
             except Exception as e:
-                logging.error(e)
+                logging.error(f"Failed to send to admin {admin_id}: {e}")
+
+        # Send to all admins in parallel (prevents webhook blocking)
+        await asyncio.gather(*[send_to_admin(admin_id) for admin_id in ADMIN_ID_LIST], return_exceptions=True)
 
     @staticmethod
     async def send_to_user(message: str, telegram_id: int):
@@ -150,15 +156,34 @@ class NotificationService:
     @staticmethod
     async def new_buy(sold_items: list[CartItemDTO], user: UserDTO, session: AsyncSession | Session):
         user_button = await NotificationService.make_user_button(user.telegram_username)
+
+        # Batch-load all categories, subcategories, prices, and metadata (eliminates N+1 queries)
+        category_ids = list({item.category_id for item in sold_items})
+        subcategory_ids = list({item.subcategory_id for item in sold_items})
+        item_keys = [(item.category_id, item.subcategory_id) for item in sold_items]
+
+        categories_dict = await CategoryRepository.get_by_ids(category_ids, session)
+        subcategories_dict = await SubcategoryRepository.get_by_ids(subcategory_ids, session)
+        prices_dict = await ItemRepository.get_prices_batch(item_keys, session)
+
+        # Pre-load metadata for all items (TODO: implement batch-loading method in ItemRepository)
+        metadata_dict = {}
+        for key in item_keys:
+            if key not in metadata_dict:  # Avoid duplicate queries for same item
+                metadata_dict[key] = await ItemRepository.get_item_metadata(key[0], key[1], session)
+
         cart_grand_total = 0.0
         message = ""
         for item in sold_items:
-            # Get item metadata to retrieve unit
-            item_metadata = await ItemRepository.get_item_metadata(item.category_id, item.subcategory_id, session)
-            price = await ItemRepository.get_price(ItemDTO(subcategory_id=item.subcategory_id,
-                                                           category_id=item.category_id), session)
-            category = await CategoryRepository.get_by_id(item.category_id, session)
-            subcategory = await SubcategoryRepository.get_by_id(item.subcategory_id, session)
+            # Lookup from batch-loaded dicts
+            price = prices_dict.get((item.category_id, item.subcategory_id), 0.0)
+            category = categories_dict.get(item.category_id)
+            subcategory = subcategories_dict.get(item.subcategory_id)
+            item_metadata = metadata_dict.get((item.category_id, item.subcategory_id))
+
+            # Skip if data missing (defensive)
+            if not category or not subcategory:
+                continue
 
             # Get unit with defensive fallback
             from enums.item_unit import ItemUnit

@@ -94,25 +94,29 @@ class UserService:
         buys = await BuyRepository.get_by_buyer_id(user.id, unpacked_cb.page, session)
         kb_builder = InlineKeyboardBuilder()
 
-        # Batch-load all items and subcategories (eliminates N+1 queries)
-        item_ids = []
-        for buy in buys:
-            buy_item = await BuyItemRepository.get_single_by_buy_id(buy.id, session)
-            item_ids.append(buy_item.item_id)
+        if not buys:
+            # No purchases - return early
+            return Localizator.get_text(BotEntity.USER, "no_purchases"), kb_builder
 
-        # Get all items in one query
-        items_dict = {}
-        for item_id in item_ids:
-            item = await ItemRepository.get_by_id(item_id, session)
-            items_dict[item_id] = item
+        # Batch-load all buy_items, items, and subcategories (eliminates N+1 queries)
+        buy_ids = [buy.id for buy in buys]
 
-        # Batch-load subcategories
+        # Query 1: Batch-load all buy_items (1 query for N buys)
+        buy_items_dict = await BuyItemRepository.get_by_buy_ids(buy_ids, session)
+
+        # Query 2: Batch-load all items (1 query for N items)
+        item_ids = [buy_item.item_id for buy_item in buy_items_dict.values()]
+        items_dict = await ItemRepository.get_by_ids(item_ids, session)
+
+        # Query 3: Batch-load all subcategories (1 query for M subcategories)
         subcategory_ids = list({item.subcategory_id for item in items_dict.values()})
         subcategories_dict = await SubcategoryRepository.get_by_ids(subcategory_ids, session)
 
-        # Build buttons with batch-loaded data
+        # Build buttons with batch-loaded data (no more queries!)
         for buy in buys:
-            buy_item = await BuyItemRepository.get_single_by_buy_id(buy.id, session)
+            buy_item = buy_items_dict.get(buy.id)
+            if not buy_item:
+                continue
             item = items_dict.get(buy_item.item_id)
             if not item:
                 continue

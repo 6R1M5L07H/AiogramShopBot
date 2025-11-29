@@ -2,96 +2,79 @@
 Shipping Service
 
 Handles shipping address encryption, storage, and retrieval for orders with physical items.
-Uses AES-256-GCM encryption with PBKDF2 key derivation.
+Uses centralized EncryptionService for all crypto operations.
 """
 
-import os
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-from cryptography.hazmat.primitives import hashes
+import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 from sqlalchemy import select
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+from cryptography.hazmat.primitives import hashes
 
 import config
 from db import session_execute, session_commit
 from models.shipping_address import ShippingAddress
+from models.order import Order
+from services.encryption import EncryptionService
 from utils.html_escape import safe_html
+
+logger = logging.getLogger(__name__)
 
 
 class ShippingService:
 
     @staticmethod
-    def _derive_key(order_id: int) -> bytes:
+    async def save_shipping_address_unified(
+        order_id: int,
+        plaintext_or_pgp: str,
+        encryption_mode: str,
+        session: AsyncSession | Session
+    ):
         """
-        Derive encryption key from master secret + order_id using PBKDF2.
+        Unified method to save shipping address with automatic encryption mode handling.
+
+        Supports both AES-GCM (server-side) and PGP (client-side) encryption modes.
+        This is the main entry point for saving shipping addresses from CartService.
 
         Args:
-            order_id: Order ID used as salt component
+            order_id: Order ID
+            plaintext_or_pgp: Plaintext address (for AES) or PGP-encrypted message (for PGP)
+            encryption_mode: 'aes' or 'pgp'
+            session: Database session
 
-        Returns:
-            32-byte encryption key
+        Raises:
+            ValueError: If encryption mode is invalid
         """
-        # Use order_id as part of salt for order-specific keys
-        salt = config.SHIPPING_ADDRESS_SECRET.encode() + str(order_id).encode()
+        if encryption_mode == "aes-gcm":
+            # Normalize to 'aes' (database uses 'aes', not 'aes-gcm')
+            encryption_mode = "aes"
 
-        kdf = PBKDF2HMAC(
-            algorithm=hashes.SHA256(),
-            length=32,
-            salt=salt,
-            iterations=100000,
+        if not EncryptionService.validate_encryption_mode(encryption_mode):
+            raise ValueError(f"Invalid encryption mode: {encryption_mode}")
+
+        if encryption_mode == "aes":
+            # Server-side AES encryption
+            encrypted, nonce, tag = EncryptionService.encrypt_aes_gcm(
+                plaintext=plaintext_or_pgp,
+                salt_component=f"order_{order_id}"
+            )
+        elif encryption_mode == "pgp":
+            # Client-side PGP (already encrypted)
+            encrypted = EncryptionService.encode_pgp(plaintext_or_pgp)
+            nonce, tag = b'', b''  # Not used for PGP
+
+        # Save to database
+        shipping_address = ShippingAddress(
+            order_id=order_id,
+            encrypted_address=encrypted,
+            nonce=nonce,
+            tag=tag,
+            encryption_mode=encryption_mode
         )
-        return kdf.derive(config.SHIPPING_ADDRESS_SECRET.encode())
-
-    @staticmethod
-    def encrypt_address(plaintext_address: str, order_id: int) -> tuple[bytes, bytes, bytes]:
-        """
-        Encrypt shipping address using AES-256-GCM.
-
-        Args:
-            plaintext_address: Plain text shipping address
-            order_id: Order ID for key derivation
-
-        Returns:
-            (encrypted_data, nonce, tag)
-        """
-        key = ShippingService._derive_key(order_id)
-        aesgcm = AESGCM(key)
-
-        nonce = os.urandom(12)  # 96-bit nonce for GCM
-        plaintext_bytes = plaintext_address.encode('utf-8')
-
-        # GCM mode returns ciphertext + tag concatenated
-        ciphertext_with_tag = aesgcm.encrypt(nonce, plaintext_bytes, None)
-
-        # Split ciphertext and tag (last 16 bytes are tag)
-        ciphertext = ciphertext_with_tag[:-16]
-        tag = ciphertext_with_tag[-16:]
-
-        return ciphertext, nonce, tag
-
-    @staticmethod
-    def decrypt_address(encrypted_address: bytes, nonce: bytes, tag: bytes, order_id: int) -> str:
-        """
-        Decrypt shipping address using AES-256-GCM.
-
-        Args:
-            encrypted_address: Encrypted address data
-            nonce: GCM nonce
-            tag: GCM authentication tag
-            order_id: Order ID for key derivation
-
-        Returns:
-            Decrypted plain text address
-        """
-        key = ShippingService._derive_key(order_id)
-        aesgcm = AESGCM(key)
-
-        # Concatenate ciphertext and tag for GCM decryption
-        ciphertext_with_tag = encrypted_address + tag
-
-        plaintext_bytes = aesgcm.decrypt(nonce, ciphertext_with_tag, None)
-        return plaintext_bytes.decode('utf-8')
+        session.add(shipping_address)
+        await session_commit(session)
 
     @staticmethod
     async def save_shipping_address(
@@ -107,8 +90,11 @@ class ShippingService:
             plaintext_address: Plain text shipping address
             session: Database session
         """
-        # Encrypt address
-        encrypted, nonce, tag = ShippingService.encrypt_address(plaintext_address, order_id)
+        # Encrypt address using centralized EncryptionService
+        encrypted, nonce, tag = EncryptionService.encrypt_aes_gcm(
+            plaintext=plaintext_address,
+            salt_component=f"order_{order_id}"
+        )
 
         # Save to database
         shipping_address = ShippingAddress(
@@ -233,6 +219,37 @@ class ShippingService:
         shipping_address = result.scalar_one_or_none()
 
         if not shipping_address:
+            # Fallback: Check legacy orders.encrypted_payload storage
+            # This ensures backward compatibility with orders created before migration to shipping_addresses table
+            stmt_order = select(Order).where(Order.id == order_id)
+            result_order = await session_execute(stmt_order, session)
+            order = result_order.scalar_one_or_none()
+
+            if order and order.encrypted_payload:
+                # Legacy data exists - decrypt and return
+                logger.info(f"Using legacy encrypted_payload for order {order_id}")
+                try:
+                    if order.encryption_mode == 'pgp':
+                        # Legacy PGP mode
+                        if return_encrypted_for_pgp:
+                            return order.encrypted_payload.decode('utf-8')
+                        else:
+                            from utils.localizator import Localizator
+                            from enums.bot_entity import BotEntity
+                            return Localizator.get_text(BotEntity.ADMIN, "pgp_encrypted_placeholder")
+                    elif order.encryption_mode == 'aes-gcm':
+                        # Legacy AES-GCM mode
+                        return ShippingService._decrypt_legacy_aes_gcm(order.encrypted_payload, order_id)
+                    else:
+                        logger.warning(f"Unknown legacy encryption mode '{order.encryption_mode}' for order {order_id}")
+                        return None
+                except Exception as e:
+                    logger.error(f"Failed to decrypt legacy shipping address for order {order_id}: {e}")
+                    from utils.localizator import Localizator
+                    from enums.bot_entity import BotEntity
+                    return Localizator.get_text(BotEntity.ADMIN, "decryption_failed_message")
+
+            # No address found in either table
             return None
 
         # PGP mode: Return encrypted block for admin display
@@ -244,13 +261,13 @@ class ShippingService:
                 from enums.bot_entity import BotEntity
                 return Localizator.get_text(BotEntity.ADMIN, "pgp_encrypted_placeholder")
 
-        # AES mode: Decrypt and return
+        # AES mode: Decrypt and return using centralized EncryptionService
         try:
-            return ShippingService.decrypt_address(
-                shipping_address.encrypted_address,
-                shipping_address.nonce,
-                shipping_address.tag,
-                order_id
+            return EncryptionService.decrypt_aes_gcm(
+                ciphertext=shipping_address.encrypted_address,
+                nonce=shipping_address.nonce,
+                tag=shipping_address.tag,
+                salt_component=f"order_{order_id}"
             )
         except Exception as e:
             # Decryption failed (wrong key, corrupted data, etc.)
@@ -525,3 +542,59 @@ class ShippingService:
             return invoice.invoice_number
         else:
             return "N/A"
+
+    # ========================================================================
+    # Legacy Encryption Support (Backwards Compatibility)
+    # ========================================================================
+
+    @staticmethod
+    def _derive_legacy_aes_key(order_id: int) -> bytes:
+        """
+        Derive AES encryption key from master secret + order_id using PBKDF2.
+
+        This is for backwards compatibility with old orders.encrypted_payload storage.
+
+        Args:
+            order_id: Order ID used as salt component
+
+        Returns:
+            32-byte encryption key
+        """
+        salt = config.SHIPPING_ADDRESS_SECRET.encode() + str(order_id).encode()
+
+        kdf = PBKDF2HMAC(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=salt,
+            iterations=100000,
+        )
+        return kdf.derive(config.SHIPPING_ADDRESS_SECRET.encode())
+
+    @staticmethod
+    def _decrypt_legacy_aes_gcm(combined: bytes, order_id: int) -> str:
+        """
+        Decrypt AES-256-GCM encrypted data from legacy orders.encrypted_payload.
+
+        Args:
+            combined: Combined binary [ciphertext][nonce 12 bytes][tag 16 bytes]
+            order_id: Order ID for key derivation
+
+        Returns:
+            Decrypted plaintext shipping address
+
+        Raises:
+            Exception: If decryption fails (wrong key, corrupted data)
+        """
+        key = ShippingService._derive_legacy_aes_key(order_id)
+        aesgcm = AESGCM(key)
+
+        # Extract components from combined binary
+        nonce = combined[-28:-16]  # Last 28 bytes = nonce (12) + tag (16)
+        tag = combined[-16:]
+        ciphertext = combined[:-28]
+
+        # Reconstruct ciphertext_with_tag for decryption
+        ciphertext_with_tag = ciphertext + tag
+        plaintext_bytes = aesgcm.decrypt(nonce, ciphertext_with_tag, None)
+
+        return plaintext_bytes.decode('utf-8')

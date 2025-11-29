@@ -47,6 +47,24 @@ class CategoryRepository:
         return CategoryDTO.model_validate(category.scalar(), from_attributes=True)
 
     @staticmethod
+    async def get_by_ids(category_ids: list[int], session: Session | AsyncSession) -> dict[int, CategoryDTO]:
+        """
+        Batch-load multiple categories with a single query.
+        Eliminates N+1 queries when loading categories for multiple items.
+
+        Returns:
+            Dict mapping category_id → CategoryDTO
+        """
+        stmt = select(Category).where(Category.id.in_(category_ids))
+        result = await session_execute(stmt, session)
+        categories = result.scalars().all()
+
+        return {
+            cat.id: CategoryDTO.model_validate(cat, from_attributes=True)
+            for cat in categories
+        }
+
+    @staticmethod
     async def get_to_delete(page: int, session: Session | AsyncSession) -> list[CategoryDTO]:
         stmt = select(Category).join(Item, Item.category_id == Category.id
                                      ).where(Item.is_sold == 0).distinct().limit(config.PAGE_ENTRIES).offset(

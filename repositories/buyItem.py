@@ -26,6 +26,27 @@ class BuyItemRepository:
         return [BuyItemDTO.model_validate(bi, from_attributes=True) for bi in buy_items]
 
     @staticmethod
+    async def get_by_buy_ids(buy_ids: list[int], session: Session | AsyncSession) -> dict[int, BuyItemDTO]:
+        """
+        Batch load BuyItems for multiple buy_ids (eliminates N+1 queries).
+
+        Args:
+            buy_ids: List of buy IDs
+            session: Database session
+
+        Returns:
+            Dict mapping buy_id -> BuyItemDTO
+        """
+        if not buy_ids:
+            return {}
+
+        stmt = select(BuyItem).where(BuyItem.buy_id.in_(buy_ids))
+        result = await session_execute(stmt, session)
+        buy_items = result.scalars().all()
+
+        return {bi.buy_id: BuyItemDTO.model_validate(bi, from_attributes=True) for bi in buy_items}
+
+    @staticmethod
     async def create_many(buy_item_dto_list: list[BuyItemDTO], session: Session | AsyncSession):
         for buy_item_dto in buy_item_dto_list:
             session.add(BuyItem(**buy_item_dto.model_dump()))
