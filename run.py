@@ -57,13 +57,17 @@ main_router = Router()
 
 @main_router.message(Command(commands=["start", "help"]))
 async def start(message: types.Message, session: AsyncSession | Session):
-    all_categories_button = types.KeyboardButton(text=Localizator.get_text(BotEntity.USER, "all_categories"))
-    my_profile_button = types.KeyboardButton(text=Localizator.get_text(BotEntity.USER, "my_profile"))
-    faq_button = types.KeyboardButton(text=Localizator.get_text(BotEntity.USER, "faq"))
-    help_button = types.KeyboardButton(text=Localizator.get_text(BotEntity.USER, "help"))
-    gpg_button = types.KeyboardButton(text=Localizator.get_text(BotEntity.USER, "gpg_menu"))
-    admin_menu_button = types.KeyboardButton(text=Localizator.get_text(BotEntity.ADMIN, "menu"))
-    cart_button = types.KeyboardButton(text=Localizator.get_text(BotEntity.USER, "cart"))
+    # FIXED Issue #12: Use user-specific language from Telegram
+    # Falls back to bot default if user language not supported (de/en)
+    user_lang = message.from_user.language_code if message.from_user.language_code in ["de", "en"] else None
+
+    all_categories_button = types.KeyboardButton(text=Localizator.get_text(BotEntity.USER, "all_categories", lang=user_lang))
+    my_profile_button = types.KeyboardButton(text=Localizator.get_text(BotEntity.USER, "my_profile", lang=user_lang))
+    faq_button = types.KeyboardButton(text=Localizator.get_text(BotEntity.USER, "faq", lang=user_lang))
+    help_button = types.KeyboardButton(text=Localizator.get_text(BotEntity.USER, "help", lang=user_lang))
+    gpg_button = types.KeyboardButton(text=Localizator.get_text(BotEntity.USER, "gpg_menu", lang=user_lang))
+    admin_menu_button = types.KeyboardButton(text=Localizator.get_text(BotEntity.ADMIN, "menu", lang=user_lang))
+    cart_button = types.KeyboardButton(text=Localizator.get_text(BotEntity.USER, "cart", lang=user_lang))
     telegram_id = message.from_user.id
     await UserService.create_if_not_exist(UserDTO(
         telegram_username=message.from_user.username,
@@ -76,7 +80,7 @@ async def start(message: types.Message, session: AsyncSession | Session):
     if is_admin_user(telegram_id):
         keyboard.append([admin_menu_button])
     start_markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2, keyboard=keyboard)
-    await message.answer(Localizator.get_text(BotEntity.COMMON, "start_message"), reply_markup=start_markup)
+    await message.answer(Localizator.get_text(BotEntity.COMMON, "start_message", lang=user_lang), reply_markup=start_markup)
 
 
 @main_router.message(F.text == Localizator.get_text(BotEntity.USER, "faq"), IsUserExistFilterIncludingBanned())
@@ -161,33 +165,9 @@ async def catch_all_web_app_data(message: Message):
         f"button_text={message.web_app_data.button_text}"
     )
 
-# Global Update Logger (for debugging)
-@dp.update.outer_middleware()
-async def log_all_updates(handler, event, data):
-    """Log ALL updates to debug what Telegram is sending."""
-    update_type = "unknown"
-    details = ""
-    user_id = None
-
-    # Extract update info
-    if hasattr(event, 'message') and event.message:
-        update_type = "message"
-        user_id = event.message.from_user.id if event.message.from_user else None
-
-        if hasattr(event.message, 'web_app_data') and event.message.web_app_data:
-            update_type = "web_app_data"
-            details = f"user={user_id}, data_length={len(event.message.web_app_data.data)}"
-            # DO NOT log data content - may contain PII (addresses, personal info)
-        elif event.message.text:
-            details = f"user={user_id}, text={event.message.text[:30]}"
-    elif hasattr(event, 'callback_query') and event.callback_query:
-        update_type = "callback_query"
-        user_id = event.callback_query.from_user.id if event.callback_query.from_user else None
-        details = f"user={user_id}, data={event.callback_query.data[:30] if event.callback_query.data else 'None'}"
-
-    logging.warning(f"[🔍 UPDATE] Type: {update_type} | {details}")
-
-    return await handler(event, data)
+# Security: Update logging middleware removed to prevent PII leakage
+# Previously logged message text and callback data which may contain personal information
+# For debugging, use application-level logging in specific handlers instead
 
 # Register handlers at module level (not inside if __name__ == '__main__')
 # This ensures handlers are available when uvicorn worker imports this module

@@ -72,48 +72,40 @@ async def pgp_address_input(
         logging.error(f"PGP key not configured for Mini App: {e}")
         raise HTTPException(status_code=500, detail="PGP encryption not available")
 
-    # Set language context for Localizator
-    # Note: This is a simplified approach. In production, consider proper i18n context management.
-    original_lang = config.BOT_LANGUAGE
-    config.BOT_LANGUAGE = lang
+    # Load localized strings using request-scoped language
+    # FIXED: Pass lang parameter explicitly instead of mutating global state (race condition)
+    page_title = Localizator.get_text(BotEntity.USER, "pgp_webapp_title", lang=lang)
+    description = Localizator.get_text(BotEntity.USER, "pgp_webapp_description", lang=lang)
+    security_title = Localizator.get_text(BotEntity.USER, "pgp_webapp_security_title", lang=lang)
+    security_text = Localizator.get_text(BotEntity.USER, "pgp_webapp_security_text", lang=lang)
+    input_label = Localizator.get_text(BotEntity.USER, "pgp_webapp_input_label", lang=lang)
+    input_placeholder = Localizator.get_text(BotEntity.USER, "pgp_webapp_input_placeholder", lang=lang)
+    main_button_text = Localizator.get_text(BotEntity.USER, "pgp_webapp_main_button", lang=lang)
+    error_title = Localizator.get_text(BotEntity.USER, "pgp_webapp_error_title", lang=lang)
+    error_empty_address = Localizator.get_text(BotEntity.USER, "pgp_webapp_error_empty", lang=lang)
+    error_encryption = Localizator.get_text(BotEntity.USER, "pgp_webapp_error_encryption", lang=lang)
+    status_encrypting = Localizator.get_text(BotEntity.USER, "pgp_webapp_status_encrypting", lang=lang)
+    status_sending = Localizator.get_text(BotEntity.USER, "pgp_webapp_status_sending", lang=lang)
 
-    try:
-        # Load localized strings
-        page_title = Localizator.get_text(BotEntity.USER, "pgp_webapp_title")
-        description = Localizator.get_text(BotEntity.USER, "pgp_webapp_description")
-        security_title = Localizator.get_text(BotEntity.USER, "pgp_webapp_security_title")
-        security_text = Localizator.get_text(BotEntity.USER, "pgp_webapp_security_text")
-        input_label = Localizator.get_text(BotEntity.USER, "pgp_webapp_input_label")
-        input_placeholder = Localizator.get_text(BotEntity.USER, "pgp_webapp_input_placeholder")
-        main_button_text = Localizator.get_text(BotEntity.USER, "pgp_webapp_main_button")
-        error_title = Localizator.get_text(BotEntity.USER, "pgp_webapp_error_title")
-        error_empty_address = Localizator.get_text(BotEntity.USER, "pgp_webapp_error_empty")
-        error_encryption = Localizator.get_text(BotEntity.USER, "pgp_webapp_error_encryption")
-        status_encrypting = Localizator.get_text(BotEntity.USER, "pgp_webapp_status_encrypting")
-        status_sending = Localizator.get_text(BotEntity.USER, "pgp_webapp_status_sending")
-
-        # Render template with all variables
-        return templates.TemplateResponse(
-            "pgp_address_input.html",
-            {
-                "request": request,
-                "lang": lang,
-                "order_id": order_id,
-                "pgp_public_key": pgp_public_key,
-                "page_title": page_title,
-                "description": description,
-                "security_title": security_title,
-                "security_text": security_text,
-                "input_label": input_label,
-                "input_placeholder": input_placeholder,
-                "main_button_text": main_button_text,
-                "error_title": error_title,
-                "error_empty_address": error_empty_address,
-                "error_encryption": error_encryption,
-                "status_encrypting": status_encrypting,
-                "status_sending": status_sending,
-            }
-        )
-    finally:
-        # Restore original language
-        config.BOT_LANGUAGE = original_lang
+    # Render template with all variables
+    return templates.TemplateResponse(
+        "pgp_address_input.html",
+        {
+            "request": request,
+            "lang": lang,
+            "order_id": order_id,
+            "pgp_public_key": pgp_public_key,
+            "page_title": page_title,
+            "description": description,
+            "security_title": security_title,
+            "security_text": security_text,
+            "input_label": input_label,
+            "input_placeholder": input_placeholder,
+            "main_button_text": main_button_text,
+            "error_title": error_title,
+            "error_empty_address": error_empty_address,
+            "error_encryption": error_encryption,
+            "status_encrypting": status_encrypting,
+            "status_sending": status_sending,
+        }
+    )

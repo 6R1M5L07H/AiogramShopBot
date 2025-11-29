@@ -27,8 +27,11 @@ class Order(Base):
     shipping_cost = Column(Float, nullable=False, default=0.0)
     shipping_type_key = Column(String(100), nullable=True)  # Key referencing shipping_types config (e.g., "paeckchen", "paket_2kg")
 
-    # Unified Shipping Address Encryption (Migration 014)
-    # Replaces shipping_addresses table with unified storage
+    # Note: Shipping addresses are stored in shipping_addresses table (encrypted with AES-256-GCM or PGP)
+
+    # Legacy Shipping Address Encryption (for backwards compatibility)
+    # These columns are deprecated and only used for reading old data
+    # New orders use the shipping_addresses table
     encryption_mode = Column(Text, nullable=True)  # 'aes-gcm' | 'pgp'
     encrypted_payload = Column(LargeBinary, nullable=True)  # Combined ciphertext+nonce+tag (AES) or PGP message
 

@@ -740,86 +740,104 @@ class CartService:
                     if current_tier_idx < len(available_tiers) - 1:
                         next_tier = available_tiers[current_tier_idx + 1]
                         items_needed = next_tier['min_quantity'] - cart_item.quantity
-                        # Use Decimal for precise currency calculation
-                        extra_savings_decimal = (
+                        # Keep as Decimal for precise currency calculation
+                        extra_savings = (
                             Decimal(str(current_unit_price)) - Decimal(str(next_tier['unit_price']))
                         ) * Decimal(str(cart_item.quantity + items_needed))
-                        extra_savings = float(extra_savings_decimal.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
+                        extra_savings = extra_savings.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
                         next_tier_info = {
                             'items_needed': items_needed,
                             'unit_price': next_tier['unit_price'],
-                            'extra_savings': extra_savings
+                            'extra_savings': extra_savings  # Store as Decimal
                         }
 
                     # Calculate savings vs single price (highest tier)
-                    savings_vs_single = 0.0
+                    savings_vs_single = Decimal('0.00')
                     if available_tiers:
                         single_price = available_tiers[0]['unit_price']  # First tier = most expensive
-                        # Use Decimal for precise currency calculation
-                        savings_decimal = (
+                        # Keep as Decimal for precise currency calculation
+                        savings_vs_single = (
                             Decimal(str(single_price)) - Decimal(str(current_unit_price))
                         ) * Decimal(str(cart_item.quantity))
-                        savings_vs_single = float(savings_decimal.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
-                        total_savings += Decimal(str(savings_vs_single))
+                        savings_vs_single = savings_vs_single.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                        total_savings += savings_vs_single
 
-                    # Unified item structure
+                    # Unified item structure (keep Decimal values for precision)
                     items_data.append({
                         'name': subcategory.name,
                         'quantity': cart_item.quantity,
                         'unit_price': current_unit_price,
-                        'line_total': line_total,
+                        'line_total': line_total,  # Decimal
                         'available_tiers': available_tiers if available_tiers else None,
                         'current_tier_idx': current_tier_idx,
-                        'next_tier_info': next_tier_info,
-                        'savings_vs_single': round(savings_vs_single, 2)
+                        'next_tier_info': next_tier_info,  # Contains Decimal extra_savings
+                        'savings_vs_single': savings_vs_single  # Decimal
                     })
 
                 except (json.JSONDecodeError, KeyError, ValueError):
                     # Fallback to flat pricing (no tier breakdown)
                     price = prices_dict.get((cart_item.category_id, cart_item.subcategory_id))
-                    # Use Decimal for precise currency calculation
-                    line_total_decimal = Decimal(str(price)) * Decimal(str(cart_item.quantity))
-                    line_total = float(line_total_decimal.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
-                    items_total += Decimal(str(line_total))
+                    # Keep as Decimal for precise currency calculation
+                    line_total = Decimal(str(price)) * Decimal(str(cart_item.quantity))
+                    line_total = line_total.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                    items_total += line_total
                     items_data.append({
                         'name': subcategory.name,
                         'quantity': cart_item.quantity,
                         'unit_price': price,
-                        'line_total': line_total,
+                        'line_total': line_total,  # Decimal
                         'available_tiers': None,
                         'current_tier_idx': 0,
                         'next_tier_info': None,
-                        'savings_vs_single': 0.0
+                        'savings_vs_single': Decimal('0.00')
                     })
             else:
                 # Flat pricing (no tier breakdown stored)
                 price = prices_dict.get((cart_item.category_id, cart_item.subcategory_id))
-                # Use Decimal for precise currency calculation
-                line_total_decimal = Decimal(str(price)) * Decimal(str(cart_item.quantity))
-                line_total = float(line_total_decimal.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
-                items_total += Decimal(str(line_total))
+                # Keep as Decimal for precise currency calculation
+                line_total = Decimal(str(price)) * Decimal(str(cart_item.quantity))
+                line_total = line_total.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                items_total += line_total
                 items_data.append({
                     'name': subcategory.name,
                     'quantity': cart_item.quantity,
                     'unit_price': price,
-                    'line_total': line_total,
+                    'line_total': line_total,  # Decimal
                     'available_tiers': None,
                     'current_tier_idx': 0,
                     'next_tier_info': None,
-                    'savings_vs_single': 0.0
+                    'savings_vs_single': Decimal('0.00')
                 })
 
-        # Use Decimal for precise grand total calculation
-        grand_total_decimal = Decimal(str(items_total)) + Decimal(str(max_shipping_cost))
-        grand_total = float(grand_total_decimal.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
+        # Calculate grand total with Decimal precision
+        grand_total = (items_total + Decimal(str(max_shipping_cost))).quantize(
+            Decimal('0.01'), rounding=ROUND_HALF_UP
+        )
+
+        # Convert Decimal values to float for JSON serialization (only at return point)
+        def decimal_to_float(value):
+            """Convert Decimal to float, or return as-is for other types"""
+            return float(value) if isinstance(value, Decimal) else value
+
+        # Convert nested structures (items list with Decimal values)
+        items_for_json = []
+        for item in items_data:
+            item_copy = item.copy()
+            item_copy['line_total'] = decimal_to_float(item_copy['line_total'])
+            item_copy['savings_vs_single'] = decimal_to_float(item_copy['savings_vs_single'])
+            if item_copy.get('next_tier_info'):
+                item_copy['next_tier_info']['extra_savings'] = decimal_to_float(
+                    item_copy['next_tier_info']['extra_savings']
+                )
+            items_for_json.append(item_copy)
 
         return {
-            'items': items_data,
-            'subtotal': float(items_total.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)),
+            'items': items_for_json,
+            'subtotal': float(items_total),
             'has_physical_items': has_physical_items,
             'max_shipping_cost': max_shipping_cost,
-            'grand_total': grand_total,
-            'total_savings': float(total_savings.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)),
+            'grand_total': float(grand_total),
+            'total_savings': float(total_savings),
             'message_key': 'cart_confirm_checkout_process'
         }
 
@@ -1818,8 +1836,8 @@ class CartService:
 
             # 5. Save shipping address if provided (supports both PGP and AES-GCM)
             if shipping_address:
-                from services.encryption_wrapper import EncryptionWrapper
-                await EncryptionWrapper.save_shipping_address_unified(
+                from services.shipping import ShippingService
+                await ShippingService.save_shipping_address_unified(
                     order_id=order.id,
                     plaintext_or_pgp=shipping_address,
                     encryption_mode=encryption_mode or "aes-gcm",  # Default to AES-GCM for plaintext

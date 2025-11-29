@@ -1,4 +1,5 @@
 import json
+from typing import Optional
 import config
 from enums.bot_entity import BotEntity
 
@@ -16,22 +17,45 @@ class Localizator:
     }
 
     @staticmethod
-    def get_text(entity: BotEntity, key: str) -> str:
-        with open(Localizator.localization_filename, "r", encoding="UTF-8") as f:
+    def get_text(entity: BotEntity, key: str, lang: Optional[str] = None) -> str:
+        """
+        Get localized text for given entity and key.
+
+        Args:
+            entity: Entity type (ADMIN, USER, COMMON)
+            key: Localization key
+            lang: Optional language code (e.g., "de", "en").
+                  If None, uses config.BOT_LANGUAGE (default).
+                  Use this parameter in concurrent contexts (e.g., FastAPI routes)
+                  to avoid global state race conditions.
+
+        Returns:
+            Localized text string
+
+        Example:
+            # Thread-safe usage in FastAPI route:
+            text = Localizator.get_text(BotEntity.USER, "welcome", lang="en")
+        """
+        # Use provided lang or fall back to global config
+        language = lang if lang is not None else config.BOT_LANGUAGE
+        localization_file = f"./l10n/{language}.json"
+
+        with open(localization_file, "r", encoding="UTF-8") as f:
+            data = json.loads(f.read())
             if entity == BotEntity.ADMIN:
-                return json.loads(f.read())["admin"][key]
+                return data["admin"][key]
             elif entity == BotEntity.USER:
-                return json.loads(f.read())["user"][key]
+                return data["user"][key]
             else:
-                return json.loads(f.read())["common"][key]
+                return data["common"][key]
 
     @staticmethod
-    def get_currency_symbol():
-        return Localizator.get_text(BotEntity.COMMON, f"{config.CURRENCY.value.lower()}_symbol")
+    def get_currency_symbol(lang: Optional[str] = None):
+        return Localizator.get_text(BotEntity.COMMON, f"{config.CURRENCY.value.lower()}_symbol", lang=lang)
 
     @staticmethod
-    def get_currency_text():
-        return Localizator.get_text(BotEntity.COMMON, f"{config.CURRENCY.value.lower()}_text")
+    def get_currency_text(lang: Optional[str] = None):
+        return Localizator.get_text(BotEntity.COMMON, f"{config.CURRENCY.value.lower()}_text", lang=lang)
 
     @staticmethod
     def localize_unit(unit: str) -> str:

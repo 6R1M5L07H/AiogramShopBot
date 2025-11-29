@@ -118,6 +118,10 @@ class ThrottleManager:
 
         await self.redis.hset(bucket_name, mapping=data)
 
+        # Set TTL to prevent unbounded Redis memory growth
+        # Use 1 hour (3600s) - long enough for rate limit tracking, short enough to expire old buckets
+        await self.redis.expire(bucket_name, 3600)
+
         if not result:
             raise Throttled(key=key, user=user_id, **data)
 

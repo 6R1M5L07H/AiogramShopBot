@@ -157,17 +157,19 @@ class SalesRecordRepository:
         Returns:
             Total revenue (sum of item_total_price)
         """
+        from sqlalchemy import func
+
         cutoff_date = datetime.now(timezone.utc).date() - timedelta(days=days)
 
-        stmt = select(SalesRecord).where(
+        stmt = select(func.sum(SalesRecord.item_total_price)).where(
             SalesRecord.sale_date >= cutoff_date,
             SalesRecord.is_refunded == False  # Exclude refunds
         )
 
         result = await session_execute(stmt, session)
-        records = result.scalars().all()
+        total = result.scalar()
 
-        return sum(record.item_total_price for record in records)
+        return total if total is not None else 0.0
 
     @staticmethod
     async def get_total_items_sold(
@@ -184,17 +186,19 @@ class SalesRecordRepository:
         Returns:
             Total quantity sold
         """
+        from sqlalchemy import func
+
         cutoff_date = datetime.now(timezone.utc).date() - timedelta(days=days)
 
-        stmt = select(SalesRecord).where(
+        stmt = select(func.sum(SalesRecord.quantity)).where(
             SalesRecord.sale_date >= cutoff_date,
             SalesRecord.is_refunded == False  # Exclude refunds
         )
 
         result = await session_execute(stmt, session)
-        records = result.scalars().all()
+        total = result.scalar()
 
-        return sum(record.quantity for record in records)
+        return int(total) if total is not None else 0
 
     @staticmethod
     async def get_subcategory_sales_grouped(
@@ -209,6 +213,10 @@ class SalesRecordRepository:
         Aggregates sales by (category, subcategory), then groups daily sales within each.
         Sorted by total revenue DESC (highest revenue first).
         Paginated using config.PAGE_ENTRIES.
+
+        Uses two-query approach for optimal performance:
+        1. Query paginated list of subcategories with totals (SQL GROUP BY + LIMIT)
+        2. Query daily breakdowns for only those specific subcategories
 
         Args:
             start_date: Start date (inclusive)
@@ -233,68 +241,87 @@ class SalesRecordRepository:
             ]
         """
         import config
-        from sqlalchemy import func
+        from sqlalchemy import func, tuple_
 
-        # Get all sales in date range (exclude refunds)
-        stmt = select(SalesRecord).where(
-            SalesRecord.sale_date >= start_date.date(),
-            SalesRecord.sale_date <= end_date.date(),
-            SalesRecord.is_refunded == False
-        ).order_by(SalesRecord.sale_date.desc())
-
-        result = await session_execute(stmt, session)
-        all_sales = result.scalars().all()
-
-        # Group by subcategory manually (for flexibility)
-        subcategory_map = {}
-
-        for sale in all_sales:
-            key = (sale.category_name, sale.subcategory_name)
-
-            if key not in subcategory_map:
-                subcategory_map[key] = {
-                    'category': sale.category_name,
-                    'subcategory': sale.subcategory_name,
-                    'sales_by_date': {},  # {date: {'quantity': int, 'revenue': float}}
-                    'total_quantity': 0,
-                    'total_revenue': 0.0
-                }
-
-            # Aggregate by date
-            date_key = sale.sale_date
-            if date_key not in subcategory_map[key]['sales_by_date']:
-                subcategory_map[key]['sales_by_date'][date_key] = {
-                    'date': date_key,
-                    'quantity': 0,
-                    'revenue': 0.0
-                }
-
-            subcategory_map[key]['sales_by_date'][date_key]['quantity'] += sale.quantity
-            subcategory_map[key]['sales_by_date'][date_key]['revenue'] += sale.item_total_price
-            subcategory_map[key]['total_quantity'] += sale.quantity
-            subcategory_map[key]['total_revenue'] += sale.item_total_price
-
-        # Convert to list and sort by total_revenue DESC
-        subcategory_list = []
-        for subcat_data in subcategory_map.values():
-            # Convert sales_by_date dict to sorted list (newest first)
-            sales_list = sorted(
-                subcat_data['sales_by_date'].values(),
-                key=lambda x: x['date'],
-                reverse=True
+        # Query 1: Get paginated list of subcategories with totals (SQL aggregation)
+        stmt_subcategories = (
+            select(
+                SalesRecord.category_name,
+                SalesRecord.subcategory_name,
+                func.sum(SalesRecord.quantity).label('total_quantity'),
+                func.sum(SalesRecord.item_total_price).label('total_revenue')
             )
-            subcat_data['sales'] = sales_list
-            del subcat_data['sales_by_date']  # Remove temp dict
-            subcategory_list.append(subcat_data)
+            .where(
+                SalesRecord.sale_date >= start_date.date(),
+                SalesRecord.sale_date <= end_date.date(),
+                SalesRecord.is_refunded == False
+            )
+            .group_by(SalesRecord.category_name, SalesRecord.subcategory_name)
+            .order_by(func.sum(SalesRecord.item_total_price).desc())
+            .limit(config.PAGE_ENTRIES)
+            .offset(page * config.PAGE_ENTRIES)
+        )
 
-        # Sort by total_revenue DESC
-        subcategory_list.sort(key=lambda x: x['total_revenue'], reverse=True)
+        result_subcategories = await session_execute(stmt_subcategories, session)
+        subcategories = result_subcategories.all()
 
-        # Pagination
-        start_idx = page * config.PAGE_ENTRIES
-        end_idx = start_idx + config.PAGE_ENTRIES
+        if not subcategories:
+            return []
 
-        return subcategory_list[start_idx:end_idx]
+        # Build result structure with totals
+        subcategory_list = []
+        subcategory_keys = []
+
+        for row in subcategories:
+            subcategory_list.append({
+                'category': row.category_name,
+                'subcategory': row.subcategory_name,
+                'total_quantity': int(row.total_quantity),
+                'total_revenue': float(row.total_revenue),
+                'sales': []  # Will be populated from Query 2
+            })
+            subcategory_keys.append((row.category_name, row.subcategory_name))
+
+        # Query 2: Get daily breakdown for only these specific subcategories
+        stmt_daily = (
+            select(
+                SalesRecord.category_name,
+                SalesRecord.subcategory_name,
+                SalesRecord.sale_date,
+                func.sum(SalesRecord.quantity).label('quantity'),
+                func.sum(SalesRecord.item_total_price).label('revenue')
+            )
+            .where(
+                SalesRecord.sale_date >= start_date.date(),
+                SalesRecord.sale_date <= end_date.date(),
+                SalesRecord.is_refunded == False,
+                tuple_(SalesRecord.category_name, SalesRecord.subcategory_name).in_(subcategory_keys)
+            )
+            .group_by(SalesRecord.category_name, SalesRecord.subcategory_name, SalesRecord.sale_date)
+            .order_by(SalesRecord.sale_date.desc())
+        )
+
+        result_daily = await session_execute(stmt_daily, session)
+        daily_sales = result_daily.all()
+
+        # Map daily sales to subcategories
+        daily_by_subcategory = {}
+        for row in daily_sales:
+            key = (row.category_name, row.subcategory_name)
+            if key not in daily_by_subcategory:
+                daily_by_subcategory[key] = []
+            daily_by_subcategory[key].append({
+                'date': row.sale_date,
+                'quantity': int(row.quantity),
+                'revenue': float(row.revenue)
+            })
+
+        # Populate 'sales' field in result structure
+        for subcat_data in subcategory_list:
+            key = (subcat_data['category'], subcat_data['subcategory'])
+            subcat_data['sales'] = daily_by_subcategory.get(key, [])
+
+        return subcategory_list
 
     @staticmethod
     async def get_subcategory_count(
@@ -305,6 +332,9 @@ class SalesRecordRepository:
         """
         Get count of distinct subcategories with sales in date range.
 
+        Uses subquery approach for database-agnostic DISTINCT counting
+        (works on SQLite, PostgreSQL, MySQL).
+
         Args:
             start_date: Start date (inclusive)
             end_date: End date (inclusive)
@@ -313,15 +343,25 @@ class SalesRecordRepository:
         Returns:
             Count of distinct (category_name, subcategory_name) combinations
         """
-        from sqlalchemy import func, distinct
+        from sqlalchemy import func
 
-        stmt = select(
-            func.count(distinct(SalesRecord.category_name + '|' + SalesRecord.subcategory_name))
-        ).where(
-            SalesRecord.sale_date >= start_date.date(),
-            SalesRecord.sale_date <= end_date.date(),
-            SalesRecord.is_refunded == False
+        # Subquery: Get all distinct (category_name, subcategory_name) combinations
+        distinct_subquery = (
+            select(
+                SalesRecord.category_name,
+                SalesRecord.subcategory_name
+            )
+            .where(
+                SalesRecord.sale_date >= start_date.date(),
+                SalesRecord.sale_date <= end_date.date(),
+                SalesRecord.is_refunded == False
+            )
+            .distinct()
+            .subquery()
         )
+
+        # Count rows in subquery (DB-agnostic)
+        stmt = select(func.count()).select_from(distinct_subquery)
 
         result = await session_execute(stmt, session)
         return result.scalar() or 0

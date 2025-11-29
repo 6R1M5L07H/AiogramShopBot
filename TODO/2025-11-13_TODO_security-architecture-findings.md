@@ -8,6 +8,51 @@
 
 Discuss every single finding before actually fixing it!
 
+## 📝 Status Update (2025-11-28)
+
+**Issues #1-#4 already fixed in prior commits (VERIFIED 2025-11-28):**
+- ✅ Issue #1: Webhook validation (bot.py:187-195) - Verified: Properly rejects missing/invalid tokens with timing-safe comparison
+- ✅ Issue #2: Payment signature check (processing.py:28-53, 77-80) - Verified: Properly rejects missing/invalid HMAC with timing-safe comparison
+- ✅ Issue #3: Safe DB table creation (db.py:173 uses create_all, not drop_all)
+- ✅ Issue #4: Correct enum comparisons (config.py:56, 62, 224)
+
+**Fixed in PR #69 (this worktree):**
+- ✅ Issue #5: N+1 Query in Purchase History - Batch loading with get_by_buy_ids/get_by_ids (2025-11-29)
+- ✅ Issue #6: CSV Injection (Analytics v2)
+- ✅ Issue #7: Refund Data Integrity (Analytics v2)
+- ✅ Issue #8: N+1 Query in Sales Record Creation - Batch loading categories/subcategories (2025-11-29)
+- ✅ Issue #9: Memory Loading Instead of SQL Aggregation (2025-11-28)
+- ✅ Issue #10: SQLite-Specific Distinct Count - Replaced with DB-agnostic subquery approach (VERIFIED 2025-11-29)
+- ✅ Issue #11: Insufficient Shipping Address Validation - HTML escaping applied via safe_html() (2025-11-29)
+- ✅ Issue #12: User-Specific Localization - Reads message.from_user.language_code in /start handler (2025-11-29)
+- ✅ Issue #13: HTML Injection in Invoice Formatter (Commit 2eccab1)
+- ✅ Issue #14: PII Leakage in Logs (Commit 11c3282)
+- ✅ Issue #15: DB Password Logging (Commit 4c67106)
+- ✅ Issue #17: Dual Encryption Storage - Unified architecture with EncryptionService (2025-11-28)
+- ✅ Issue #18: N+1 Query in Cart Tiers - Already fixed with batch loading (VERIFIED 2025-11-29)
+- ✅ Issue #19: N+1 Queries in Notifications (Commit 7da8e3c)
+- ✅ Issue #20: Float→Decimal Currency Calculations (Commit 0108a01)
+- ✅ Issue #21: Redis TTL for Rate Limiting (Commit c35ad65)
+- ✅ Issue #23: Hardcoded German Strings - Already fixed, uses Localizator.get_text() (VERIFIED 2025-11-29)
+- ✅ Issue #24: Missing Alignment Preservation - Already fixed, tier tables wrapped in <code> tags (VERIFIED 2025-11-29)
+- ✅ Issue #25: Admin Notification for New Users (PR #66)
+- ✅ Issue #26: Parallel Admin Broadcasts (Commit 3792c48)
+
+**Wont-fix (by-design):**
+- ❌ Issue #16: Invoice Formatter size (1270 lines) - Single responsibility maintained, well-organized methods, testable, no mixed concerns
+
+**⚠️ REMAINING WORK - PRIORITY ORDER:**
+
+**🟡 HIGH PRIORITY (Performance/Scalability):**
+- _(All N+1 query issues resolved! 2025-11-29)_
+
+**🟢 MEDIUM PRIORITY (Technical Debt):**
+- Issue #22: Telegram Message Size Limit Risk (services/invoice_formatter.py:955-1040)
+
+**🔵 LOW PRIORITY (Nice to Have):**
+- _(All low priority issues resolved! 2025-11-29)_
+
+---
 
 ## 🔴 Critical Security Issues
 
@@ -238,9 +283,9 @@ if RUNTIME_ENVIRONMENT == RuntimeEnvironment.DEV:
    - Fix #9: SQL aggregation for analytics
 
 3. **Medium Priority (Technical debt):**
-   - Fix #5: N+1 query optimization (user purchase history)
-   - Fix #8: N+1 query optimization (analytics creation)
-   - Fix #10: SQLite-specific code removal
+   - ✅ Fix #5: N+1 query optimization (user purchase history) (COMPLETED 2025-11-29)
+   - ✅ Fix #8: N+1 query optimization (analytics creation) (COMPLETED 2025-11-29)
+   - ✅ Fix #10: SQLite-specific code removal (COMPLETED 2025-11-29)
 
 ---
 
@@ -323,11 +368,11 @@ if RUNTIME_ENVIRONMENT == RuntimeEnvironment.DEV:
    - Fix #9: SQL aggregation for analytics
 
 3. **Medium Priority (Technical debt):**
-   - Fix #5: N+1 query optimization (user purchase history)
-   - Fix #8: N+1 query optimization (analytics creation)
-   - Fix #10: SQLite-specific code removal
-   - Fix #11: Shipping address validation
-   - Fix #12: User-specific localization
+   - ✅ Fix #5: N+1 query optimization (user purchase history) (COMPLETED 2025-11-29)
+   - ✅ Fix #8: N+1 query optimization (analytics creation) (COMPLETED 2025-11-29)
+   - ✅ Fix #10: SQLite-specific code removal (COMPLETED 2025-11-29)
+   - ✅ Fix #11: Shipping address validation (COMPLETED 2025-11-29)
+   - ✅ Fix #12: User-specific localization (COMPLETED 2025-11-29)
 
 ---
 
@@ -623,25 +668,25 @@ if RUNTIME_ENVIRONMENT == RuntimeEnvironment.DEV:
    - Fix #3: Replace destructive auto-migrate
    - Fix #4: Runtime environment enum comparison
    - Fix #9: SQL aggregation for analytics
-   - **Fix #16: Split invoice formatter god class**
-   - **Fix #17: Unify encryption storage**
-   - **Fix #20: Use Decimal for currency**
+   - **Fix #16: Split invoice formatter god class** (marked wont-fix - by-design)
+   - ✅ **Fix #17: Unify encryption storage** (COMPLETED 2025-11-28)
+   - ✅ **Fix #20: Use Decimal for currency** (COMPLETED 2025-11-27)
 
 3. **Medium Priority (Technical debt):**
-   - Fix #5: N+1 query optimization (user purchase history)
-   - Fix #8: N+1 query optimization (analytics creation)
-   - Fix #10: SQLite-specific code removal
-   - Fix #11: Shipping address validation
-   - Fix #12: User-specific localization
-   - **Fix #18: N+1 query in cart tiers**
-   - **Fix #19: N+1 query in notifications**
-   - **Fix #21: Redis TTL for rate limiting**
+   - ✅ Fix #5: N+1 query optimization (user purchase history) (COMPLETED 2025-11-29)
+   - ✅ Fix #8: N+1 query optimization (analytics creation) (COMPLETED 2025-11-29)
+   - ✅ Fix #10: SQLite-specific code removal (COMPLETED 2025-11-29)
+   - ✅ Fix #11: Shipping address validation (COMPLETED 2025-11-29)
+   - ✅ Fix #12: User-specific localization (COMPLETED 2025-11-29)
+   - ✅ **Fix #18: N+1 query in cart tiers** (VERIFIED 2025-11-29 - Already fixed with batch loading)
+   - ✅ **Fix #19: N+1 query in notifications** (COMPLETED 2025-11-27)
+   - ✅ **Fix #21: Redis TTL for rate limiting** (COMPLETED 2025-11-27)
    - **Fix #22: Message size limit handling**
 
 4. **Low Priority (Nice to have):**
-   - **Fix #23: Remove hardcoded German strings**
-   - **Fix #24: Fix tier table alignment**
-   - **Fix #26: Parallel admin broadcasts**
+   - ✅ **Fix #23: Remove hardcoded German strings** (VERIFIED 2025-11-29 - Already fixed)
+   - ✅ **Fix #24: Fix tier table alignment** (VERIFIED 2025-11-29 - Already fixed)
+   - ✅ **Fix #26: Parallel admin broadcasts** (COMPLETED 2025-11-27)
 
 ---
 

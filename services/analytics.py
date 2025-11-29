@@ -86,12 +86,19 @@ class AnalyticsService:
         order_identifier = f"{order_id}_{order.created_at.isoformat()}"
         order_hash = hashlib.sha256(order_identifier.encode()).hexdigest()
 
+        # Batch-load all categories and subcategories (eliminates N+1 queries)
+        category_ids = list(set(item.category_id for item in items))
+        subcategory_ids = list(set(item.subcategory_id for item in items))
+
+        categories_dict = await CategoryRepository.get_by_ids(category_ids, session)
+        subcategories_dict = await SubcategoryRepository.get_by_ids(subcategory_ids, session)
+
         # Create SalesRecord for each item
         sales_record_dtos = []
         for item in items:
-            # Get category and subcategory names
-            category = await CategoryRepository.get_by_id(item.category_id, session)
-            subcategory = await SubcategoryRepository.get_by_id(item.subcategory_id, session)
+            # Get category and subcategory names from batch-loaded dicts
+            category = categories_dict.get(item.category_id)
+            subcategory = subcategories_dict.get(item.subcategory_id)
 
             if not category or not subcategory:
                 logging.warning(f"[Analytics] Item {item.id} missing category/subcategory, skipping")

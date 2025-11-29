@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2025-11-29
+
+### Code Quality Improvements
+
+- Replaced magic strings with type-safe InvoiceHeaderType enum (11 invoice header types)
+- Replaced deprecated datetime.utcnow() with datetime.now(timezone.utc) across codebase
+- Improved type safety and IDE autocomplete for invoice formatting
+
 ## 2025-11-25
 
 ### Hotfixes

@@ -72,12 +72,11 @@ class TestAnalyticsServiceSalesRecords:
         with patch('services.analytics.OrderRepository.get_by_id', new_callable=AsyncMock, return_value=mock_order), \
              patch('services.analytics.ItemRepository.get_by_order_id', new_callable=AsyncMock, return_value=mock_items), \
              patch('services.analytics.PaymentTransactionRepository.get_by_order_id', new_callable=AsyncMock, return_value=mock_transactions), \
-             patch('services.analytics.CategoryRepository.get_by_id', new_callable=AsyncMock, return_value=mock_category), \
-             patch('services.analytics.SubcategoryRepository.get_by_id', new_callable=AsyncMock) as mock_subcat_get, \
+             patch('services.analytics.CategoryRepository.get_by_ids', new_callable=AsyncMock, return_value={1: mock_category}), \
+             patch('services.analytics.SubcategoryRepository.get_by_ids', new_callable=AsyncMock, return_value={1: mock_subcategory1, 2: mock_subcategory2}), \
              patch('services.analytics.SalesRecordRepository.create_many', new_callable=AsyncMock, return_value=[1, 2]) as mock_create_many:
 
-            # Configure subcategory mock to return different values
-            mock_subcat_get.side_effect = [mock_subcategory1, mock_subcategory2]
+            # No need to configure side_effect anymore - using batch loading now
 
             # Act
             result = await AnalyticsService.create_sales_records_from_order(order_id, session)
@@ -146,8 +145,8 @@ class TestAnalyticsServiceSalesRecords:
         with patch('services.analytics.OrderRepository.get_by_id', new_callable=AsyncMock, return_value=mock_order), \
              patch('services.analytics.ItemRepository.get_by_order_id', new_callable=AsyncMock, return_value=[mock_item]), \
              patch('services.analytics.PaymentTransactionRepository.get_by_order_id', new_callable=AsyncMock, return_value=[]), \
-             patch('services.analytics.CategoryRepository.get_by_id', new_callable=AsyncMock, return_value=mock_category), \
-             patch('services.analytics.SubcategoryRepository.get_by_id', new_callable=AsyncMock, return_value=mock_subcategory), \
+             patch('services.analytics.CategoryRepository.get_by_ids', new_callable=AsyncMock, return_value={1: mock_category}), \
+             patch('services.analytics.SubcategoryRepository.get_by_ids', new_callable=AsyncMock, return_value={1: mock_subcategory}), \
              patch('services.analytics.SalesRecordRepository.create_many', new_callable=AsyncMock, return_value=[1]) as mock_create_many:
 
             # Act
@@ -374,8 +373,8 @@ class TestAnalyticsServiceDataMinimization:
         with patch('services.analytics.OrderRepository.get_by_id', new_callable=AsyncMock, return_value=mock_order), \
              patch('services.analytics.ItemRepository.get_by_order_id', new_callable=AsyncMock, return_value=[mock_item]), \
              patch('services.analytics.PaymentTransactionRepository.get_by_order_id', new_callable=AsyncMock, return_value=[]), \
-             patch('services.analytics.CategoryRepository.get_by_id', new_callable=AsyncMock, return_value=mock_category), \
-             patch('services.analytics.SubcategoryRepository.get_by_id', new_callable=AsyncMock, return_value=mock_subcategory), \
+             patch('services.analytics.CategoryRepository.get_by_ids', new_callable=AsyncMock, return_value={1: mock_category}), \
+             patch('services.analytics.SubcategoryRepository.get_by_ids', new_callable=AsyncMock, return_value={1: mock_subcategory}), \
              patch('services.analytics.SalesRecordRepository.create_many', new_callable=AsyncMock, return_value=[1]) as mock_create_many:
 
             # Act

@@ -446,3 +446,207 @@ class TestSalesRecordRepository:
         assert len(result) == 10  # All 10 records returned
         # Should be sorted by date DESC (newest first)
         assert result[0].sale_date >= result[-1].sale_date
+
+    @pytest.mark.asyncio
+    async def test_get_subcategory_sales_grouped_with_daily_aggregation(self, session):
+        """Test that multiple sales on same day are aggregated correctly."""
+        # Arrange
+        now = datetime.utcnow()
+        today = now.date()
+
+        # Create 3 sales for same subcategory on same day (should be aggregated)
+        dtos = []
+        for i in range(3):
+            dtos.append(SalesRecordDTO(
+                sale_date=now,
+                sale_hour=10 + i,
+                sale_weekday=1,
+                category_name="Electronics",
+                subcategory_name="Phones",
+                quantity=2,  # Each sale has quantity 2
+                is_physical=True,
+                item_total_price=100.0,  # Each sale is 100.0
+                currency=Currency.EUR,
+                average_unit_price=50.0,
+                order_total_price=100.0,
+                order_shipping_cost=5.0,
+                order_wallet_used=0.0,
+                payment_method="crypto_only",
+                crypto_currency=Cryptocurrency.BTC,
+                status=OrderStatus.PAID,
+                is_refunded=False
+            ))
+
+        # Create 2 sales for same subcategory on different day
+        for i in range(2):
+            dtos.append(SalesRecordDTO(
+                sale_date=now - timedelta(days=1),
+                sale_hour=14 + i,
+                sale_weekday=0,
+                category_name="Electronics",
+                subcategory_name="Phones",
+                quantity=1,
+                is_physical=True,
+                item_total_price=50.0,
+                currency=Currency.EUR,
+                average_unit_price=50.0,
+                order_total_price=50.0,
+                order_shipping_cost=5.0,
+                order_wallet_used=0.0,
+                payment_method="crypto_only",
+                crypto_currency=Cryptocurrency.BTC,
+                status=OrderStatus.PAID,
+                is_refunded=False
+            ))
+
+        await SalesRecordRepository.create_many(dtos, session)
+        session.commit()
+
+        # Act
+        result = await SalesRecordRepository.get_subcategory_sales_grouped(
+            start_date=now - timedelta(days=7),
+            end_date=now,
+            page=0,
+            session=session
+        )
+
+        # Assert
+        assert len(result) == 1  # Only one subcategory
+        assert result[0]['category'] == 'Electronics'
+        assert result[0]['subcategory'] == 'Phones'
+        assert result[0]['total_quantity'] == 8  # 3 sales * 2 qty + 2 sales * 1 qty
+        assert result[0]['total_revenue'] == 400.0  # 3 * 100 + 2 * 50
+
+        # Check daily breakdown
+        sales = result[0]['sales']
+        assert len(sales) == 2  # 2 different days
+        # Newest day first (today)
+        assert sales[0]['date'] == today
+        assert sales[0]['quantity'] == 6  # 3 sales * 2 qty
+        assert sales[0]['revenue'] == 300.0  # 3 * 100
+        # Yesterday
+        assert sales[1]['quantity'] == 2  # 2 sales * 1 qty
+        assert sales[1]['revenue'] == 100.0  # 2 * 50
+
+    @pytest.mark.asyncio
+    async def test_get_subcategory_sales_grouped_pagination(self, session):
+        """Test that pagination returns correct page with SQL LIMIT/OFFSET."""
+        # Arrange
+        now = datetime.utcnow()
+
+        # Create 10 subcategories with different revenues
+        dtos = []
+        for i in range(10):
+            dtos.append(SalesRecordDTO(
+                sale_date=now,
+                sale_hour=14,
+                sale_weekday=1,
+                category_name="Category",
+                subcategory_name=f"Subcat{i:02d}",
+                quantity=1,
+                is_physical=True,
+                item_total_price=float((i + 1) * 100),  # 100, 200, 300, ..., 1000
+                currency=Currency.EUR,
+                average_unit_price=float((i + 1) * 100),
+                order_total_price=float((i + 1) * 100),
+                order_shipping_cost=5.0,
+                order_wallet_used=0.0,
+                payment_method="crypto_only",
+                crypto_currency=Cryptocurrency.BTC,
+                status=OrderStatus.PAID,
+                is_refunded=False
+            ))
+
+        await SalesRecordRepository.create_many(dtos, session)
+        session.commit()
+
+        # Act - Get page 0 (first 8 items, as config.PAGE_ENTRIES=8)
+        page0 = await SalesRecordRepository.get_subcategory_sales_grouped(
+            start_date=now - timedelta(days=1),
+            end_date=now,
+            page=0,
+            session=session
+        )
+
+        # Act - Get page 1 (next 2 items)
+        page1 = await SalesRecordRepository.get_subcategory_sales_grouped(
+            start_date=now - timedelta(days=1),
+            end_date=now,
+            page=1,
+            session=session
+        )
+
+        # Assert
+        assert len(page0) == 8  # First page has 8 items (PAGE_ENTRIES)
+        assert len(page1) == 2  # Second page has remaining 2 items
+
+        # Verify sorting by revenue DESC (highest first)
+        assert page0[0]['subcategory'] == 'Subcat09'  # Revenue 1000
+        assert page0[0]['total_revenue'] == 1000.0
+        assert page0[7]['subcategory'] == 'Subcat02'  # Revenue 300
+        assert page1[0]['subcategory'] == 'Subcat01'  # Revenue 200
+        assert page1[1]['subcategory'] == 'Subcat00'  # Revenue 100
+
+    @pytest.mark.asyncio
+    async def test_get_subcategory_sales_grouped_excludes_refunds(self, session):
+        """Test that refunded sales are excluded from grouped results."""
+        # Arrange
+        now = datetime.utcnow()
+
+        # Create non-refunded sale
+        dto1 = SalesRecordDTO(
+            sale_date=now,
+            sale_hour=14,
+            sale_weekday=1,
+            category_name="Electronics",
+            subcategory_name="Phones",
+            quantity=1,
+            is_physical=True,
+            item_total_price=500.0,
+            currency=Currency.EUR,
+            average_unit_price=500.0,
+            order_total_price=500.0,
+            order_shipping_cost=5.0,
+            order_wallet_used=0.0,
+            payment_method="crypto_only",
+            crypto_currency=Cryptocurrency.BTC,
+            status=OrderStatus.PAID,
+            is_refunded=False
+        )
+
+        # Create refunded sale (should be excluded)
+        dto2 = SalesRecordDTO(
+            sale_date=now,
+            sale_hour=15,
+            sale_weekday=1,
+            category_name="Electronics",
+            subcategory_name="Phones",
+            quantity=1,
+            is_physical=True,
+            item_total_price=300.0,
+            currency=Currency.EUR,
+            average_unit_price=300.0,
+            order_total_price=300.0,
+            order_shipping_cost=5.0,
+            order_wallet_used=0.0,
+            payment_method="crypto_only",
+            crypto_currency=Cryptocurrency.BTC,
+            status=OrderStatus.CANCELLED_BY_USER,
+            is_refunded=True  # This should be excluded
+        )
+
+        await SalesRecordRepository.create_many([dto1, dto2], session)
+        session.commit()
+
+        # Act
+        result = await SalesRecordRepository.get_subcategory_sales_grouped(
+            start_date=now - timedelta(days=1),
+            end_date=now,
+            page=0,
+            session=session
+        )
+
+        # Assert
+        assert len(result) == 1
+        assert result[0]['total_quantity'] == 1  # Only non-refunded sale
+        assert result[0]['total_revenue'] == 500.0  # Refunded 300.0 excluded

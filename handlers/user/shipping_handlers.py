@@ -11,25 +11,12 @@ import config
 from callbacks import OrderCallback
 from enums.bot_entity import BotEntity
 from handlers.user.shipping_states import ShippingAddressStates
-from services.encryption_wrapper import EncryptionWrapper
 from utils.custom_filters import IsUserExistFilter
 from utils.localizator import Localizator
 from utils.webapp_url import get_webapp_url
 from exceptions.shipping import BotDomainNotConfiguredException
 
 shipping_router = Router()
-
-
-# Debug handler: Log ALL web_app_data messages (catch-all for debugging)
-@shipping_router.message(F.web_app_data)
-async def debug_web_app_data(message: Message, state: FSMContext):
-    """Debug handler to catch all web_app_data messages."""
-    current_state = await state.get_state()
-    logging.warning(
-        f"[Shipping] DEBUG: web_app_data received from user {message.from_user.id} "
-        f"| Current FSM state: {current_state} "
-        f"| Data preview: {message.web_app_data.data[:100]}..."
-    )
 
 
 @shipping_router.message(ShippingAddressStates.waiting_for_address, IsUserExistFilter())
