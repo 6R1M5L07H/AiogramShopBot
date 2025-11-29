@@ -15,6 +15,12 @@ from typing import Optional
 
 import config
 
+# Dual-Mode Support: Use sqlcipher3 if DB_ENCRYPTION=true
+if config.DB_ENCRYPTION:
+    from sqlcipher3 import dbapi2 as sqlcipher
+else:
+    sqlcipher = None
+
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +42,9 @@ class DatabaseBackup:
     def create_backup(self, compress: bool = True) -> Optional[Path]:
         """Create a backup of the database.
 
+        Supports both standard SQLite and SQLCipher encrypted databases.
+        Automatically detects encryption mode from config.DB_ENCRYPTION.
+
         Args:
             compress: Whether to compress the backup with gzip
 
@@ -50,16 +59,42 @@ class DatabaseBackup:
             # Use SQLite's backup API for safe online backup
             logger.info(f"Creating database backup: {backup_path}")
 
-            source_conn = sqlite3.connect(self.db_path)
-            backup_conn = sqlite3.connect(str(backup_path))
+            # Dual-Mode: Use sqlcipher if DB_ENCRYPTION=true
+            if config.DB_ENCRYPTION:
+                if sqlcipher is None:
+                    raise RuntimeError("DB_ENCRYPTION=true but sqlcipher3 module not available")
 
-            try:
-                # Perform the backup
-                source_conn.backup(backup_conn)
-                logger.info(f"Database backup created successfully: {backup_path}")
-            finally:
-                source_conn.close()
-                backup_conn.close()
+                logger.debug("Using SQLCipher for encrypted database backup")
+
+                # Connect to encrypted source database
+                source_conn = sqlcipher.connect(self.db_path)
+                # SECURITY: Use parameter binding to prevent password exposure in logs
+                source_conn.execute("PRAGMA key = ?", (config.DB_PASS,))
+
+                # Connect to unencrypted backup file (backups are NOT encrypted)
+                backup_conn = sqlite3.connect(str(backup_path))
+
+                try:
+                    # Perform the backup (encrypted → unencrypted)
+                    source_conn.backup(backup_conn)
+                    logger.info(f"Database backup created successfully (decrypted): {backup_path}")
+                finally:
+                    source_conn.close()
+                    backup_conn.close()
+            else:
+                logger.debug("Using standard SQLite for database backup")
+
+                # Standard SQLite backup (unencrypted → unencrypted)
+                source_conn = sqlite3.connect(self.db_path)
+                backup_conn = sqlite3.connect(str(backup_path))
+
+                try:
+                    # Perform the backup
+                    source_conn.backup(backup_conn)
+                    logger.info(f"Database backup created successfully: {backup_path}")
+                finally:
+                    source_conn.close()
+                    backup_conn.close()
 
             # Compress backup if requested
             if compress:
