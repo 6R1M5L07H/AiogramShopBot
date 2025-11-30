@@ -35,8 +35,17 @@ async def create_backup_with_notification() -> bool:
     try:
         logger.info("[Database Backup] Starting scheduled backup...")
 
-        backup_handler = get_backup_handler()
-        backup_path = backup_handler.create_backup(compress=True)
+        # Initialize backup handler in thread pool (GPG initialization blocks)
+        loop = asyncio.get_event_loop()
+        backup_handler = await loop.run_in_executor(None, get_backup_handler)
+
+        # Run synchronous backup in thread pool to avoid blocking event loop
+        backup_path = await loop.run_in_executor(
+            None,
+            backup_handler.create_backup,
+            True,  # compress
+            True   # encrypt
+        )
 
         if backup_path is None:
             error_msg = "Database backup creation failed - check logs for details"
@@ -44,8 +53,15 @@ async def create_backup_with_notification() -> bool:
             await notify_admins_backup_failure(error_msg)
             return False
 
-        # Verify backup integrity
-        if not backup_handler.verify_backup(backup_path):
+        # Verify backup integrity (run in thread pool)
+        loop = asyncio.get_event_loop()
+        is_valid = await loop.run_in_executor(
+            None,
+            backup_handler.verify_backup,
+            backup_path
+        )
+
+        if not is_valid:
             error_msg = f"Backup verification failed: {backup_path}"
             logger.error(f"[Database Backup] ❌ {error_msg}")
             await notify_admins_backup_failure(error_msg)
@@ -70,8 +86,16 @@ async def cleanup_old_backups_job() -> int:
     try:
         logger.info("[Database Backup] Starting backup cleanup...")
 
-        backup_handler = get_backup_handler()
-        removed_count = backup_handler.cleanup_old_backups(config.DB_BACKUP_RETENTION_DAYS)
+        # Initialize backup handler in thread pool (GPG initialization blocks)
+        loop = asyncio.get_event_loop()
+        backup_handler = await loop.run_in_executor(None, get_backup_handler)
+
+        # Run synchronous cleanup in thread pool to avoid blocking event loop
+        removed_count = await loop.run_in_executor(
+            None,
+            backup_handler.cleanup_old_backups,
+            config.DB_BACKUP_RETENTION_DAYS
+        )
 
         logger.info(f"[Database Backup] ✅ Cleanup complete: {removed_count} backup(s) removed")
         return removed_count
@@ -183,8 +207,15 @@ async def verify_latest_backup() -> bool:
         True if latest backup is valid, False otherwise
     """
     try:
-        backup_handler = get_backup_handler()
-        backups = backup_handler.list_backups()
+        # Initialize backup handler in thread pool (GPG initialization blocks)
+        loop = asyncio.get_event_loop()
+        backup_handler = await loop.run_in_executor(None, get_backup_handler)
+
+        # Run synchronous list_backups in thread pool
+        backups = await loop.run_in_executor(
+            None,
+            backup_handler.list_backups
+        )
 
         if not backups:
             logger.warning("[Database Backup] No backups found to verify")
@@ -193,7 +224,14 @@ async def verify_latest_backup() -> bool:
         latest_backup = backups[0]
         logger.info(f"[Database Backup] Verifying latest backup: {latest_backup['filename']}")
 
-        if backup_handler.verify_backup(latest_backup['path']):
+        # Run synchronous verify_backup in thread pool
+        is_valid = await loop.run_in_executor(
+            None,
+            backup_handler.verify_backup,
+            latest_backup['path']
+        )
+
+        if is_valid:
             logger.info("[Database Backup] ✅ Latest backup verification successful")
             return True
         else:
