@@ -124,25 +124,49 @@ class DatabaseBackup:
 
                     logger.debug("Using SQLCipher for encrypted database backup")
                     source_conn = sqlcipher.connect(self.db_path)
-                    source_conn.execute("PRAGMA key = ?", (config.DB_PASS,))
+                    source_conn.execute(f"PRAGMA key = '{config.DB_PASS}'")
+
+                    # SQLCipher → Standard SQLite in-memory DB → SQL dump
+                    # Note: sqlcipher3.Connection does not have iterdump(), so we:
+                    # 1. ATTACH an unencrypted in-memory database
+                    # 2. Export all tables to the in-memory DB
+                    # 3. Use standard sqlite3 to dump the in-memory DB
+
+                    try:
+                        # Create standard SQLite in-memory connection
+                        memory_conn = sqlite3.connect(":memory:")
+
+                        # Use SQLCipher's backup to copy to standard SQLite
+                        # Note: This requires pysqlcipher3 >= 1.2.0 with backup() support
+                        source_conn.backup(memory_conn)
+
+                        # Now dump from standard SQLite connection (which has iterdump())
+                        for line in memory_conn.iterdump():
+                            backup_buffer.write(f"{line}\n".encode('utf-8'))
+
+                        logger.debug("Database backed up to memory (SQL dump from SQLCipher)")
+                        memory_conn.close()
+                    finally:
+                        source_conn.close()
+
                 else:
                     logger.debug("Using standard SQLite for database backup")
                     source_conn = sqlite3.connect(self.db_path)
 
-                # Create in-memory backup using tempfile connection
-                backup_conn = sqlite3.connect(":memory:")
-                try:
-                    source_conn.backup(backup_conn)
+                    # Create in-memory backup using tempfile connection
+                    backup_conn = sqlite3.connect(":memory:")
+                    try:
+                        source_conn.backup(backup_conn)
 
-                    # Serialize in-memory DB to buffer using iterdump()
-                    # Note: This creates SQL dump, not binary DB file
-                    for line in backup_conn.iterdump():
-                        backup_buffer.write(f"{line}\n".encode('utf-8'))
+                        # Serialize in-memory DB to buffer using iterdump()
+                        # Note: This creates SQL dump, not binary DB file
+                        for line in backup_conn.iterdump():
+                            backup_buffer.write(f"{line}\n".encode('utf-8'))
 
-                    logger.debug("Database backed up to memory")
-                finally:
-                    source_conn.close()
-                    backup_conn.close()
+                        logger.debug("Database backed up to memory")
+                    finally:
+                        source_conn.close()
+                        backup_conn.close()
 
                 # Compress in memory
                 backup_buffer.seek(0)
@@ -188,17 +212,26 @@ class DatabaseBackup:
                     if sqlcipher is None:
                         raise RuntimeError("DB_ENCRYPTION=true but sqlcipher3 module not available")
 
-                    logger.debug("Using SQLCipher for encrypted database backup")
+                    logger.debug("Using SQLCipher for encrypted database backup (SQL dump mode)")
                     source_conn = sqlcipher.connect(self.db_path)
-                    source_conn.execute("PRAGMA key = ?", (config.DB_PASS,))
-                    backup_conn = sqlite3.connect(str(backup_path))
+                    source_conn.execute(f"PRAGMA key = '{config.DB_PASS}'")
 
                     try:
-                        source_conn.backup(backup_conn)
-                        logger.info(f"Database backup created successfully (decrypted): {backup_path}")
+                        # Create standard SQLite in-memory connection
+                        memory_conn = sqlite3.connect(":memory:")
+
+                        # Use SQLCipher's backup to copy to standard SQLite
+                        source_conn.backup(memory_conn)
+
+                        # Write SQL dump to file from standard SQLite connection
+                        with open(backup_path, 'w', encoding='utf-8') as f:
+                            for line in memory_conn.iterdump():
+                                f.write(f"{line}\n")
+
+                        memory_conn.close()
+                        logger.info(f"Database backup created successfully (SQL dump from SQLCipher): {backup_path}")
                     finally:
                         source_conn.close()
-                        backup_conn.close()
                 else:
                     logger.debug("Using standard SQLite for database backup")
                     source_conn = sqlite3.connect(self.db_path)
