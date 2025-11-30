@@ -10,18 +10,12 @@ import io
 import logging
 import os
 import shutil
-import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
 import config
-
-# Dual-Mode Support: Use sqlcipher3 if DB_ENCRYPTION=true
-if config.DB_ENCRYPTION:
-    from sqlcipher3 import dbapi2 as sqlcipher
-else:
-    sqlcipher = None
+from utils.db_backup_adapters import get_backup_adapter
 
 # GPG encryption support (optional)
 try:
@@ -91,9 +85,11 @@ class DatabaseBackup:
         Supports both standard SQLite and SQLCipher encrypted databases.
         Automatically detects encryption mode from config.DB_ENCRYPTION.
 
-        If PGP_PUBLIC_KEY_BASE64 is configured and encrypt=True, the backup
-        is encrypted with GPG directly in memory without writing unencrypted
-        data to disk.
+        Uses Adapter Pattern to handle different database types uniformly.
+        Backup flow: DB → Memory (SQL dump via adapter) → Compress → GPG → Disk
+
+        SECURITY: Never writes unencrypted plaintext to disk when GPG is enabled.
+        All intermediate steps (SQL dump, compression) happen in-memory only.
 
         Args:
             compress: Whether to compress the backup with gzip
@@ -105,83 +101,52 @@ class DatabaseBackup:
         try:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-            # Determine if we can do direct GPG encryption (stream mode)
-            use_gpg_stream = encrypt and self.gpg is not None
+            # Get appropriate backup adapter based on DB_ENCRYPTION config
+            adapter = get_backup_adapter(
+                db_path=self.db_path,
+                password=config.DB_PASS if config.DB_ENCRYPTION else None
+            )
 
-            if use_gpg_stream:
-                # Stream mode: DB → Memory → Compress → GPG → Disk (never writes unencrypted)
-                logger.info("Creating encrypted database backup (stream mode)")
+            # Determine backup file extension based on compression and encryption
+            if encrypt and self.gpg is not None:
+                # Stream mode: 100% memory-only, never writes plaintext to disk
                 backup_filename = f"db_backup_{timestamp}.db.gz.gpg"
-                backup_path = self.backup_dir / backup_filename
+                logger.info("Creating encrypted database backup (stream mode)")
+            elif compress:
+                backup_filename = f"db_backup_{timestamp}.db.gz"
+                logger.info("Creating compressed database backup")
+            else:
+                backup_filename = f"db_backup_{timestamp}.db"
+                logger.info("Creating database backup")
 
-                # Create backup in memory
-                backup_buffer = io.BytesIO()
+            backup_path = self.backup_dir / backup_filename
 
-                # Dual-Mode: Use sqlcipher if DB_ENCRYPTION=true
-                if config.DB_ENCRYPTION:
-                    if sqlcipher is None:
-                        raise RuntimeError("DB_ENCRYPTION=true but sqlcipher3 module not available")
+            # Step 1: Stream SQL dump to memory buffer using adapter
+            backup_buffer = io.BytesIO()
+            adapter.backup_to_buffer(backup_buffer)
+            original_size = backup_buffer.tell()
+            logger.debug(f"Database backed up to memory: {original_size:,} bytes")
 
-                    logger.debug("Using SQLCipher for encrypted database backup")
-                    source_conn = sqlcipher.connect(self.db_path)
-                    source_conn.execute(f"PRAGMA key = '{config.DB_PASS}'")
-
-                    # SQLCipher → Standard SQLite in-memory DB → SQL dump
-                    # Note: sqlcipher3.Connection does not have iterdump(), so we:
-                    # 1. ATTACH an unencrypted in-memory database
-                    # 2. Export all tables to the in-memory DB
-                    # 3. Use standard sqlite3 to dump the in-memory DB
-
-                    try:
-                        # Create standard SQLite in-memory connection
-                        memory_conn = sqlite3.connect(":memory:")
-
-                        # Use SQLCipher's backup to copy to standard SQLite
-                        # Note: This requires pysqlcipher3 >= 1.2.0 with backup() support
-                        source_conn.backup(memory_conn)
-
-                        # Now dump from standard SQLite connection (which has iterdump())
-                        for line in memory_conn.iterdump():
-                            backup_buffer.write(f"{line}\n".encode('utf-8'))
-
-                        logger.debug("Database backed up to memory (SQL dump from SQLCipher)")
-                        memory_conn.close()
-                    finally:
-                        source_conn.close()
-
-                else:
-                    logger.debug("Using standard SQLite for database backup")
-                    source_conn = sqlite3.connect(self.db_path)
-
-                    # Create in-memory backup using tempfile connection
-                    backup_conn = sqlite3.connect(":memory:")
-                    try:
-                        source_conn.backup(backup_conn)
-
-                        # Serialize in-memory DB to buffer using iterdump()
-                        # Note: This creates SQL dump, not binary DB file
-                        for line in backup_conn.iterdump():
-                            backup_buffer.write(f"{line}\n".encode('utf-8'))
-
-                        logger.debug("Database backed up to memory")
-                    finally:
-                        source_conn.close()
-                        backup_conn.close()
-
-                # Compress in memory
+            # Step 2: Compress in memory if requested
+            if compress or (encrypt and self.gpg is not None):
                 backup_buffer.seek(0)
                 compressed_buffer = io.BytesIO()
                 with gzip.GzipFile(fileobj=compressed_buffer, mode='wb') as gz:
                     shutil.copyfileobj(backup_buffer, gz)
 
-                original_size = backup_buffer.tell()
                 compressed_size = compressed_buffer.tell()
-                logger.debug(f"Backup compressed in memory: {original_size:,} → {compressed_size:,} bytes")
+                compression_ratio = (1 - compressed_size / original_size) * 100
+                logger.debug(
+                    f"Backup compressed in memory: {original_size:,} → {compressed_size:,} bytes "
+                    f"({compression_ratio:.1f}% reduction)"
+                )
+                backup_buffer = compressed_buffer  # Use compressed buffer for next step
 
-                # Encrypt with GPG (stream mode)
-                compressed_buffer.seek(0)
+            # Step 3: Encrypt with GPG if requested
+            if encrypt and self.gpg is not None:
+                backup_buffer.seek(0)
                 encrypted_data = self.gpg.encrypt_file(
-                    compressed_buffer,
+                    backup_buffer,
                     recipients=[self.gpg_key_id],
                     armor=False,  # Binary output for smaller size
                     always_trust=True  # Trust the imported key
@@ -190,66 +155,24 @@ class DatabaseBackup:
                 if not encrypted_data.ok:
                     raise RuntimeError(f"GPG encryption failed: {encrypted_data.status}")
 
-                # Write encrypted data to disk
+                # Write only encrypted data to disk
                 with open(backup_path, 'wb') as f:
                     f.write(encrypted_data.data)
 
                 encrypted_size = backup_path.stat().st_size
+                total_reduction = (1 - encrypted_size / original_size) * 100
                 logger.info(
                     f"Encrypted backup created: {original_size:,} → {compressed_size:,} → {encrypted_size:,} bytes "
-                    f"(compression: {(1 - compressed_size/original_size)*100:.1f}%, "
-                    f"total: {(1 - encrypted_size/original_size)*100:.1f}%)"
+                    f"(total reduction: {total_reduction:.1f}%)"
                 )
-
             else:
-                # Legacy mode: DB → Disk → Compress → Disk (writes unencrypted temporarily)
-                logger.info("Creating database backup (legacy mode)")
-                backup_filename = f"db_backup_{timestamp}.db"
-                backup_path = self.backup_dir / backup_filename
+                # Write backup buffer to disk (unencrypted)
+                backup_buffer.seek(0)
+                with open(backup_path, 'wb') as f:
+                    f.write(backup_buffer.read())
 
-                # Dual-Mode: Use sqlcipher if DB_ENCRYPTION=true
-                if config.DB_ENCRYPTION:
-                    if sqlcipher is None:
-                        raise RuntimeError("DB_ENCRYPTION=true but sqlcipher3 module not available")
-
-                    logger.debug("Using SQLCipher for encrypted database backup (SQL dump mode)")
-                    source_conn = sqlcipher.connect(self.db_path)
-                    source_conn.execute(f"PRAGMA key = '{config.DB_PASS}'")
-
-                    try:
-                        # Create standard SQLite in-memory connection
-                        memory_conn = sqlite3.connect(":memory:")
-
-                        # Use SQLCipher's backup to copy to standard SQLite
-                        source_conn.backup(memory_conn)
-
-                        # Write SQL dump to file from standard SQLite connection
-                        with open(backup_path, 'w', encoding='utf-8') as f:
-                            for line in memory_conn.iterdump():
-                                f.write(f"{line}\n")
-
-                        memory_conn.close()
-                        logger.info(f"Database backup created successfully (SQL dump from SQLCipher): {backup_path}")
-                    finally:
-                        source_conn.close()
-                else:
-                    logger.debug("Using standard SQLite for database backup")
-                    source_conn = sqlite3.connect(self.db_path)
-                    backup_conn = sqlite3.connect(str(backup_path))
-
-                    try:
-                        source_conn.backup(backup_conn)
-                        logger.info(f"Database backup created successfully: {backup_path}")
-                    finally:
-                        source_conn.close()
-                        backup_conn.close()
-
-                # Compress backup if requested
-                if compress:
-                    compressed_path = self._compress_backup(backup_path)
-                    if compressed_path:
-                        backup_path.unlink()  # Remove uncompressed file
-                        backup_path = compressed_path
+                final_size = backup_path.stat().st_size
+                logger.info(f"Backup created successfully: {backup_path} ({final_size:,} bytes)")
 
             # Create checksum file
             self._create_checksum(backup_path)
