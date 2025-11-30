@@ -35,10 +35,11 @@ async def create_backup_with_notification() -> bool:
     try:
         logger.info("[Database Backup] Starting scheduled backup...")
 
-        backup_handler = get_backup_handler()
+        # Initialize backup handler in thread pool (GPG initialization blocks)
+        loop = asyncio.get_event_loop()
+        backup_handler = await loop.run_in_executor(None, get_backup_handler)
 
         # Run synchronous backup in thread pool to avoid blocking event loop
-        loop = asyncio.get_event_loop()
         backup_path = await loop.run_in_executor(
             None,
             backup_handler.create_backup,
@@ -85,10 +86,11 @@ async def cleanup_old_backups_job() -> int:
     try:
         logger.info("[Database Backup] Starting backup cleanup...")
 
-        backup_handler = get_backup_handler()
+        # Initialize backup handler in thread pool (GPG initialization blocks)
+        loop = asyncio.get_event_loop()
+        backup_handler = await loop.run_in_executor(None, get_backup_handler)
 
         # Run synchronous cleanup in thread pool to avoid blocking event loop
-        loop = asyncio.get_event_loop()
         removed_count = await loop.run_in_executor(
             None,
             backup_handler.cleanup_old_backups,
@@ -205,10 +207,11 @@ async def verify_latest_backup() -> bool:
         True if latest backup is valid, False otherwise
     """
     try:
-        backup_handler = get_backup_handler()
+        # Initialize backup handler in thread pool (GPG initialization blocks)
+        loop = asyncio.get_event_loop()
+        backup_handler = await loop.run_in_executor(None, get_backup_handler)
 
         # Run synchronous list_backups in thread pool
-        loop = asyncio.get_event_loop()
         backups = await loop.run_in_executor(
             None,
             backup_handler.list_backups
