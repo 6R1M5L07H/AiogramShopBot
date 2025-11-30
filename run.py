@@ -151,7 +151,7 @@ users_routers.message.middleware(throttling_middleware)
 users_routers.callback_query.middleware(throttling_middleware)
 main_router.include_router(admin_router)
 main_router.include_router(shipping_management_router)
-main_router.include_routers(users_routers)
+main_router.include_router(users_routers)
 main_router.message.middleware(DBSessionMiddleware())
 main_router.callback_query.middleware(DBSessionMiddleware())
 
