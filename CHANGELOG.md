@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2025-12-01
+
+### Security Fixes
+
+**Button Filter PII Logging Vulnerability**
+- Removed logging of user message text in ButtonTextFilter to prevent exposure of sensitive data (shipping addresses, payment info)
+- Fixed multi-language button matching: now checks user's Telegram language setting first before falling back to config default
+- Button handlers now work correctly for all users regardless of their Telegram client language
+
+### Bug Fixes
+
+**Main Menu Button Handler Registration**
+- Fixed main menu buttons (All Categories, My Profile, Cart, FAQ, Help, GPG) not responding
+- Implemented ButtonTextFilter for runtime text matching instead of import-time evaluation
+- Resolved middleware registration order preventing handlers from receiving database session
+- Button handlers now work correctly regardless of when BOT_LANGUAGE config is loaded
+
 ## 2025-11-29
 
 ### Code Quality Improvements

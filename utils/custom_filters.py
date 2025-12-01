@@ -4,9 +4,44 @@ from aiogram.types import Message
 
 import config
 from db import get_db_session
+from enums.bot_entity import BotEntity
 from models.user import UserDTO
 from services.user import UserService
+from utils.localizator import Localizator
 from utils.permission_utils import is_admin_user, is_banned_user
+
+
+class ButtonTextFilter(BaseFilter):
+    """
+    Filter that matches button text at runtime instead of import time.
+
+    Solves the issue where F.text == Localizator.get_text(...) is evaluated
+    at import time, which can cause mismatches if BOT_LANGUAGE changes or
+    localization is initialized differently between import and runtime.
+
+    Usage:
+        @router.message(ButtonTextFilter("all_categories"), IsUserExistFilter())
+        async def handler(message: Message, session: AsyncSession | Session):
+            ...
+    """
+
+    def __init__(self, localization_key: str, entity: BotEntity = BotEntity.USER):
+        self.localization_key = localization_key
+        self.entity = entity
+
+    async def __call__(self, message: Message) -> bool:
+        # Evaluate text match at runtime, not import time
+        # Check against user's Telegram language first (if supported), then config default
+        user_lang = message.from_user.language_code if message.from_user.language_code in ["de", "en"] else None
+
+        # Try user's language first (matches /start behavior)
+        expected_text_user_lang = Localizator.get_text(self.entity, self.localization_key, lang=user_lang)
+        if message.text == expected_text_user_lang:
+            return True
+
+        # Fallback: Check config.BOT_LANGUAGE (in case keyboard was generated differently)
+        expected_text_config = Localizator.get_text(self.entity, self.localization_key)
+        return message.text == expected_text_config
 
 
 class AdminIdFilter(BaseFilter):
