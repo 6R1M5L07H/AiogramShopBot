@@ -30,26 +30,18 @@ class ButtonTextFilter(BaseFilter):
         self.entity = entity
 
     async def __call__(self, message: Message) -> bool:
-        import logging
         # Evaluate text match at runtime, not import time
-        expected_text = Localizator.get_text(self.entity, self.localization_key)
-        matches = message.text == expected_text
+        # Check against user's Telegram language first (if supported), then config default
+        user_lang = message.from_user.language_code if message.from_user.language_code in ["de", "en"] else None
 
-        # Debug logging to diagnose language mismatch
-        if not matches and message.text:
-            logging.warning(
-                f"🔍 ButtonTextFilter mismatch: "
-                f"key='{self.localization_key}', "
-                f"received='{message.text}', "
-                f"expected='{expected_text}', "
-                f"BOT_LANGUAGE={import_config().BOT_LANGUAGE}"
-            )
+        # Try user's language first (matches /start behavior)
+        expected_text_user_lang = Localizator.get_text(self.entity, self.localization_key, lang=user_lang)
+        if message.text == expected_text_user_lang:
+            return True
 
-        return matches
-
-def import_config():
-    import config
-    return config
+        # Fallback: Check config.BOT_LANGUAGE (in case keyboard was generated differently)
+        expected_text_config = Localizator.get_text(self.entity, self.localization_key)
+        return message.text == expected_text_config
 
 
 class AdminIdFilter(BaseFilter):
