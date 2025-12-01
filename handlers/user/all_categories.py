@@ -17,6 +17,13 @@ from utils.localizator import Localizator
 all_categories_router = Router()
 
 
+# Debug: Catch-all handler to test if subrouter works at all
+@all_categories_router.message()
+async def debug_catch_all(message: types.Message):
+    import logging
+    logging.warning(f"🐛 DEBUG: all_categories_router received message: {message.text}")
+
+
 @all_categories_router.message(F.text == Localizator.get_text(BotEntity.USER, "all_categories"),
                                IsUserExistFilter())
 async def all_categories_text_message(message: types.Message, session: AsyncSession | Session):
