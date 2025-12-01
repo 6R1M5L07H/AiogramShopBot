@@ -48,7 +48,7 @@ from handlers.user.my_profile import my_profile_router
 from handlers.user.shipping_handlers import shipping_router
 from services.notification import NotificationService
 from services.user import UserService
-from utils.custom_filters import IsUserExistFilter, IsUserExistFilterIncludingBanned
+from utils.custom_filters import IsUserExistFilter, IsUserExistFilterIncludingBanned, ButtonTextFilter
 from utils.localizator import Localizator
 
 # Logging is now configured via setup_logging() above
@@ -83,13 +83,13 @@ async def start(message: types.Message, session: AsyncSession | Session):
     await message.answer(Localizator.get_text(BotEntity.COMMON, "start_message", lang=user_lang), reply_markup=start_markup)
 
 
-@main_router.message(F.text == Localizator.get_text(BotEntity.USER, "faq"), IsUserExistFilterIncludingBanned())
+@main_router.message(ButtonTextFilter("faq"), IsUserExistFilterIncludingBanned())
 async def faq(message: types.Message):
     logging.info("❓ FAQ BUTTON HANDLER TRIGGERED")
     await message.answer(Localizator.get_text(BotEntity.USER, "faq_string"))
 
 
-@main_router.message(F.text == Localizator.get_text(BotEntity.USER, "help"), IsUserExistFilterIncludingBanned())
+@main_router.message(ButtonTextFilter("help"), IsUserExistFilterIncludingBanned())
 async def support(message: types.Message):
     logging.info("❔ HELP BUTTON HANDLER TRIGGERED")
     help_text = Localizator.get_text(BotEntity.USER, "help_string")
@@ -103,7 +103,7 @@ async def support(message: types.Message):
         await message.answer(help_text)
 
 
-@main_router.message(F.text == Localizator.get_text(BotEntity.USER, "gpg_menu"), IsUserExistFilterIncludingBanned())
+@main_router.message(ButtonTextFilter("gpg_menu"), IsUserExistFilterIncludingBanned())
 async def show_gpg_info(message: types.Message):
     """
     Display GPG public key information from main menu.
