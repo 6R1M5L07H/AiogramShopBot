@@ -14,7 +14,14 @@ import logging
 from datetime import datetime, timedelta
 
 import config
+from exceptions.backup import (
+    BackupException,
+    BackupEncryptionDisabledException,
+    BackupEncryptionUnavailableException,
+    BackupEncryptionFailedException
+)
 from utils.db_backup import get_backup_handler
+from utils.html_escape import safe_html
 from services.notification import NotificationService
 
 
@@ -70,10 +77,45 @@ async def create_backup_with_notification() -> bool:
         logger.info(f"[Database Backup] ✅ Backup created and verified: {backup_path}")
         return True
 
+    except BackupEncryptionDisabledException as e:
+        error_msg = (
+            "Backup encryption is disabled. "
+            "Unencrypted backups are not allowed. "
+            "Configure PGP_PUBLIC_KEY_BASE64 in .env to enable encrypted backups."
+        )
+        logger.error(f"[Database Backup] ❌ {error_msg}", exc_info=True)
+        await notify_admins_backup_failure(f"Configuration Error: {error_msg}")
+        return False
+
+    except BackupEncryptionUnavailableException as e:
+        error_msg = (
+            "GPG encryption is not available. "
+            f"Reason: {e.details.get('reason', 'unknown')}. "
+            "Ensure PGP_PUBLIC_KEY_BASE64 is properly configured and python-gnupg is installed."
+        )
+        logger.error(f"[Database Backup] ❌ {error_msg}", exc_info=True)
+        await notify_admins_backup_failure(f"System Error: {error_msg}")
+        return False
+
+    except BackupEncryptionFailedException as e:
+        error_msg = (
+            f"GPG encryption failed: {e.details.get('status', 'unknown')}. "
+            "Check GPG configuration and public key validity."
+        )
+        logger.error(f"[Database Backup] ❌ {error_msg}", exc_info=True)
+        await notify_admins_backup_failure(f"Encryption Error: {error_msg}")
+        return False
+
+    except BackupException as e:
+        error_msg = f"Backup error: {e.message}"
+        logger.error(f"[Database Backup] ❌ {error_msg}", exc_info=True)
+        await notify_admins_backup_failure(error_msg)
+        return False
+
     except Exception as e:
         error_msg = f"Unexpected error during backup: {e}"
         logger.error(f"[Database Backup] ❌ {error_msg}", exc_info=True)
-        await notify_admins_backup_failure(error_msg)
+        await notify_admins_backup_failure(f"Unknown Error: {error_msg}")
         return False
 
 
@@ -112,10 +154,13 @@ async def notify_admins_backup_failure(error_message: str):
         error_message: Description of the backup failure
     """
     try:
+        # Escape error message to prevent HTML injection
+        safe_error = safe_html(error_message)
+
         notification_text = (
             "⚠️ <b>Database Backup Failed</b>\n\n"
             f"<b>Time:</b> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
-            f"<b>Error:</b> {error_message}\n\n"
+            f"<b>Error:</b> {safe_error}\n\n"
             "<i>Please check the logs and verify backup system.</i>"
         )
 

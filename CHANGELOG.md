@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2025-12-01
+
+### Bug Fixes
+
+**Main Menu Button Handler Registration**
+- Fixed main menu buttons (All Categories, My Profile, Cart, FAQ, Help, GPG) not responding
+- Implemented ButtonTextFilter for runtime text matching instead of import-time evaluation
+- Resolved middleware registration order preventing handlers from receiving database session
+- Button handlers now work correctly regardless of when BOT_LANGUAGE config is loaded
+
 ## 2025-11-29
 
 ### Code Quality Improvements
