@@ -30,9 +30,26 @@ class ButtonTextFilter(BaseFilter):
         self.entity = entity
 
     async def __call__(self, message: Message) -> bool:
+        import logging
         # Evaluate text match at runtime, not import time
         expected_text = Localizator.get_text(self.entity, self.localization_key)
-        return message.text == expected_text
+        matches = message.text == expected_text
+
+        # Debug logging to diagnose language mismatch
+        if not matches and message.text:
+            logging.warning(
+                f"🔍 ButtonTextFilter mismatch: "
+                f"key='{self.localization_key}', "
+                f"received='{message.text}', "
+                f"expected='{expected_text}', "
+                f"BOT_LANGUAGE={import_config().BOT_LANGUAGE}"
+            )
+
+        return matches
+
+def import_config():
+    import config
+    return config
 
 
 class AdminIdFilter(BaseFilter):
