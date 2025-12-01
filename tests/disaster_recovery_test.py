@@ -43,7 +43,7 @@ from typing import Dict, List, Optional, Tuple
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import config
-from db import get_async_session, session_execute, session_commit
+from db import get_db_session, session_execute, session_commit
 from models.category import Category
 from models.subcategory import Subcategory
 from models.user import User
@@ -87,7 +87,7 @@ class DisasterRecoveryTest:
 
         self.db_path = Path(f"data/{config.DB_NAME}")
         self.backup_dir = Path(config.DB_BACKUP_PATH)
-        self.report_dir = Path("logs/disaster_recovery")
+        self.report_dir = Path(config.LOG_DISASTER_RECOVERY_DIR)
         self.report_dir.mkdir(parents=True, exist_ok=True, mode=0o700)  # Secure permissions
 
         self.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -263,7 +263,7 @@ class DisasterRecoveryTest:
     async def _create_test_entities(self) -> bool:
         """Create test entities in database."""
         try:
-            async with get_async_session() as session:
+            async with get_db_session() as session:
                 # Create test category
                 test_category_name = f"DR_TEST_CATEGORY_{self.timestamp}"
                 self._log(f"Creating category: {test_category_name}", "INFO")
@@ -417,7 +417,7 @@ class DisasterRecoveryTest:
         try:
             self._log("Verifying test entities...", "INFO")
 
-            async with get_async_session() as session:
+            async with get_db_session() as session:
                 # Verify category
                 category_id = self.test_entities['category_id']
                 stmt = select(Category).where(Category.id == category_id)
@@ -467,7 +467,7 @@ class DisasterRecoveryTest:
         try:
             self._log("Removing test entities...", "INFO")
 
-            async with get_async_session() as session:
+            async with get_db_session() as session:
                 # Delete category (cascade deletes subcategory)
                 category_id = self.test_entities.get('category_id')
                 if category_id:
