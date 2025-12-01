@@ -103,13 +103,13 @@ def setup_logging():
     Configuration:
     - Log level from config.LOG_LEVEL (DEBUG, INFO, WARNING, ERROR)
     - Automatic rotation every midnight
-    - Keeps logs for config.LOG_ROTATION_DAYS days
+    - Keeps logs for config.LOG_RETENTION_DAYS days
     - Masks secrets if config.LOG_MASK_SECRETS is True
-    - Writes to logs/bot.log
+    - Writes to config.LOG_SYSTEM_DIR/bot.log (default: logs/system/bot.log)
     """
-    # Create logs directory if it doesn't exist
-    log_dir = Path("logs")
-    log_dir.mkdir(exist_ok=True)
+    # Create system logs directory if it doesn't exist
+    log_dir = Path(config.LOG_SYSTEM_DIR)
+    log_dir.mkdir(parents=True, exist_ok=True)
 
     # Get log level from config (default to INFO)
     log_level_str = getattr(config, "LOG_LEVEL", "INFO")
@@ -189,4 +189,4 @@ if __name__ == "__main__":
     logging.info("BTC Address: bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh")
     logging.info("Email: user@example.com")
     logging.info("Normal message: User 12345 created order #67890")
-    logging.info("Test complete - check logs/bot.log")
+    logging.info(f"Test complete - check {config.LOG_SYSTEM_DIR}/bot.log")

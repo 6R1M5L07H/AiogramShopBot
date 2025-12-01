@@ -11,14 +11,13 @@ from repositories.item import ItemRepository
 from services.cart import CartService
 from services.category import CategoryService
 from services.subcategory import SubcategoryService
-from utils.custom_filters import IsUserExistFilter
+from utils.custom_filters import IsUserExistFilter, ButtonTextFilter
 from utils.localizator import Localizator
 
 all_categories_router = Router()
 
 
-@all_categories_router.message(F.text == Localizator.get_text(BotEntity.USER, "all_categories"),
-                               IsUserExistFilter())
+@all_categories_router.message(ButtonTextFilter("all_categories"), IsUserExistFilter())
 async def all_categories_text_message(message: types.Message, session: AsyncSession | Session):
     import logging
     logging.info("🗂️ ALL CATEGORIES BUTTON HANDLER TRIGGERED")

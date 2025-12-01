@@ -232,6 +232,13 @@ else:
 # Backward compatibility alias
 LOG_ROTATION_DAYS = LOG_RETENTION_DAYS
 
+# Log Directory Structure Configuration
+# Organized structure: logs/system/, logs/disaster_recovery/, logs/backup/
+LOG_DIR = os.environ.get("LOG_DIR", "logs")  # Base log directory
+LOG_SYSTEM_DIR = os.environ.get("LOG_SYSTEM_DIR", f"{LOG_DIR}/system")  # System logs (bot.log)
+LOG_DISASTER_RECOVERY_DIR = os.environ.get("LOG_DISASTER_RECOVERY_DIR", f"{LOG_DIR}/disaster_recovery")  # DR test reports
+LOG_BACKUP_DIR = os.environ.get("LOG_BACKUP_DIR", f"{LOG_DIR}/backup")  # Backup operation logs
+
 # Rate Limiting Configuration
 MAX_ORDERS_PER_USER_PER_HOUR = int(os.environ.get("MAX_ORDERS_PER_USER_PER_HOUR", "5"))  # Prevent order spam
 MAX_PAYMENT_CHECKS_PER_MINUTE = int(os.environ.get("MAX_PAYMENT_CHECKS_PER_MINUTE", "10"))  # Prevent payment status spam

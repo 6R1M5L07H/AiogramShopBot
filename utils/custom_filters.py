@@ -4,9 +4,52 @@ from aiogram.types import Message
 
 import config
 from db import get_db_session
+from enums.bot_entity import BotEntity
 from models.user import UserDTO
 from services.user import UserService
+from utils.localizator import Localizator
 from utils.permission_utils import is_admin_user, is_banned_user
+
+
+class ButtonTextFilter(BaseFilter):
+    """
+    Filter that matches button text at runtime instead of import time.
+
+    Solves the issue where F.text == Localizator.get_text(...) is evaluated
+    at import time, which can cause mismatches if BOT_LANGUAGE changes or
+    localization is initialized differently between import and runtime.
+
+    Usage:
+        @router.message(ButtonTextFilter("all_categories"), IsUserExistFilter())
+        async def handler(message: Message, session: AsyncSession | Session):
+            ...
+    """
+
+    def __init__(self, localization_key: str, entity: BotEntity = BotEntity.USER):
+        self.localization_key = localization_key
+        self.entity = entity
+
+    async def __call__(self, message: Message) -> bool:
+        import logging
+        # Evaluate text match at runtime, not import time
+        expected_text = Localizator.get_text(self.entity, self.localization_key)
+        matches = message.text == expected_text
+
+        # Debug logging to diagnose language mismatch
+        if not matches and message.text:
+            logging.warning(
+                f"🔍 ButtonTextFilter mismatch: "
+                f"key='{self.localization_key}', "
+                f"received='{message.text}', "
+                f"expected='{expected_text}', "
+                f"BOT_LANGUAGE={import_config().BOT_LANGUAGE}"
+            )
+
+        return matches
+
+def import_config():
+    import config
+    return config
 
 
 class AdminIdFilter(BaseFilter):

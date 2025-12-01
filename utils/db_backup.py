@@ -15,6 +15,11 @@ from pathlib import Path
 from typing import Optional
 
 import config
+from exceptions.backup import (
+    BackupEncryptionDisabledException,
+    BackupEncryptionUnavailableException,
+    BackupEncryptionFailedException
+)
 from utils.db_backup_adapters import get_backup_adapter
 
 # GPG encryption support (optional)
@@ -88,17 +93,32 @@ class DatabaseBackup:
         Uses Adapter Pattern to handle different database types uniformly.
         Backup flow: DB → Memory (SQL dump via adapter) → Compress → GPG → Disk
 
-        SECURITY: Never writes unencrypted plaintext to disk when GPG is enabled.
+        SECURITY CRITICAL: NEVER writes unencrypted backups to disk.
+        Encryption is MANDATORY. Method fails if GPG is unavailable or encryption is disabled.
+        Policy: "Better no backups than unencrypted backups."
+
         All intermediate steps (SQL dump, compression) happen in-memory only.
 
         Args:
-            compress: Whether to compress the backup with gzip
-            encrypt: Whether to encrypt with GPG (requires PGP_PUBLIC_KEY_BASE64)
+            compress: Whether to compress the backup with gzip (forced True for encrypted backups)
+            encrypt: Whether to encrypt with GPG (MUST be True, otherwise method fails)
 
         Returns:
             Path to the backup file, or None if backup failed
+
+        Raises:
+            BackupEncryptionDisabledException: If encryption is disabled
+            BackupEncryptionUnavailableException: If GPG is unavailable
+            BackupEncryptionFailedException: If GPG encryption operation fails
         """
         try:
+            # SECURITY: Enforce mandatory encryption
+            if not encrypt:
+                raise BackupEncryptionDisabledException()
+
+            if self.gpg is None:
+                raise BackupEncryptionUnavailableException()
+
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
             # Get appropriate backup adapter based on DB_ENCRYPTION config
@@ -107,17 +127,10 @@ class DatabaseBackup:
                 password=config.DB_PASS if config.DB_ENCRYPTION else None
             )
 
-            # Determine backup file extension based on compression and encryption
-            if encrypt and self.gpg is not None:
-                # Stream mode: 100% memory-only, never writes plaintext to disk
-                backup_filename = f"db_backup_{timestamp}.db.gz.gpg"
-                logger.info("Creating encrypted database backup (stream mode)")
-            elif compress:
-                backup_filename = f"db_backup_{timestamp}.db.gz"
-                logger.info("Creating compressed database backup")
-            else:
-                backup_filename = f"db_backup_{timestamp}.db"
-                logger.info("Creating database backup")
+            # Encrypted backup mode (ONLY mode allowed)
+            # Stream mode: 100% memory-only, never writes plaintext to disk
+            backup_filename = f"db_backup_{timestamp}.db.gz.gpg"
+            logger.info("Creating encrypted database backup (stream mode)")
 
             backup_path = self.backup_dir / backup_filename
 
@@ -127,52 +140,45 @@ class DatabaseBackup:
             original_size = backup_buffer.tell()
             logger.debug(f"Database backed up to memory: {original_size:,} bytes")
 
-            # Step 2: Compress in memory if requested
-            if compress or (encrypt and self.gpg is not None):
-                backup_buffer.seek(0)
-                compressed_buffer = io.BytesIO()
-                with gzip.GzipFile(fileobj=compressed_buffer, mode='wb') as gz:
-                    shutil.copyfileobj(backup_buffer, gz)
+            # Step 2: Compress in memory (mandatory for encrypted backups)
+            backup_buffer.seek(0)
+            compressed_buffer = io.BytesIO()
+            with gzip.GzipFile(fileobj=compressed_buffer, mode='wb') as gz:
+                shutil.copyfileobj(backup_buffer, gz)
 
-                compressed_size = compressed_buffer.tell()
-                compression_ratio = (1 - compressed_size / original_size) * 100
-                logger.debug(
-                    f"Backup compressed in memory: {original_size:,} → {compressed_size:,} bytes "
-                    f"({compression_ratio:.1f}% reduction)"
+            compressed_size = compressed_buffer.tell()
+            compression_ratio = (1 - compressed_size / original_size) * 100
+            logger.debug(
+                f"Backup compressed in memory: {original_size:,} → {compressed_size:,} bytes "
+                f"({compression_ratio:.1f}% reduction)"
+            )
+            backup_buffer = compressed_buffer  # Use compressed buffer for next step
+
+            # Step 3: Encrypt with GPG (mandatory - no fallback)
+            backup_buffer.seek(0)
+            encrypted_data = self.gpg.encrypt_file(
+                backup_buffer,
+                recipients=[self.gpg_key_id],
+                armor=False,  # Binary output for smaller size
+                always_trust=True  # Trust the imported key
+            )
+
+            if not encrypted_data.ok:
+                raise BackupEncryptionFailedException(
+                    status=encrypted_data.status,
+                    backup_path=str(backup_path)
                 )
-                backup_buffer = compressed_buffer  # Use compressed buffer for next step
 
-            # Step 3: Encrypt with GPG if requested
-            if encrypt and self.gpg is not None:
-                backup_buffer.seek(0)
-                encrypted_data = self.gpg.encrypt_file(
-                    backup_buffer,
-                    recipients=[self.gpg_key_id],
-                    armor=False,  # Binary output for smaller size
-                    always_trust=True  # Trust the imported key
-                )
+            # Write only encrypted data to disk
+            with open(backup_path, 'wb') as f:
+                f.write(encrypted_data.data)
 
-                if not encrypted_data.ok:
-                    raise RuntimeError(f"GPG encryption failed: {encrypted_data.status}")
-
-                # Write only encrypted data to disk
-                with open(backup_path, 'wb') as f:
-                    f.write(encrypted_data.data)
-
-                encrypted_size = backup_path.stat().st_size
-                total_reduction = (1 - encrypted_size / original_size) * 100
-                logger.info(
-                    f"Encrypted backup created: {original_size:,} → {compressed_size:,} → {encrypted_size:,} bytes "
-                    f"(total reduction: {total_reduction:.1f}%)"
-                )
-            else:
-                # Write backup buffer to disk (unencrypted)
-                backup_buffer.seek(0)
-                with open(backup_path, 'wb') as f:
-                    f.write(backup_buffer.read())
-
-                final_size = backup_path.stat().st_size
-                logger.info(f"Backup created successfully: {backup_path} ({final_size:,} bytes)")
+            encrypted_size = backup_path.stat().st_size
+            total_reduction = (1 - encrypted_size / original_size) * 100
+            logger.info(
+                f"Encrypted backup created: {original_size:,} → {compressed_size:,} → {encrypted_size:,} bytes "
+                f"(total reduction: {total_reduction:.1f}%)"
+            )
 
             # Create checksum file
             self._create_checksum(backup_path)

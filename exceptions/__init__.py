@@ -30,9 +30,14 @@ ShopBotException (base)
 │   ├── UserNotFoundException
 │   ├── UserBannedException
 │   └── InsufficientBalanceException
-└── ShippingException
-    ├── MissingShippingAddressException
-    └── InvalidAddressException
+├── ShippingException
+│   ├── MissingShippingAddressException
+│   └── InvalidAddressException
+└── BackupException
+    ├── BackupEncryptionDisabledException
+    ├── BackupEncryptionUnavailableException
+    ├── BackupEncryptionFailedException
+    └── BackupCreationFailedException
 
 Usage:
 ------
@@ -47,6 +52,13 @@ Handlers catch and display user-friendly messages:
 """
 
 from .base import ShopBotException
+from .backup import (
+    BackupException,
+    BackupEncryptionDisabledException,
+    BackupEncryptionUnavailableException,
+    BackupEncryptionFailedException,
+    BackupCreationFailedException
+)
 from .cart import CartException, EmptyCartException, CartItemNotFoundException, InvalidCartStateException
 from .item import ItemException, ItemNotFoundException, ItemAlreadySoldException, InvalidItemDataException
 from .order import (
@@ -70,6 +82,13 @@ from .user import UserException, UserNotFoundException, UserBannedException, Ins
 __all__ = [
     # Base
     'ShopBotException',
+
+    # Backup
+    'BackupException',
+    'BackupEncryptionDisabledException',
+    'BackupEncryptionUnavailableException',
+    'BackupEncryptionFailedException',
+    'BackupCreationFailedException',
 
     # Cart
     'CartException',

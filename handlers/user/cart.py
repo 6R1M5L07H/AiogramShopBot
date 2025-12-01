@@ -10,13 +10,13 @@ import config
 from callbacks import CartCallback, OrderCallback
 from enums.bot_entity import BotEntity
 from services.cart import CartService
-from utils.custom_filters import IsUserExistFilter
+from utils.custom_filters import IsUserExistFilter, ButtonTextFilter
 from utils.localizator import Localizator
 
 cart_router = Router()
 
 
-@cart_router.message(F.text == Localizator.get_text(BotEntity.USER, "cart"), IsUserExistFilter())
+@cart_router.message(ButtonTextFilter("cart"), IsUserExistFilter())
 async def cart_text_message(message: types.Message, session: AsyncSession | Session):
     import logging
     logging.info("🛒 CART BUTTON HANDLER TRIGGERED")
