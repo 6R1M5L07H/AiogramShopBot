@@ -212,11 +212,28 @@ class AdvancedRestore:
 
     def _select_compose_file(self) -> Optional[str]:
         """
-        Interactive Docker Compose file selection.
+        Docker Compose file selection with auto-detect.
+
+        Auto-detects based on config.RUNTIME_ENVIRONMENT, falls back to interactive.
 
         Returns:
             Path to compose file, or None to skip Docker management
         """
+        # Auto-detect based on RUNTIME_ENVIRONMENT
+        from enums.runtime_environment import RuntimeEnvironment
+
+        if config.RUNTIME_ENVIRONMENT == RuntimeEnvironment.PROD:
+            compose_file = "docker-compose.prod.yml"
+            if Path(compose_file).exists():
+                logger.info(f"Auto-detected production environment: {compose_file}")
+                return compose_file
+        elif config.RUNTIME_ENVIRONMENT == RuntimeEnvironment.DEV:
+            compose_file = "docker-compose.dev.yml"
+            if Path(compose_file).exists():
+                logger.info(f"Auto-detected development environment: {compose_file}")
+                return compose_file
+
+        # Fallback to interactive selection if auto-detect fails
         logger.info("Docker Compose Configuration")
         logger.info("")
         logger.info("Select Docker Compose mode:")
