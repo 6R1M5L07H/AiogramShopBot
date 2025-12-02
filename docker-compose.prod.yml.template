@@ -67,7 +67,7 @@ services:
     volumes:
       # Database and data directory
       - ./data:/bot/data
-      # Backup directory
+      # Backup directory (bind mount for direct access via cron/rsync)
       - ./backups:/bot/backups
     command: ["python", "-u", "run.py"]
     restart: always
