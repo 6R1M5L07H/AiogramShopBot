@@ -952,3 +952,182 @@ class AdminService:
         kb_builder.row(AdminConstants.back_to_main_button)
 
         return msg, kb_builder
+
+    # === Registration Management Methods ===
+
+    @staticmethod
+    async def get_user_list_view(
+            callback: CallbackQuery,
+            session: AsyncSession | Session
+    ) -> tuple[str, InlineKeyboardBuilder]:
+        """
+        Show paginated user list filtered by approval status.
+
+        Shows user list with filters: Pending, Waitlist, Banned.
+        Each user entry shows: username/ID, registration date, status.
+        """
+        from repositories.user import UserRepository
+        from enums.approval_status import ApprovalStatus
+        from utils.html_escape import safe_html
+
+        unpacked_cb = UserManagementCallback.unpack(callback.data)
+
+        # Map filter_type to ApprovalStatus
+        if unpacked_cb.filter_type == ApprovalStatus.PENDING.value:
+            status_filter = ApprovalStatus.PENDING
+            title_key = "user_list_title_pending"
+        elif unpacked_cb.filter_type == ApprovalStatus.CLOSED_REGISTRATION.value:
+            status_filter = ApprovalStatus.CLOSED_REGISTRATION
+            title_key = "user_list_title_waitlist"
+        else:  # Banned users (is_blocked=True, not approval_status)
+            # Special case: Banned users use existing method
+            return await AdminService.get_banned_users_list(callback, session)
+
+        # Get paginated users
+        users, total_count = await UserRepository.get_by_approval_status(
+            status_filter,
+            unpacked_cb.page,
+            session
+        )
+
+        kb_builder = InlineKeyboardBuilder()
+
+        if not users:
+            message = Localizator.get_text(BotEntity.ADMIN, "user_list_empty")
+        else:
+            message = Localizator.get_text(BotEntity.ADMIN, title_key).format(count=total_count)
+            message += "\n\n"
+
+            # Build user list buttons
+            for user in users:
+                username_display = safe_html(user.telegram_username) if user.telegram_username else f"ID: {user.telegram_id}"
+                date_str = user.registered_at.strftime("%d.%m.%Y") if user.registered_at else "N/A"
+
+                button_text = f"{date_str} - {username_display}"
+
+                kb_builder.button(
+                    text=button_text,
+                    callback_data=UserManagementCallback.create(
+                        level=6,  # User detail view
+                        operation=UserManagementOperation.USER_DETAIL,
+                        user_id=user.id,
+                        filter_type=unpacked_cb.filter_type
+                    ).pack()
+                )
+
+            kb_builder.adjust(1)
+
+            # Add batch approve button for pending/waitlist
+            if status_filter in [ApprovalStatus.PENDING, ApprovalStatus.CLOSED_REGISTRATION]:
+                kb_builder.row(InlineKeyboardButton(
+                    text=Localizator.get_text(BotEntity.ADMIN, "batch_approve_all"),
+                    callback_data=UserManagementCallback.create(
+                        level=7,  # Batch approve confirmation
+                        operation=UserManagementOperation.BATCH_APPROVE,
+                        filter_type=unpacked_cb.filter_type
+                    ).pack()
+                ))
+
+            # Pagination
+            max_page = await UserRepository.get_max_page_by_approval_status(status_filter, session)
+            kb_builder = await add_pagination_buttons(
+                kb_builder,
+                unpacked_cb,
+                max_page,
+                unpacked_cb.get_back_button(0)  # Back to user management menu
+            )
+
+        return message, kb_builder
+
+    @staticmethod
+    async def get_user_detail_view(
+            callback: CallbackQuery,
+            session: AsyncSession | Session
+    ) -> tuple[str, InlineKeyboardBuilder]:
+        """
+        Show detailed user information with approve/reject actions.
+
+        Shows:
+        - Username/ID, Telegram ID
+        - Registration date, status
+        - Lifetime revenue, orders (DUMMY for now)
+        - Contact button
+        - Approve/Reject buttons
+        """
+        from repositories.user import UserRepository
+        from enums.approval_status import ApprovalStatus
+        from utils.html_escape import safe_html
+
+        unpacked_cb = UserManagementCallback.unpack(callback.data)
+        user = await UserRepository.get_by_id(unpacked_cb.user_id, session)
+
+        if not user:
+            return Localizator.get_text(BotEntity.ADMIN, "user_not_found"), InlineKeyboardBuilder()
+
+        kb_builder = InlineKeyboardBuilder()
+
+        # Build message
+        username_display = safe_html(user.telegram_username) if user.telegram_username else "N/A"
+        status_key = f"approval_status_{user.approval_status.value}"
+
+        message = Localizator.get_text(BotEntity.ADMIN, "user_detail_header")
+        message += "\n\n"
+        message += Localizator.get_text(BotEntity.ADMIN, "user_detail_username").format(username=username_display)
+        message += Localizator.get_text(BotEntity.ADMIN, "user_detail_telegram_id").format(telegram_id=user.telegram_id)
+        message += Localizator.get_text(BotEntity.ADMIN, "user_detail_status").format(
+            status=Localizator.get_text(BotEntity.ADMIN, status_key)
+        )
+
+        if user.registered_at:
+            date_str = user.registered_at.strftime("%d.%m.%Y %H:%M")
+            message += Localizator.get_text(BotEntity.ADMIN, "user_detail_registered").format(date=date_str)
+
+        # DUMMY statistics
+        message += "\n"
+        message += Localizator.get_text(BotEntity.ADMIN, "user_detail_stats_header")
+        message += Localizator.get_text(BotEntity.ADMIN, "user_detail_lifetime_revenue").format(
+            revenue=f"{user.lifetime_revenue:.2f}",
+            currency=Localizator.get_currency_symbol()
+        )
+        message += Localizator.get_text(BotEntity.ADMIN, "user_detail_lifetime_orders").format(orders=user.lifetime_orders)
+
+        # Contact button (using telegram_id)
+        kb_builder.row(InlineKeyboardButton(
+            text=Localizator.get_text(BotEntity.ADMIN, "contact_user"),
+            url=f"tg://user?id={user.telegram_id}"
+        ))
+
+        # Action buttons based on status
+        if user.approval_status == ApprovalStatus.PENDING or user.approval_status == ApprovalStatus.CLOSED_REGISTRATION:
+            kb_builder.button(
+                text=Localizator.get_text(BotEntity.ADMIN, "approve_user_button"),
+                callback_data=UserManagementCallback.create(
+                    level=8,  # Approve confirmation
+                    operation=UserManagementOperation.APPROVE_USER,
+                    user_id=user.id,
+                    filter_type=unpacked_cb.filter_type
+                ).pack()
+            )
+            kb_builder.button(
+                text=Localizator.get_text(BotEntity.ADMIN, "reject_user_button"),
+                callback_data=UserManagementCallback.create(
+                    level=9,  # Rejection reason input (FSM)
+                    operation=UserManagementOperation.REJECT_USER,
+                    user_id=user.id,
+                    filter_type=unpacked_cb.filter_type
+                ).pack()
+            )
+            kb_builder.adjust(2)
+
+        # Back button
+        kb_builder.row(InlineKeyboardButton(
+            text=Localizator.get_text(BotEntity.COMMON, "back_button"),
+            callback_data=UserManagementCallback.create(
+                level=5,  # Back to user list
+                operation=UserManagementOperation.USER_LIST,
+                page=unpacked_cb.page,
+                filter_type=unpacked_cb.filter_type
+            ).pack()
+        ))
+
+        return message, kb_builder

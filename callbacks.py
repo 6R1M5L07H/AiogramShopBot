@@ -145,6 +145,12 @@ class UserManagementOperation(IntEnum):
     ADD_BALANCE = 2
     REDUCE_BALANCE = 3
     UNBAN_USER = 4
+    # Registration Management (Approval System)
+    USER_LIST = 5
+    APPROVE_USER = 6
+    REJECT_USER = 7
+    BATCH_APPROVE = 8
+    USER_DETAIL = 9
 
 
 class UserManagementCallback(BaseCallback, prefix="user_management"):
@@ -152,12 +158,14 @@ class UserManagementCallback(BaseCallback, prefix="user_management"):
     page: int
     confirmation: bool
     buy_id: int | None
+    filter_type: int | None  # ApprovalStatus filter (for user list)
+    user_id: int | None  # User ID for detail/approve/reject operations
 
     @staticmethod
     def create(level: int, operation: UserManagementOperation | None = None, page: int = 0, confirmation: bool = False,
-               buy_id: int | None = None):
+               buy_id: int | None = None, filter_type: int | None = None, user_id: int | None = None):
         return UserManagementCallback(level=level, operation=operation, page=page, confirmation=confirmation,
-                                      buy_id=buy_id)
+                                      buy_id=buy_id, filter_type=filter_type, user_id=user_id)
 
 
 class StatisticsEntity(IntEnum):

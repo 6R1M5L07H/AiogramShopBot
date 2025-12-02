@@ -6,8 +6,10 @@ from sqlalchemy.orm import Session
 import config
 from callbacks import MyProfileCallback
 from db import session_commit
+from enums.approval_status import ApprovalStatus
 from enums.bot_entity import BotEntity
 from enums.cryptocurrency import Cryptocurrency
+from enums.registration_mode import RegistrationMode
 from handlers.common.common import add_pagination_buttons
 from models.user import User, UserDTO
 from repositories.buy import BuyRepository
@@ -22,10 +24,41 @@ from utils.localizator import Localizator
 class UserService:
 
     @staticmethod
-    async def create_if_not_exist(user_dto: UserDTO, session: AsyncSession | Session) -> None:
+    async def create_if_not_exist(user_dto: UserDTO, session: AsyncSession | Session) -> ApprovalStatus:
+        """
+        Create user if not exists, respecting registration mode.
+
+        Args:
+            user_dto: User data transfer object
+            session: Database session
+
+        Returns:
+            ApprovalStatus of the user (new or existing)
+        """
+        from repositories.system_settings import SystemSettingsRepository
+        import datetime
+
         user = await UserRepository.get_by_tgid(user_dto.telegram_id, session)
         match user:
             case None:
+                # New user - check registration mode
+                registration_mode = await SystemSettingsRepository.get_registration_mode(session)
+
+                # Set approval status based on registration mode
+                match registration_mode:
+                    case RegistrationMode.OPEN:
+                        user_dto.approval_status = ApprovalStatus.APPROVED
+                        user_dto.approved_at = datetime.datetime.now()
+                    case RegistrationMode.REQUEST_APPROVAL:
+                        user_dto.approval_status = ApprovalStatus.PENDING
+                        user_dto.approval_requested_at = datetime.datetime.now()
+                    case RegistrationMode.CLOSED:
+                        user_dto.approval_status = ApprovalStatus.CLOSED_REGISTRATION
+                    case _:
+                        # Fallback to open mode if invalid
+                        user_dto.approval_status = ApprovalStatus.APPROVED
+                        user_dto.approved_at = datetime.datetime.now()
+
                 user_id = await UserRepository.create(user_dto, session)
                 await CartRepository.get_or_create(user_id, session)
                 await session_commit(session)
@@ -34,12 +67,18 @@ class UserService:
                 if config.NOTIFY_ADMINS_NEW_USER:
                     from services.notification import NotificationService
                     await NotificationService.notify_new_user_registration(user_dto)
+
+                return user_dto.approval_status
+
             case _:
+                # Existing user - update username and enable messages
                 update_user_dto = UserDTO(**user.model_dump())
                 update_user_dto.can_receive_messages = True
                 update_user_dto.telegram_username = user_dto.telegram_username
                 await UserRepository.update(update_user_dto, session)
                 await session_commit(session)
+
+                return user.approval_status
 
     @staticmethod
     async def get(user_dto: UserDTO, session: AsyncSession | Session) -> User | None:

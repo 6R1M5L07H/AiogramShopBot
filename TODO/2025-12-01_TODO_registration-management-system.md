@@ -645,8 +645,124 @@ async def approve_user_handler(
 
     return msg, kb_builder
 
-# NEW: Level 9 - Reject User (FSM: Ask for reason)
-# TODO: Implement FSM state for rejection reason input
+# NEW: Level 9 - Reject User: Request Reason (FSM State)
+@staticmethod
+async def reject_user_request_reason(
+    callback: CallbackQuery,
+    state: FSMContext
+) -> tuple[str, InlineKeyboardBuilder]:
+    """
+    Ask admin to enter rejection reason.
+    Enters FSM state: UserManagementStates.rejection_reason
+    """
+    unpacked = UserManagementCallback.unpack(callback.data)
+    user = await UserRepository.get_by_id(unpacked.user_id, session)
+
+    # Store user_id in FSM for later
+    await state.update_data(rejection_user_id=unpacked.user_id, rejection_filter=unpacked.filter)
+    await state.set_state(UserManagementStates.rejection_reason)
+
+    msg = Localizator.get_text(BotEntity.ADMIN, "reject_user_enter_reason").format(
+        username=user.telegram_username or user.telegram_id
+    )
+
+    kb_builder = InlineKeyboardBuilder()
+    kb_builder.row(
+        types.InlineKeyboardButton(
+            text=Localizator.get_text(BotEntity.COMMON, "cancel"),
+            callback_data=UserManagementCallback.create(
+                level=7,
+                user_id=unpacked.user_id,
+                filter=unpacked.filter
+            ).pack()
+        )
+    )
+
+    return msg, kb_builder
+
+# NEW: FSM Handler - Rejection Reason Text Input
+@user_management.message(
+    AdminIdFilter(),
+    F.text,
+    StateFilter(UserManagementStates.rejection_reason)
+)
+async def rejection_reason_preview(message: Message, state: FSMContext):
+    """
+    Admin entered rejection reason.
+    Show preview with Edit/Send/Cancel buttons.
+    """
+    reason_text = message.text
+    data = await state.get_data()
+    user_id = data.get("rejection_user_id")
+
+    # Store reason in FSM
+    await state.update_data(rejection_reason_text=reason_text)
+
+    # Show preview
+    msg = Localizator.get_text(BotEntity.ADMIN, "reject_user_preview").format(
+        reason=reason_text
+    )
+
+    kb_builder = InlineKeyboardBuilder()
+    kb_builder.button(
+        text=Localizator.get_text(BotEntity.COMMON, "send"),
+        callback_data=UserManagementCallback.create(
+            level=12,  # NEW: Execute rejection
+            operation=UserManagementOperation.REJECT_USER_EXECUTE,
+            user_id=user_id
+        )
+    )
+    kb_builder.button(
+        text=Localizator.get_text(BotEntity.COMMON, "edit"),
+        callback_data=UserManagementCallback.create(
+            level=9,  # Back to reason input
+            operation=UserManagementOperation.REJECT_USER,
+            user_id=user_id
+        )
+    )
+    kb_builder.button(
+        text=Localizator.get_text(BotEntity.COMMON, "cancel"),
+        callback_data=UserManagementCallback.create(
+            level=7,  # Back to user detail
+            user_id=user_id
+        )
+    )
+    kb_builder.adjust(1)
+
+    await message.answer(msg, reply_markup=kb_builder.as_markup())
+
+# NEW: Level 12 - Execute Rejection
+@staticmethod
+async def reject_user_execute(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session
+) -> tuple[str, InlineKeyboardBuilder]:
+    """Execute user rejection with reason from FSM"""
+    unpacked = UserManagementCallback.unpack(callback.data)
+    data = await state.get_data()
+    reason = data.get("rejection_reason_text")
+    rejection_filter = data.get("rejection_filter")
+    admin_id = callback.from_user.id
+
+    # Clear FSM state
+    await state.clear()
+
+    # Reject user
+    user = await UserRepository.reject_user(unpacked.user_id, admin_id, reason, session)
+    await session_commit(session)
+
+    # Notify user
+    await NotificationService.notify_user_rejected(user.telegram_id, reason)
+
+    msg = Localizator.get_text(BotEntity.ADMIN, "user_rejected_success").format(
+        username=user.telegram_username or user.telegram_id
+    )
+
+    kb_builder = InlineKeyboardBuilder()
+    kb_builder.row(UserManagementCallback.create(level=6, filter=rejection_filter).get_back_button(6))
+
+    return msg, kb_builder
 
 # NEW: Level 10 - Batch Approval Confirmation
 @staticmethod
@@ -820,9 +936,16 @@ levels = {
     6: lambda **kw: AdminService.get_filtered_user_list(kw['callback'], kw['session']),
     7: lambda **kw: AdminService.get_user_detail_view(kw['callback'], kw['session']),
     8: lambda **kw: AdminService.approve_user_handler(kw['callback'], kw['session']),
-    9: lambda **kw: AdminService.reject_user_handler(kw['callback'], kw['session']),  # TODO: FSM
+    9: lambda **kw: AdminService.reject_user_request_reason(kw['callback'], kw['state']),  # FSM: Request reason
     10: lambda **kw: AdminService.approve_batch_confirm(kw['callback'], kw['session']),
     11: lambda **kw: AdminService.approve_batch_execute(kw['callback'], kw['session']),
+    12: lambda **kw: AdminService.reject_user_execute(kw['callback'], kw['state'], kw['session']),  # Execute rejection
+}
+
+# NEW: FSM Handler (registered separately)
+@user_management.message(AdminIdFilter(), F.text, StateFilter(UserManagementStates.rejection_reason))
+async def rejection_reason_preview(message: Message, state: FSMContext):
+    # ... (implementation in AdminService section above)
 }
 ```
 
@@ -838,6 +961,7 @@ class UserManagementOperation(str, Enum):
     VIEW_USER_DETAIL = "view_user_detail"
     APPROVE_USER = "approve_user"
     REJECT_USER = "reject_user"
+    REJECT_USER_EXECUTE = "reject_user_execute"
     APPROVE_BATCH_CONFIRM = "approve_batch_confirm"
     APPROVE_BATCH_EXECUTE = "approve_batch_execute"
 
@@ -883,7 +1007,13 @@ class UserManagementCallback(CallbackData, prefix="um"):
   "cancel": "Abbrechen",
 
   "user_approved_success": "Benutzer @{username} wurde freigeschaltet.",
-  "batch_approval_success": "{count} Benutzer wurden freigeschaltet ({notified} Benachrichtigung)."
+  "batch_approval_success": "{count} Benutzer wurden freigeschaltet ({notified} Benachrichtigung).",
+
+  "reject_user_enter_reason": "Ablehnungsgrund für @{username} eingeben:",
+  "reject_user_preview": "Folgende Nachricht wird an Benutzer gesendet:\n\n{reason}\n\nBestätigen?",
+  "user_rejected_success": "Benutzer @{username} wurde abgelehnt.",
+  "send": "✅ Senden",
+  "edit": "✏️ Bearbeiten"
 }
 ```
 
@@ -1021,13 +1151,14 @@ def validate_registration_mode():
 2. **Database** (models + migration) - 15 Min
 3. **Repositories** (system_settings + user extensions) - 25 Min
 4. **Callbacks** (UserManagementOperation erweitern) - 5 Min
-5. **Services** (user.py + admin.py) - 35 Min
-6. **Handlers** (/start + user_management levels) - 20 Min
-7. **Localization** (keys) - 10 Min
-8. **Notifications** (approve/reject) - 5 Min
-9. **Testing** (manual flows) - 20 Min
+5. **FSM States** (UserManagementStates.rejection_reason) - 3 Min
+6. **Services** (user.py + admin.py) - 40 Min (includes rejection FSM)
+7. **Handlers** (/start + user_management levels + FSM handler) - 25 Min
+8. **Localization** (keys) - 10 Min
+9. **Notifications** (approve/reject) - 5 Min
+10. **Testing** (manual flows including rejection) - 25 Min
 
-**Total: ~140 Minuten**
+**Total: ~158 Minuten**
 
 ---
 
